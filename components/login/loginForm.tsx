@@ -1,5 +1,5 @@
 'use client'
-import { Button, Input } from "@heroui/react";
+import { Button, Input, Link } from "@heroui/react";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { Controller, useForm } from "react-hook-form";
 import * as yup from "yup";
@@ -55,6 +55,11 @@ const LoginForm = () => {
                     />
                 )}
             />
+            <div className="flex justify-end">
+                <Link color="secondary" className="text-sm">
+                    Forgot Password?
+                </Link>
+            </div>
             <Button type="submit" color="secondary">
                 Log In
             </Button>
