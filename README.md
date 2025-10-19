@@ -1,36 +1,86 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 💬 UniComm – Unified Communication Platform
 
-## Getting Started
+**UniComm** is a next-generation **Customer Communication Management (CCM)** and **Unified Communication Platform** that enables enterprises to design, manage, personalize, and deliver customer communications across all channels — faster, smarter, and more securely.
 
-First, run the development server:
+Built as a **cloud-native, AI-powered SaaS**, UniComm combines low-code template design, real-time orchestration, analytics, and compliance into one unified system — transforming how organizations engage with customers.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+---
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🚀 Overview
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Traditional CCM solutions are complex, IT-driven, and slow to adapt.  
+**UniComm** reimagines communication management with a **modern, AI-assisted experience**, letting business users create compliant, omnichannel messages without relying on IT.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**Core Channels:**  
+Email • PDF/Print
 
-## Learn More
+**Potential Industries Served:**  
+Small Business • Medium Business
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## ✨ Key Features
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 🎨 Omnichannel Template Designer
+- Drag-and-drop builder for PDF, Email, and SMS  
+- Dynamic placeholders and conditional logic  
+- Shared content blocks for consistent branding  
+- Multi-language support and real-time previews  
 
-## Deploy on Vercel
+### ⚙️ Communication Orchestration Engine
+- Event-driven workflows triggered by APIs, Kafka, or webhooks  
+- Real-time or batch message delivery  
+- Visual workflow builder
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 🤖 AI Assistance
+- Smart copy and tone suggestions  
+- Automated personalization from CRM data  
+- Compliance validation and sentiment analysis  
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 📊 Analytics Dashboard
+- Message-level metrics (open, click, dwell time, sentiment)  
+- Funnel and conversion analytics  
+- Drill-down insights from campaign → recipient  
+- Export APIs for Tableau, PowerBI, or Snowflake  
+
+### 🛡️ Governance & Compliance
+- Role-based access and content locks  
+- Version control and approval workflows  
+- Immutable audit trails and data retention policies  
+- GDPR, HIPAA, and SOC2 compliance  
+
+---
+
+## 🧠 Architecture Highlights
+
+- **Cloud-native microservices** for high scalability 
+- **API-first & event-driven** design
+- **Secure connectors** for Salesforce Etc.
+- **Multi-tenant isolation**
+
+---
+
+## 📈 Goals
+
+- Simplify enterprise communication workflows  
+- Accelerate time-to-market (weeks → days)  
+- Reduce operational and IT dependency  
+- Enable intelligent, compliant omnichannel messaging  
+
+---
+
+## 📜 License
+
+This project is currently in development. Licensing details will be added upon release.
+
+---
+
+## 📫 Contact
+
+**Author:** Kasitphoom Thowongs  
+**Email:** [3044035t@student.gla.ac.uk](mailto:3044035t@student.gla.ac.uk)  
+**Website:** [kasitphoom.com](https://kasitphoom.com)
+
+---
+
+⭐ _If you find UniComm interesting, please consider starring the repository!_
