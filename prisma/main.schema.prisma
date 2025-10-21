@@ -50,3 +50,17 @@ enum UserBusinessRole {
   ADMIN
   MEMBER
 }
+
+enum ReferencePurpose {
+  BUSINESS_INVITE
+  PASSWORD_RESET
+}
+
+model References {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  businessId String?   @db.ObjectId
+  refEmails  String[]
+  purpose    ReferencePurpose
+  createdAt  DateTime? @default(now())
+  expiresAt   DateTime
+}
