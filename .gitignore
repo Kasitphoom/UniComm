@@ -40,12 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-/app/generated/prisma
+/app/generated/*
 
-/prisma/..app/generated/prisma
-
-/app/generated/prisma
-
-/app/generated/prisma
-
-/app/generated/prisma
+/prisma/..app/generated/*

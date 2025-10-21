@@ -6,7 +6,7 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../app/generated/prisma"
+  output   = "../app/generated/main/prisma"
 }
 
 datasource db {
@@ -18,4 +18,35 @@ model Business {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  memberships UsersOnBusinesses[]
+}
+
+model User {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  email       String   @unique
+  password    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  memberships UsersOnBusinesses[]
+}
+
+// Explicit many-to-many join collection for MongoDB
+model UsersOnBusinesses {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String   @db.ObjectId
+  businessId String   @db.ObjectId
+  role       UserBusinessRole @default(MEMBER)
+
+  user     User     @relation(fields: [userId], references: [id])
+  business Business @relation(fields: [businessId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, businessId])
+}
+
+enum UserBusinessRole {
+  OWNER
+  ADMIN
+  MEMBER
 }
