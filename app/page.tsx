@@ -16,7 +16,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
     }
 
     return (
-        <div className="flex min-h-svh p-8">
+        <div className="flex flex-col-reverse md:flex-row min-h-svh p-8">
             <div className="flex-1 flex items-center justify-center">
                 <Image
                     src="/images/login-image.svg"
@@ -27,7 +27,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
                 />
             </div>
             <div className="flex-1 flex justify-center items-center">
-                <div className="flex flex-col max-w-[37.5rem] p-12 gap-8">
+                <div className="flex flex-col max-w-[37.5rem] py-8 md:p-12 gap-8">
                     <div className="flex flex-col gap-4">
                         <Image
                             src="/images/logos/Big Logo.svg"
@@ -41,12 +41,17 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
                         </p>
                     </div>
                     {
-                        params.error && params.error === 'CredentialsSignin' && (
+                        params.error && params.error === 'CredentialsSignin' ? (
                             <div className="text-danger">
                                 Invalid email or password. Please try again.
                             </div>
-                        )
-                    }
+                        ) :
+                        params.error ? (
+                            <div className="text-danger">
+                                Something went wrong. Please try again.
+                            </div>
+                        ) : null
+                    }                        
                     <LoginForm />
                 </div>
             </div>

@@ -11,7 +11,7 @@ export default withAuth(
             authorized: ({ token, req }) => {
                 const { pathname } = req.nextUrl
                 // Allow the public root page
-                if (pathname === "/") return true
+                if (pathname === "/" || pathname === "/forgot-password") return true
                 // For all other matched paths, require a valid session token
                 return !!token
             },

@@ -24,6 +24,10 @@ const LoginForm = () => {
         });
     };
 
+    const googleSignIn = async () => {
+        await signIn('google', { callbackUrl: '/dashboard' });
+    };
+
     return (
         <>
             <form className="flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)}>
@@ -76,11 +80,14 @@ const LoginForm = () => {
                 <div className="w-full h-[1px] bg-default-300"/>
             </div>
             <div className="flex flex-col gap-4">
-                <div className="flex py-2 px-4 border border-default-300 rounded-lg items-center gap-2 cursor-pointer hover:bg-default-100 transition">
+                <div className="flex py-2 px-4 border border-default-300 rounded-lg items-center gap-2 cursor-pointer hover:bg-default-100 transition" onClick={googleSignIn}>
                     <Image
                         src="/images/logos/Google Logo.png"
-                        width={20}
-                        height={20}
+                        style={{
+                            height: '20px',
+                            width: 'auto',
+                        }}
+                        sizes="100vw"
                         alt="Google Logo"
                     />
                     <p className="w-full text-default-400 text-center">
