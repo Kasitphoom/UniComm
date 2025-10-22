@@ -1,6 +1,7 @@
 'use client'
-import { Button, Input, Link, Image } from "@heroui/react";
+import { Button, Input, Link, Image, addToast } from "@heroui/react";
 import { yupResolver } from "@hookform/resolvers/yup";
+import { signIn } from "next-auth/react";
 import { Controller, useForm } from "react-hook-form";
 import * as yup from "yup";
 
@@ -15,8 +16,12 @@ const LoginForm = () => {
         resolver: yupResolver(schema),
     });
 
-    const onSubmit = (data: any) => {
-        console.log(data);
+    const onSubmit = async (data: any) => {
+        await signIn('credentials', {
+            email: data.email,
+            password: data.password,
+            callbackUrl: '/dashboard',
+        });
     };
 
     return (

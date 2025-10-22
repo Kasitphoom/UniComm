@@ -1,7 +1,11 @@
 import Image from "next/image";
 import LoginForm from "@/components/login/loginForm";
+import { p } from "framer-motion/client";
 
-export default function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+
+    const params = await searchParams;
+
     return (
         <div className="flex min-h-svh p-8">
             <div className="flex-1 flex items-center justify-center">
@@ -27,6 +31,13 @@ export default function Home() {
                             Log in to your account to access the UniComm platform
                         </p>
                     </div>
+                    {
+                        params.error && params.error === 'CredentialsSignin' && (
+                            <div className="text-danger">
+                                Invalid email or password. Please try again.
+                            </div>
+                        )
+                    }
                     <LoginForm />
                 </div>
             </div>
