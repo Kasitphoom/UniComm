@@ -1,10 +1,15 @@
 'use client'
-import { Button, Input, Link, Image } from "@heroui/react";
+import APICallHandler from "@/utils/apiCall";
+import { Button, Input, addToast } from "@heroui/react";
 import { yupResolver } from "@hookform/resolvers/yup";
+import { signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 import * as yup from "yup";
 
 const schema = yup.object().shape({
+    email: yup.string().email("Invalid email format").required("Email is required"),
     password: yup
         .string()
         .required("Password is required")
@@ -22,24 +27,70 @@ const schema = yup.object().shape({
 
 const ResetPasswordRequestForm = (params: { refId?: string, email?: string }) => {
 
-    const { handleSubmit, control, formState: { isValid } } = useForm({
+    const router = useRouter();
+
+    const { handleSubmit, control, reset } = useForm({
         resolver: yupResolver(schema, { abortEarly: false }),
         criteriaMode: 'all',
     });
 
-    const onSubmit = (data: any) => {
-        console.log(data);
+    const onSubmit = async (data: { email: string, password: string}) => {
+        try {
+            await APICallHandler('/api/auth/reset-password', 'POST', {
+                token: params.refId,
+                newPassword: data.password,
+                email: data.email,
+            });
+
+            const { email, password } = data;
+            await signIn('credentials', {
+                email,
+                password,
+                redirect: false,
+            })
+
+            addToast({
+                title: "Success",
+                description: "Your password has been reset successfully.",
+                color: "success",
+                radius: "md",
+                timeout: 3000,
+            })
+
+            router.push('/');
+        } catch (error) {
+            addToast({
+                title: "Error",
+                description: "There was an error resetting your password. Please try again.",
+                color: "danger",
+                radius: "md",
+                timeout: 3000,
+            })
+        }
     }
+
+    useEffect(() => {
+        if (params.email) {
+            reset({ email: params.email });
+        }
+    }, [params.email, reset]);
 
     return (
         <>
             <form className="flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)}>
-                <Input
-                    type="email"
-                    label="Email"
-                    value={params.email}
-                    isDisabled
-                    labelPlacement="outside"
+                <Controller
+                    name="email"
+                    control={control}
+                    render={({ field }) => (
+                        <Input
+                            {...field}
+                            label="Email"
+                            type="email"
+                            validationBehavior="aria"
+                            labelPlacement="outside"
+                            disabled
+                        />
+                    )}
                 />
                 <Controller
                     name="password"

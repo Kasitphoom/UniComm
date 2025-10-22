@@ -13,6 +13,7 @@
     "@hookform/resolvers": "^5.2.2",
     "@prisma/client": "^6.17.1",
     "@prisma/extension-accelerate": "^2.0.2",
+    "bcryptjs": "^3.0.2",
     "framer-motion": "^12.23.24",
     "mailgun.js": "^12.1.1",
     "next": "15.5.6",
