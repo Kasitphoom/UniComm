@@ -46,6 +46,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
                                 Invalid email or password. Please try again.
                             </div>
                         ) :
+                        params.error && params.error === 'AccessDenied' ? (
+                            <div className="text-danger">
+                                Access denied. This can also mean your email isn&apos;t registered or doesn&apos;t have access. If you think this is a mistake, please contact support.
+                            </div>
+                        ) :
                         params.error ? (
                             <div className="text-danger">
                                 Something went wrong. Please try again.

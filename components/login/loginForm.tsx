@@ -28,6 +28,10 @@ const LoginForm = () => {
         await signIn('google', { callbackUrl: '/dashboard' });
     };
 
+    const salesforceSignIn = async () => {
+        await signIn('salesforce', { callbackUrl: '/dashboard' });
+    };
+
     return (
         <>
             <form className="flex flex-col gap-4" onSubmit={handleSubmit(onSubmit)}>
@@ -94,7 +98,7 @@ const LoginForm = () => {
                         Continue with Google
                     </p>
                 </div>
-                <div className="flex py-2 px-4 border border-default-300 rounded-lg items-center gap-2 cursor-pointer hover:bg-default-100 transition">
+                <div className="flex py-2 px-4 border border-default-300 rounded-lg items-center gap-2 cursor-pointer hover:bg-default-100 transition" onClick={salesforceSignIn}>
                     <Image
                         src="/images/logos/Salesforce-logo.png"
                         sizes="100vw"

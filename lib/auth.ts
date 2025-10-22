@@ -1,6 +1,7 @@
 import type { NextAuthOptions } from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
 import GoogleProvider from "next-auth/providers/google"
+import SalesforceProvider from "next-auth/providers/salesforce"
 import prisma from "@/lib/prisma-main"
 import bcrypt from "bcryptjs"
 
@@ -35,6 +36,18 @@ export const authOptions: NextAuthOptions = {
             clientId: process.env.GOOGLE_CLIENT_ID || "",
             clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
         }),
+        SalesforceProvider({
+            clientId: process.env.SALESFORCE_CLIENT_ID || "",
+            clientSecret: process.env.SALESFORCE_CLIENT_SECRET || "",
+            checks: ["pkce", "state"],
+            authorization: {
+                params: {
+                    response_type: "code",
+                    scope: "email profile",
+                    code_challenge_method: "S256",
+                },
+            },
+        }),
     ],
     callbacks: {
         async signIn({ user, account }) {
@@ -46,6 +59,17 @@ export const authOptions: NextAuthOptions = {
                 if (!existing) return false
                 // Pass the DB id through to jwt via user.id
                 ;(user as any).id = existing.id
+                return true
+            }
+
+            if (account?.provider === 'salesforce') {
+                console.log( "Salesforce sign in callback", user, account );
+                const email = (user as any)?.email
+                if (!email) return false
+                const existing = await prisma.user.findUnique({ where: { email } })
+                if (!existing) return false;
+                // Pass the DB id through to jwt via user.id
+                (user as any).id = existing.id
                 return true
             }
             return true
