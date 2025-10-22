@@ -7,3 +7,9 @@ services:
     ports:
       - 27018:27017
     restart: unless-stopped
+    volumes:
+      - data:/data/db
+      - config:/data/configdb
+volumes:
+  data:
+  config:
