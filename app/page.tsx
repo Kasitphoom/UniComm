@@ -1,10 +1,19 @@
 import Image from "next/image";
 import LoginForm from "@/components/login/loginForm";
-import { p } from "framer-motion/client";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { redirect } from "next/navigation";
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
 
     const params = await searchParams;
+
+    // if server session exists, redirect to dashboard
+    const session = await getServerSession(authOptions);
+    if (session) {
+        console.log("Session exists, redirecting to dashboard:", session);
+        redirect('/dashboard');
+    }
 
     return (
         <div className="flex min-h-svh p-8">

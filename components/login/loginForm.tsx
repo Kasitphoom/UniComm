@@ -90,10 +90,12 @@ const LoginForm = () => {
                 <div className="flex py-2 px-4 border border-default-300 rounded-lg items-center gap-2 cursor-pointer hover:bg-default-100 transition">
                     <Image
                         src="/images/logos/Salesforce-logo.png"
-                        width={20}
-                        height={20}
+                        sizes="100vw"
                         alt="Google Logo"
-                        className="w-auto h-[20px]"
+                        style={{
+                            height: '20px',
+                            width: 'auto',
+                        }}
                     />
                     <p className="w-full text-default-400 text-center">
                         Continue with Salesforce
