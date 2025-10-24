@@ -1,7 +1,6 @@
 import { withAuth } from "next-auth/middleware"
 import type { NextRequest } from "next/server"
 
-// Protect every page except the root path '/'.
 export default withAuth(
     function middleware(_req: NextRequest) {
         // add per-request logic here if needed

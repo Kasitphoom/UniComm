@@ -1,7 +1,11 @@
 import prismaMain from "@/lib/prisma-main"
 import { getBusinessPrisma } from "@/lib/prisma-business"
-import { NextRequest } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { UserBusinessRole } from "@/app/generated/main/prisma"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth"
+import { getToken } from "next-auth/jwt"
+import prismaBusiness from "@/lib/prisma-business"
 
 /**
  * @swagger
@@ -43,7 +47,9 @@ export async function POST(request: NextRequest) {
         const body = await request.json()
 
         // Create the Business record in main DB (no payload required per schema)
-        const newBusinessRecord = await prismaMain.business.create({ data: {} })
+        const newBusinessRecord = await prismaMain.business.create({ data: {
+            name: body.name
+        } })
         createdBusinessId = newBusinessRecord.id
 
         // Create per-business database: business_<id>
@@ -107,6 +113,42 @@ export async function POST(request: NextRequest) {
                 error: error instanceof Error ? error.message : String(error),
             }),
             { status: 500, headers: { "Content-Type": "application/json" } }
+        )
+    }
+}
+
+export const GET = async (request: NextRequest) => {
+    // Try to authenticate via Authorization: Bearer <jwt> first, falling back to session cookie
+    const token = await getToken({ req: request as any })
+    const session = await getServerSession(authOptions)
+
+    const userId = (token as any)?.id || (session as any)?.user?.id
+    if (!userId) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    try {
+        const businesses = await prismaMain.business.findMany({
+            where: {
+                memberships: {
+                    some: {
+                        userId: userId,
+                    },
+                },
+            },
+            include: {
+                memberships: true,
+            },
+        })
+
+        return NextResponse.json({ businesses }, { status: 200 })
+    } catch (error) {
+        return NextResponse.json(
+            {
+                msg: 'Unable to fetch businesses',
+                error: error instanceof Error ? error.message : String(error),
+            },
+            { status: 500 }
         )
     }
 }

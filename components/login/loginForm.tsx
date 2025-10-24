@@ -1,9 +1,12 @@
-'use client'
-import { Button, Input, Link, Image, addToast } from "@heroui/react";
+"use client"
+import { Button, Input, Link, Image, addToast, useDisclosure } from "@heroui/react";
 import { yupResolver } from "@hookform/resolvers/yup";
-import { signIn } from "next-auth/react";
+import { signIn, signOut, useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import * as yup from "yup";
+import SelectBusinessModal from "./SelectBusinessModal";
 
 const schema = yup.object().shape({
     email: yup.string().email("Invalid email format").required("Email is required"),
@@ -11,26 +14,68 @@ const schema = yup.object().shape({
 });
 
 const LoginForm = () => {
+    const { isOpen, onOpenChange, onOpen } = useDisclosure();
+    const router = useRouter();
+    const { status, data: session } = useSession();
 
     const { handleSubmit, control } = useForm({
         resolver: yupResolver(schema),
     });
 
+    const maybeStoreCredential = async (email: string, password: string) => {
+        try {
+            const navAny = navigator as any
+            const WinAny = window as any
+            if (navAny?.credentials && WinAny?.PasswordCredential) {
+                const cred = new WinAny.PasswordCredential({ id: email, name: email, password })
+                await navAny.credentials.store(cred)
+            }
+        } catch {}
+    }
+
     const onSubmit = async (data: any) => {
-        await signIn('credentials', {
+        // Prevent full-page navigation; handle redirect manually
+        const res = await signIn('credentials', {
             email: data.email,
             password: data.password,
             callbackUrl: '/dashboard',
+            redirect: false,
         });
+
+        if (res?.ok) {
+            // Ask Google Password Manager to store the credential (works on https or localhost)
+            await maybeStoreCredential(data.email, data.password)
+            onOpen();
+        } else if (res?.error) {
+            const message = res.error === 'CredentialsSignin'
+                ? 'Invalid email or password'
+                : res.error === 'AccessDenied'
+                    ? "Access denied. This may mean your email isn't registered or lacks access."
+                    : 'Sign in failed. Please try again.';
+            addToast({ title: 'Sign in', description: message, color: 'danger' });
+        }
     };
 
     const googleSignIn = async () => {
-        await signIn('google', { callbackUrl: '/dashboard' });
+        await signOut({ redirect: false });
+        const res = await signIn('google', { callbackUrl: '/', redirect: false });
+        if (res?.url) router.push(res.url);
     };
 
     const salesforceSignIn = async () => {
-        await signIn('salesforce', { callbackUrl: '/dashboard' });
+        await signOut({ redirect: false });
+        const res = await signIn('salesforce', { callbackUrl: '/', redirect: false });
+        if (res?.url) router.push(res.url);
     };
+
+    // After OAuth returns to '/', open the business select if authenticated and no active business set
+    useEffect(() => {
+        if (status === 'authenticated') {
+            const active = (session?.user as any)?.activeBusinessId
+            if (!active) onOpen()
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [status, session])
 
     return (
         <>
@@ -43,6 +88,7 @@ const LoginForm = () => {
                             {...field}
                             label="Email"
                             type="email"
+                            autoComplete="username"
                             isRequired
                             validationBehavior="aria"
                             isInvalid={invalid}
@@ -60,6 +106,7 @@ const LoginForm = () => {
                             {...field}
                             label="Password"
                             type="password"
+                            autoComplete="current-password"
                             isRequired
                             validationBehavior="aria"
                             isInvalid={invalid}
@@ -113,6 +160,7 @@ const LoginForm = () => {
                     </p>
                 </div>
             </div>
+            <SelectBusinessModal isOpen={isOpen} onOpenChange={onOpenChange} />
         </>
     )
 }

@@ -74,7 +74,7 @@ export const authOptions: NextAuthOptions = {
             }
             return true
         },
-        async jwt({ token, user }) {
+        async jwt({ token, user, trigger, session }) {
             // On sign in, ensure token.id comes from our main DB and attach memberships.
             if (user) {
                 const userId = (user as any).id as string | undefined
@@ -93,6 +93,16 @@ export const authOptions: NextAuthOptions = {
                     ;(token as any).memberships = []
                 }
             }
+
+            // Support updating the active business id via useSession().update({ activeBusinessId })
+            if (trigger === 'update' && session && (session as any).activeBusinessId) {
+                const requested = (session as any).activeBusinessId as string
+                const allowed: string[] = ((token as any).businessIds as string[]) || []
+                if (allowed.includes(requested)) {
+                    ;(token as any).activeBusinessId = requested
+                }
+            }
+
             return token
         },
         async session({ session, token }) {
@@ -102,7 +112,10 @@ export const authOptions: NextAuthOptions = {
                     (token as any).businessIds || []
                 ;(session.user as any).memberships =
                     (token as any).memberships || []
+                ;(session.user as any).activeBusinessId = (token as any).activeBusinessId || null
             }
+            // Also expose activeBusinessId at the session root for server-side convenience
+            ;(session as any).activeBusinessId = (token as any).activeBusinessId || null
             return session
         },
     },

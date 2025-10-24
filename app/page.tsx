@@ -3,6 +3,7 @@ import LoginForm from "@/components/login/loginForm";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
 
@@ -11,8 +12,14 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
     // if server session exists, redirect to dashboard
     const session = await getServerSession(authOptions);
     if (session) {
-        console.log("Session exists, redirecting to dashboard:", session);
-        redirect('/dashboard');
+        // Try to honor a cookie that stores the user's preferred/default business
+        const jar = await cookies();
+        const preferred = jar.get('uc_default_business')?.value;
+
+        const userBizIds: string[] = (session.user as any)?.businessIds || [];
+        if (preferred && userBizIds.includes(preferred)) {
+            redirect(`/dashboard`);
+        }
     }
 
     return (

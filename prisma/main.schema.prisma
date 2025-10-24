@@ -16,6 +16,7 @@ datasource db {
 
 model Business {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   memberships UsersOnBusinesses[]
