@@ -1,10 +1,11 @@
 import { ReferencePurpose } from "@/app/generated/main/prisma";
 import prisma from "@/lib/prisma-main";
-import { toAbsoluteUrl } from "@/utils/apiCall";
+import { toAbsoluteUrl } from "@/utils/serverUrlHandler";
 import { sentMailService } from "@/utils/mail";
 import { NextRequest, NextResponse } from "next/server";
 
 export const POST = async (req: NextRequest) => {
+    const absURL = await toAbsoluteUrl('/'); // Ensure toAbsoluteUrl is awaited
     const emailHTML = `
     <body style="margin: 0; padding: 0; min-width: 100%; background-color: #f7f7f7; font-family: Arial, sans-serif;">
 
@@ -23,7 +24,7 @@ export const POST = async (req: NextRequest) => {
                             <a href="#" target="_blank" style="text-decoration: none; color: #7828C8;">
                                 <!-- The provided logo image (Updated to PNG URL) -->
                                 <img 
-                                    src="${toAbsoluteUrl('/')}images/logos/Big%20Logo.png" 
+                                    src="${absURL}images/logos/Big%20Logo.png" 
                                     alt="Company Logo" 
                                     width="180" 
                                     style="display: block; width: 180px; max-width: 100%; height: auto; outline: none; border: none; line-height: 100%;"
@@ -131,7 +132,7 @@ export const POST = async (req: NextRequest) => {
             },
         });
     
-        await sentMailService([body.email], 'UniComm Account Password Reset', emailHTML.replaceAll('[RESET_LINK_GOES_HERE]', `${toAbsoluteUrl('/')}forgot-password?ref=${reference.id}`));
+        await sentMailService([body.email], 'UniComm Account Password Reset', emailHTML.replaceAll('[RESET_LINK_GOES_HERE]', `${absURL}forgot-password?ref=${reference.id}`));
     
         return NextResponse.json({ referenceId: reference.id }, { status: 200 });
     } catch (error) {
