@@ -3,18 +3,26 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack --port 4100",
-    "build": "next build --turbopack",
-    "start": "next start --port 4100"
+    "dev": "next dev --port 4100",
+    "build": "next build",
+    "start": "next start --port 4100",
+    "prisma-generate": "npx prisma generate --schema=prisma/main.schema.prisma && npx prisma generate "
   },
   "dependencies": {
     "@heroui/react": "^2.8.5",
     "@hookform/resolvers": "^5.2.2",
+    "@prisma/client": "^6.17.1",
+    "@prisma/extension-accelerate": "^2.0.2",
+    "bcryptjs": "^3.0.2",
     "framer-motion": "^12.23.24",
+    "mailgun.js": "^12.1.1",
     "next": "15.5.6",
+    "next-auth": "^4.24.11",
+    "next-swagger-doc": "^0.4.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-hook-form": "^7.65.0",
+    "swagger-ui-react": "^5.29.5",
     "yup": "^1.7.1"
   },
   "devDependencies": {
@@ -22,7 +30,10 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/swagger-ui-react": "^4.11.0",
+    "prisma": "^6.17.1",
     "tailwindcss": "^4",
+    "tsx": "^4.20.6",
     "typescript": "^5"
   }
 }
