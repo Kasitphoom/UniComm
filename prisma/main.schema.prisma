@@ -1,0 +1,67 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../app/generated/main/prisma"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("MAIN_DATABASE_URL")
+}
+
+model Business {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  memberships UsersOnBusinesses[]
+}
+
+model User {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  email       String   @unique
+  password    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  memberships UsersOnBusinesses[]
+}
+
+// Explicit many-to-many join collection for MongoDB
+model UsersOnBusinesses {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId     String   @db.ObjectId
+  businessId String   @db.ObjectId
+  role       UserBusinessRole @default(MEMBER)
+
+  user     User     @relation(fields: [userId], references: [id])
+  business Business @relation(fields: [businessId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, businessId])
+}
+
+enum UserBusinessRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum ReferencePurpose {
+  BUSINESS_INVITE
+  PASSWORD_RESET
+}
+
+model References {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  businessId String?   @db.ObjectId
+  refEmails  String[]
+  purpose    ReferencePurpose
+  createdAt  DateTime? @default(now())
+  expiresAt   DateTime
+}
