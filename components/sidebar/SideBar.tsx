@@ -5,9 +5,13 @@ import { Divider } from '@heroui/react';
 import { ChevronsLeft, LayoutDashboard, NotepadTextDashed } from 'lucide-react';
 import { motion } from 'motion/react';
 import Image from 'next/image';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { toggleSidebar } from '@/features/ui/uiSlice';
 
 const SideBar = () => {
     const pathname = usePathname();
+    const dispatch = useAppDispatch();
+    const sidebarOpen = useAppSelector((state) => state.ui.sidebarOpen);
     const noRenderPaths = ['/', '/forgot-password'];
 
     if (noRenderPaths.includes(pathname)) {
@@ -38,20 +42,31 @@ const SideBar = () => {
     ]
 
     return (
-        <motion.div className='sticky h-svh border border-l-1 border-default-200 max-w-[300px] w-full flex flex-col'>
-            <div className='flex justify-between px-4 py-6'>
-                <Image
-                    src="/images/logos/Big Logo.svg"
-                    style={{
-                        height: '32px',
-                        width: 'auto',
-                    }}
-                    sizes="100vw"
-                    alt="Google Logo"
-                    width={157}
-                    height={32}
-                />
-                <div className='p-2 rounded-md border border-default-300 hover:bg-default-200 transition-all transition-duration-200 cursor-pointer'>
+        <motion.div 
+            className={`sticky h-svh border border-l-1 border-default-200 ${sidebarOpen ? 'max-w-[300px]' : 'max-w-[70px]'} w-full flex flex-col transition-all`}
+            transition={{
+                ease: 'easeInOut',
+                duration: 1
+            }}
+        >
+            <div className={`flex ${sidebarOpen ? 'justify-between' : 'justify-center'} px-4 py-6`}>
+                {
+                    sidebarOpen && <Image
+                        src="/images/logos/Big Logo.svg"
+                        style={{
+                            height: '32px',
+                            width: 'auto',
+                        }}
+                        sizes="100vw"
+                        alt="Google Logo"
+                        width={157}
+                        height={32}
+                    />
+                }
+                <div
+                    className='p-2 rounded-md border border-default-300 hover:bg-default-200 transition-all transition-duration-200 cursor-pointer'
+                    onClick={() => dispatch(toggleSidebar())}
+                >
                     <ChevronsLeft size={16}/>
                 </div>
             </div>
@@ -61,7 +76,9 @@ const SideBar = () => {
                     Navigations.map((navGroup, index) => (
                         <>
                             <div key={navGroup.groupName} className="flex flex-col gap-4">
-                                <p className="text-default-400 font-medium text-xs uppercase">{navGroup.groupName}</p>
+                                {
+                                    sidebarOpen && <p className="text-default-400 font-medium text-xs uppercase">{navGroup.groupName}</p>
+                                }
                                 <div className="flex flex-col gap-2">
                                     {
                                         navGroup.items.map((item) => (
@@ -71,11 +88,12 @@ const SideBar = () => {
                                                 className={`
                                                     flex items-center justify-between rounded-md hover:text-secondary-300 transition
                                                     ${pathname === item.href ? 'text-secondary font-medium' : 'text-black'}
+                                                    ${sidebarOpen ? '' : 'justify-center'}
                                                 `}
                                             >
                                                 <div className='flex gap-2 items-center'>
                                                     {item.icon}
-                                                    <span>{item.name}</span>
+                                                    {sidebarOpen && <span>{item.name}</span>}
                                                 </div>
                                             </a>
                                         ))
