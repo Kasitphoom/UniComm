@@ -7,6 +7,9 @@ import { motion } from 'motion/react';
 import Image from 'next/image';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { toggleSidebar } from '@/features/ui/uiSlice';
+import Link from 'next/link';
+import SidebarNavItem from './SidebarNavItem';
+import { SidebarHierarchy } from '@/types/sidebar';
 
 const SideBar = () => {
     const pathname = usePathname();
@@ -18,14 +21,14 @@ const SideBar = () => {
         return null;
     }
 
-    const Navigations = [
+    const Navigations: SidebarHierarchy = [
         {
             groupName: 'Overview',
             items: [
                 { 
                     name: 'Dashboard', 
                     href: '/dashboard',
-                    icon: <LayoutDashboard size={16} />
+                    icon: <LayoutDashboard size={16} />,
                 },
             ],
         },
@@ -35,7 +38,7 @@ const SideBar = () => {
                 {
                     name: 'Templates',
                     href: '/templates',
-                    icon: <NotepadTextDashed size={16} />
+                    icon: <NotepadTextDashed size={16} />,
                 }
             ]
         }
@@ -51,17 +54,19 @@ const SideBar = () => {
         >
             <div className={`flex ${sidebarOpen ? 'justify-between' : 'justify-center'} px-4 py-6`}>
                 {
-                    sidebarOpen && <Image
-                        src="/images/logos/Big Logo.svg"
-                        style={{
-                            height: '32px',
-                            width: 'auto',
-                        }}
-                        sizes="100vw"
-                        alt="Google Logo"
-                        width={157}
-                        height={32}
-                    />
+                    sidebarOpen && <Link href={"/"}>
+                        <Image
+                            src="/images/logos/Big Logo.svg"
+                            style={{
+                                height: '32px',
+                                width: 'auto',
+                            }}
+                            sizes="100vw"
+                            alt="Google Logo"
+                            width={157}
+                            height={32}
+                        />
+                    </Link>
                 }
                 <div
                     className='p-2 rounded-md border border-default-300 hover:bg-default-200 transition-all transition-duration-200 cursor-pointer'
@@ -74,28 +79,23 @@ const SideBar = () => {
             <div className="flex flex-col gap-6 p-4">
                 {
                     Navigations.map((navGroup, index) => (
-                        <>
-                            <div key={navGroup.groupName} className="flex flex-col gap-4">
+                        <React.Fragment key={navGroup.groupName}>
+                            <div className="flex flex-col gap-4">
                                 {
                                     sidebarOpen && <p className="text-default-400 font-medium text-xs uppercase">{navGroup.groupName}</p>
                                 }
                                 <div className="flex flex-col gap-2">
                                     {
                                         navGroup.items.map((item) => (
-                                            <a
+                                            <SidebarNavItem
                                                 key={item.name}
                                                 href={item.href}
-                                                className={`
-                                                    flex items-center justify-between rounded-md hover:text-secondary-300 transition
-                                                    ${pathname === item.href ? 'text-secondary font-medium' : 'text-black'}
-                                                    ${sidebarOpen ? '' : 'justify-center'}
-                                                `}
-                                            >
-                                                <div className='flex gap-2 items-center'>
-                                                    {item.icon}
-                                                    {sidebarOpen && <span>{item.name}</span>}
-                                                </div>
-                                            </a>
+                                                icon={item.icon}
+                                                label={item.name}
+                                                active={pathname === item.href}
+                                                compact={!sidebarOpen}
+                                                badgeCount={0}
+                                            />
                                         ))
                                     }
                                 </div>
@@ -103,7 +103,7 @@ const SideBar = () => {
                             {
                                 index !== Navigations.length - 1 && <Divider key={`divider-${index}`}/>
                             }
-                        </>
+                        </React.Fragment>
                     ))
                 }
             </div>
