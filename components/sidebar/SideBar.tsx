@@ -52,7 +52,7 @@ const SideBar = () => {
                 duration: 1
             }}
         >
-            <div className={`flex ${sidebarOpen ? 'justify-between' : 'justify-center'} px-4 py-6`}>
+            <div className={`flex ${sidebarOpen ? 'justify-between' : 'justify-center'} p-4`}>
                 {
                     sidebarOpen && <Link href={"/"}>
                         <Image
@@ -69,7 +69,7 @@ const SideBar = () => {
                     </Link>
                 }
                 <div
-                    className='p-2 rounded-md border border-default-300 hover:bg-default-200 transition-all transition-duration-200 cursor-pointer'
+                    className='w-8 h-8 flex justify-center items-center rounded-md border border-default-300 hover:bg-default-200 transition-all transition-duration-200 cursor-pointer'
                     onClick={() => dispatch(toggleSidebar())}
                 >
                     <ChevronsLeft size={16}/>
