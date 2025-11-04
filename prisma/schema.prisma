@@ -36,3 +36,14 @@ model BusinessUser {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+// ========= TEMPLATE MODELS =========
+model Templates {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  title       String
+  filePath    String
+  userId      String
+  user        BusinessUser @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

@@ -29,9 +29,11 @@ export default function RootLayout({
                 <Providers>
                     <div className="flex">
                         <SideBar />
-                        <div className="w-full">
+                        <div className="flex flex-col w-full">
                             <Header />
-                            {children}
+                            <div className="flex-1 bg-default-100">
+                                {children}
+                            </div>
                         </div>
                     </div>
                 </Providers>
