@@ -108,6 +108,24 @@ const CreateTemplateModal = (props: SelectBusinessModalProps) => {
                             }}
                         />
                     </div>
+                    <Select 
+                        label="Orientation" 
+                        selectionMode="single"
+                        selectedKeys={new Set([selectedOrientation])}
+                        onSelectionChange={(keys) => {
+                            if (keys === 'all') return
+                            const key = Array.from(keys)[0] as string | undefined
+                            if (key) setSelectedOrientation(key)
+                        }}
+                    >
+                        {orientationOptions.map((option) => (
+                            <SelectItem 
+                                key={option.value}
+                            >
+                                {option.label}
+                            </SelectItem>
+                        ))}
+                    </Select>
                 </ModalBody>
                 <ModalFooter className='flex justify-end border-t border-default-300 gap-2'>
                     <Button variant='light' color='danger' onPress={() => props.onOpenChange(false)}>Cancel</Button>
