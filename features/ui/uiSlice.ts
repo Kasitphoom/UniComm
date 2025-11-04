@@ -4,6 +4,7 @@ import type { UIState } from './types'
 
 const initialState: UIState = {
   sidebarOpen: true,
+  viewMode: 'grid',
 }
 
 const uiSlice = createSlice({
@@ -16,8 +17,11 @@ const uiSlice = createSlice({
     setSidebarOpen(state, action: PayloadAction<boolean>) {
       state.sidebarOpen = action.payload
     },
+    setViewMode(state, action: PayloadAction<'grid' | 'list'>) {
+      state.viewMode = action.payload
+    }
   },
 })
 
-export const { toggleSidebar, setSidebarOpen } = uiSlice.actions
+export const { toggleSidebar, setSidebarOpen, setViewMode } = uiSlice.actions
 export default uiSlice.reducer

@@ -30,7 +30,7 @@ export const authOptions: NextAuthOptions = {
                     user.password
                 )
                 if (!ok) return null
-                return { id: user.id, email: user.email, name: user.name ?? null } as any
+                return { id: user.id, email: user.email } as any
             },
         }),
         GoogleProvider({
@@ -60,7 +60,6 @@ export const authOptions: NextAuthOptions = {
                 if (!existing) return false
                 // Pass the DB id through to jwt via user.id
                 ;(user as any).id = existing.id
-                ;(user as any).name = existing.name ?? null
                 return true
             }
 
@@ -72,7 +71,6 @@ export const authOptions: NextAuthOptions = {
                 if (!existing) return false;
                 // Pass the DB id through to jwt via user.id
                 (user as any).id = existing.id
-                ;(user as any).name = existing.name ?? null
                 return true
             }
             return true
@@ -82,9 +80,6 @@ export const authOptions: NextAuthOptions = {
             if (user) {
                 const userId = (user as any).id as string | undefined
                 if (userId) (token as any).id = userId
-                if ((user as any)?.name !== undefined) {
-                    ;(token as any).name = (user as any).name
-                }
                 try {
                     const memberships = userId
                         ? await prisma.usersOnBusinesses.findMany({
@@ -176,9 +171,6 @@ export const authOptions: NextAuthOptions = {
         async session({ session, token }) {
             if (session?.user) {
                 ;(session.user as any).id = token.id as string
-                if ((token as any).name !== undefined) {
-                    ;(session.user as any).name = (token as any).name
-                }
                 ;(session.user as any).businessIds =
                     (token as any).businessIds || []
                 ;(session.user as any).memberships =

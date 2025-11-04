@@ -35,6 +35,8 @@ model BusinessUser {
   role      UserRole @default(MEMBER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  templates Templates[]
 }
 
 // ========= TEMPLATE MODELS =========
