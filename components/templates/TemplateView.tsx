@@ -34,18 +34,20 @@ const TemplateView = ({
 
     return (
         <motion.div className='flex flex-col gap-4'>
-            <div
-                className='flex gap-2 items-center text-default-500 cursor-pointer select-none'
-                onClick={() => setIsExpanded(!isExpanded)}
-            >
-                <p className='text-sm'>{lable}</p>
-                <motion.div
-                    aria-hidden
-                    animate={{ rotate: isExpanded ? 0 : 180 }}
-                    transition={{ duration: 0.2, ease: 'easeInOut' }}
+            <div className='flex'>
+                <div
+                    className='flex gap-2 items-center text-default-500 cursor-pointer select-none'
+                    onClick={() => setIsExpanded(!isExpanded)}
                 >
-                    <ChevronDown size={16} className='text-default-500' />
-                </motion.div>
+                    <p className='text-sm'>{lable}</p>
+                    <motion.div
+                        aria-hidden
+                        animate={{ rotate: isExpanded ? 0 : 180 }}
+                        transition={{ duration: 0.2, ease: 'easeInOut' }}
+                    >
+                        <ChevronDown size={16} className='text-default-500' />
+                    </motion.div>
+                </div>
             </div>
 
             <AnimatePresence initial={false}>
