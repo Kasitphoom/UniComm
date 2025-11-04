@@ -14,9 +14,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
                 <ReduxProvider store={store}>
                     <UserProvider>
                         <AnimatePresence>
-                            <div className='flex'>
-                                {children}
-                            </div>
+                            {children}
                         </AnimatePresence>
                     </UserProvider>
                 </ReduxProvider>

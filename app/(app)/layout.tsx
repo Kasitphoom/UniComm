@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Poppins } from "next/font/google";
-import { Providers } from "./providers";
-import "./globals.css";
+import { Providers } from "../providers";
+import "../globals.css";
 import SideBar from "@/components/sidebar/SideBar";
 import Header from "@/components/header/Header";
 
@@ -27,7 +27,13 @@ export default function RootLayout({
                 className={`${poppins.className} antialiased`}
             >
                 <Providers>
-                    {children}
+                    <div className="flex">
+                        <SideBar />
+                        <div className="w-full">
+                            <Header />
+                            {children}
+                        </div>
+                    </div>
                 </Providers>
             </body>
         </html>

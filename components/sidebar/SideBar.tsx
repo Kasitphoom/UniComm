@@ -52,7 +52,7 @@ const SideBar = () => {
                 duration: 1
             }}
         >
-            <div className={`flex ${sidebarOpen ? 'justify-between' : 'justify-center'} p-4`}>
+            <div className={`flex ${sidebarOpen ? 'justify-between' : 'justify-center'} p-4 border-b border-default-200`}>
                 {
                     sidebarOpen && <Link href={"/"}>
                         <Image
@@ -75,7 +75,6 @@ const SideBar = () => {
                     <ChevronsLeft size={16}/>
                 </div>
             </div>
-            <Divider />
             <div className="flex flex-col gap-6 p-4">
                 {
                     Navigations.map((navGroup, index) => (
