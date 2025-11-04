@@ -31,7 +31,7 @@ enum UserRole {
 model BusinessUser {
   id        String   @id @default(auto()) @map("_id") @db.ObjectId
   email     String   @unique
-  displayName String
+  displayName String @default("")
   role      UserRole @default(MEMBER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
