@@ -4,6 +4,8 @@ import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { Pagination } from '@heroui/react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import TemplateItemCard from './TemplateItemCard'
+import { TemplateWithUser } from '@/types/template'
 
 const TemplateView = ({ 
     lable = "For you", 
@@ -12,7 +14,7 @@ const TemplateView = ({
     currentPage 
 }: {
     lable?: string, 
-    lists: Array<any>, 
+    lists: Array<TemplateWithUser>, 
     total?: number, 
     currentPage?: number 
 }) => {
@@ -66,12 +68,26 @@ const TemplateView = ({
                             </div>
                         ) : (
                             <div className='flex flex-col gap-4'>
-                                <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4'>
-                                    TemplateView
+                                <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 py-4'>
+                                    {
+                                        lists.map((template) => (
+                                            <TemplateItemCard key={template.id} template={template} />
+                                        ))
+                                    }
                                 </div>
                                 {
                                     total && currentPage && (
-                                        <Pagination color="secondary" page={currentPage} total={total} onChange={onPageChange} />
+                                        <div className='flex justify-center'>
+                                            <Pagination
+                                                color="secondary"
+                                                page={currentPage}
+                                                total={total}
+                                                onChange={onPageChange}
+                                                classNames={{
+                                                    item: 'bg-white',
+                                                }}
+                                            />
+                                        </div>
                                     )
                                 }
                             </div>

@@ -29,7 +29,7 @@ const HeaderUserInner = () => {
       <Divider orientation='vertical' />
       <User
         name={displayName}
-        avatarProps={{ name: displayName[0]?.toUpperCase() || 'U' }}
+        avatarProps={{ name: displayName?.toUpperCase() || 'U' }}
         description={description}
       />
     </div>

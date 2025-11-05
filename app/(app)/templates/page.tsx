@@ -19,7 +19,7 @@ interface SearchParams {
 
 const page = async ({ searchParams }: { searchParams: Promise<SearchParams>}) => {
     const session = await getServerSession(authOptions)
-    const userId = (session as any)?.user?.id as string | undefined
+    const userId = (session as any)?.user?.currentBusinessProfile?.id as string | undefined
     const params = await searchParams
     const templatesByUser = await getTemplateByUserId(userId)
     const templates = await getTemplateWithPagination(params.query || "", params.page ? parseInt(params.page) : 1)

@@ -18,6 +18,9 @@ export const getTemplateWithPagination = async (query: string, currentPage: numb
         orderBy: {
             createdAt: 'desc',
         },
+        include: {
+            user: true,
+        }
     })
 
     const total = await prismaBusiness.templates.count({
