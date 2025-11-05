@@ -105,13 +105,14 @@ export const authOptions: NextAuthOptions = {
                         ;(token as any).activeBusinessId = activeId
                     }
 
-                    let currentProfile: { businessId: string, email: string, displayName: string, role: string } | null = null
+                    let currentProfile: { id: string, businessId: string, email: string, displayName: string, role: string } | null = null
                     if (email && activeId) {
                         try {
                             const bpClient = getBusinessPrisma(activeId)
                             const bu = await bpClient.businessUser.findUnique({ where: { email } })
                             if (bu) {
                                 currentProfile = {
+                                    id: bu.id,
                                     businessId: activeId,
                                     email: (bu as any).email,
                                     displayName: (bu as any).displayName ?? '',
@@ -152,6 +153,7 @@ export const authOptions: NextAuthOptions = {
                             const bu = await bpClient.businessUser.findUnique({ where: { email } })
                             if (bu) {
                                 currentProfile = {
+                                    id: bu.id,
                                     businessId: requested,
                                     email: (bu as any).email,
                                     displayName: (bu as any).displayName ?? '',

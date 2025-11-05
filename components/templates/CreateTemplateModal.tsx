@@ -1,29 +1,129 @@
 'use client'
-import { Button, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Select, SelectItem, type Selection } from '@heroui/react';
-import React, { useEffect, useState } from 'react'
+import { Button, Divider, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Select, SelectItem, type Selection } from '@heroui/react';
+import React from 'react'
+import { Controller, useForm } from 'react-hook-form'
+import * as yup from 'yup'
+import { yupResolver } from '@hookform/resolvers/yup'
+import { createTemplate } from '@/features/templates/templatesSlice';
+import { useAppDispatch } from '@/store/hooks';
 
 interface SelectBusinessModalProps {
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
 }
 
+const PAPER_SIZES = [
+    { label: 'A4', value: 'a4', widthCm: 21.0, heightCm: 29.7 },
+    { label: 'Letter', value: 'letter', widthCm: 21.59, heightCm: 27.94 },
+    { label: 'Legal', value: 'legal', widthCm: 21.59, heightCm: 35.56 },
+    { label: 'Custom', value: 'custom', widthCm: 0, heightCm: 0 },
+] as const
+type PaperSize = typeof PAPER_SIZES[number]['value']
+
+const ORIENTATIONS = [
+    { label: 'Portrait', value: 'portrait' },
+    { label: 'Landscape', value: 'landscape' },
+] as const
+type Orientation = typeof ORIENTATIONS[number]['value']
+
+type FormValues = {
+    templateName: string
+    paperSize: PaperSize
+    orientation: Orientation
+    widthCm: string
+    heightCm: string
+}
+
+const schema: yup.ObjectSchema<FormValues> = yup
+    .object({
+        templateName: yup
+            .string()
+            .trim()
+            .min(1, 'Template name is required')
+            .max(100, 'Max 100 characters')
+            .required('Template name is required'),
+        paperSize: yup
+            .mixed<PaperSize>()
+            .oneOf(PAPER_SIZES.map(p => p.value) as PaperSize[])
+            .required(),
+        orientation: yup
+            .mixed<Orientation>()
+            .oneOf(ORIENTATIONS.map(o => o.value) as Orientation[])
+            .required(),
+        widthCm: yup
+            .string()
+            .when('paperSize', {
+                is: (ps: PaperSize) => ps === 'custom',
+                then: (s) => s
+                    .required('Width is required')
+                    .test('is-number', 'Must be a number', (v) => v !== undefined && v !== null && v !== '' && !Number.isNaN(parseFloat(String(v))))
+                    .test('positive', 'Must be greater than 0', (v) => parseFloat(String(v)) > 0),
+                otherwise: (s) => s.defined(),
+            })
+            .defined(),
+        heightCm: yup
+            .string()
+            .when('paperSize', {
+                is: (ps: PaperSize) => ps === 'custom',
+                then: (s) => s
+                    .required('Height is required')
+                    .test('is-number', 'Must be a number', (v) => v !== undefined && v !== null && v !== '' && !Number.isNaN(parseFloat(String(v))))
+                    .test('positive', 'Must be greater than 0', (v) => parseFloat(String(v)) > 0),
+                otherwise: (s) => s.defined(),
+            })
+            .defined(),
+    })
+    .required()
+
 const CreateTemplateModal = (props: SelectBusinessModalProps) => {
+    const dispatch = useAppDispatch()
+    const {
+        control,
+        handleSubmit,
+        setValue,
+        watch,
+        formState: { isValid, isSubmitting, errors },
+    } = useForm<FormValues>({
+        mode: 'onChange',
+        resolver: yupResolver(schema),
+        defaultValues: {
+            templateName: '',
+            paperSize: 'a4',
+            orientation: 'portrait',
+            widthCm: '21.0',
+            heightCm: '29.7',
+        },
+    })
 
-    const [ selectedPaperSize, setSelectedPaperSize ] = useState<Selection>(new Set(['a4']));
-    const [ selectedOrientation, setSelectedOrientation ] = useState<string>('portrait');
-    const [ customSize, setCustomSize ] = useState<{ widthCm: string; heightCm: string }>({ widthCm: '21.0', heightCm: '29.7' })
+    const paperSize = watch('paperSize')
+    const width = watch('widthCm')
+    const height = watch('heightCm')
+    const orientation = watch('orientation')
 
-    const paperSizeOptions = [
-        { label: 'A4', value: 'a4', widthPx: 595, heightPx: 842, widthCm: 21.0, heightCm: 29.7 },
-        { label: 'Letter', value: 'letter', widthPx: 612, heightPx: 792, widthCm: 21.59, heightCm: 27.94 },
-        { label: 'Legal', value: 'legal', widthPx: 612, heightPx: 1008, widthCm: 21.59, heightCm: 35.56 },
-        { label: 'Custom', value: 'custom', widthPx: 0, heightPx: 0, widthCm: 0, heightCm: 0 },
-    ];
+    const presetFor = (value: PaperSize) => PAPER_SIZES.find(p => p.value === value)
 
-    const orientationOptions = [
-        { label: 'Portrait', value: 'portrait' },
-        { label: 'Landscape', value: 'landscape' },
-    ];
+    const tryAutoSelectPreset = (wStr: string, hStr: string) => {
+        const w = parseFloat(wStr)
+        const h = parseFloat(hStr)
+        if (Number.isFinite(w) && Number.isFinite(h)) {
+            const match = PAPER_SIZES.find(p => p.value !== 'custom' && Math.abs(p.widthCm - w) < 0.01 && Math.abs(p.heightCm - h) < 0.01)
+            if (match) {
+                setValue('paperSize', match.value, { shouldValidate: true })
+                return
+            }
+        }
+        setValue('paperSize', 'custom', { shouldValidate: true })
+    }
+
+    const onSubmit = async (data: FormValues) => {
+        try {
+            await dispatch(createTemplate(data)).unwrap()
+            props.onOpenChange(false)
+        } catch (err) {
+            // Optionally surface error to the user; keeping console for now
+            console.error('Failed to create template:', err)
+        }
+    }
 
     return (
         <Modal 
@@ -36,101 +136,127 @@ const CreateTemplateModal = (props: SelectBusinessModalProps) => {
             }}
         >
             <ModalContent>
-                <ModalHeader className="flex flex-col gap-1 border-b border-default-300">Create Template</ModalHeader>
-                <ModalBody>
-                    <Select 
-                        label="Paper Size" 
-                        selectionMode="single"
-                        selectedKeys={selectedPaperSize}
-                        onSelectionChange={(keys) => {
-                            setSelectedPaperSize(keys)
-                            if (keys === 'all') return
-                            const key = Array.from(keys)[0] as string | undefined
-                            if (!key) return
-                            const preset = paperSizeOptions.find(o => o.value === key)
-                            if (preset && preset.value !== 'custom') {
-                                setCustomSize({ widthCm: String(preset.widthCm), heightCm: String(preset.heightCm) })
-                            }
-                        }}
-                    >
-                        {paperSizeOptions.map((option) => (
-                            <SelectItem 
-                                key={option.value}
-                            >
-                                {option.label}
-                            </SelectItem>
-                        ))}
-                    </Select>
-                    <div className='flex gap-2'>
-                        <Input
-                            label="Width (cm)"
-                            value={(Array.from(selectedPaperSize as Set<string>)[0] === 'custom')
-                                ? customSize.widthCm
-                                : (paperSizeOptions.find(option => option.value === Array.from(selectedPaperSize as Set<string>)[0])?.widthCm.toString() || '')
-                            }
-                            onValueChange={(val) => {
-                                const width = val
-                                const height = customSize.heightCm
-                                setCustomSize(prev => ({ ...prev, widthCm: width }))
-                                // Decide selection: if width & height match a preset, select it; else select custom
-                                const w = parseFloat(width)
-                                const h = parseFloat(height)
-                                const match = paperSizeOptions.find(o =>
-                                    Math.abs(o.widthCm - w) < 0.01 && Math.abs(o.heightCm - h) < 0.01
-                                )
-                                if (isFinite(w) && isFinite(h) && match && match.value !== 'custom') {
-                                    setSelectedPaperSize(new Set([match.value]))
-                                } else {
-                                    setSelectedPaperSize(new Set(['custom']))
-                                }
-                            }}
+                <form onSubmit={handleSubmit(onSubmit)}>
+                    <ModalHeader className="flex flex-col gap-1 border-b border-default-300">Create Template</ModalHeader>
+                    <ModalBody>
+                        <Controller
+                            name="templateName"
+                            control={control}
+                            render={({ field }) => (
+                                <Input
+                                    {...field}
+                                    value={field.value}
+                                    onValueChange={field.onChange}
+                                    label="Template Name"
+                                    placeholder="Enter template name"
+                                    labelPlacement='outside'
+                                    isInvalid={!!errors.templateName}
+                                    errorMessage={errors.templateName?.message}
+                                />
+                            )}
                         />
-                        <Input
-                            label="Height (cm)"
-                            value={(Array.from(selectedPaperSize as Set<string>)[0] === 'custom')
-                                ? customSize.heightCm
-                                : (paperSizeOptions.find(option => option.value === Array.from(selectedPaperSize as Set<string>)[0])?.heightCm.toString() || '')
-                            }
-                            onValueChange={(val) => {
-                                const width = customSize.widthCm
-                                const height = val
-                                setCustomSize(prev => ({ ...prev, heightCm: height }))
-                                const w = parseFloat(width)
-                                const h = parseFloat(height)
-                                const match = paperSizeOptions.find(o =>
-                                    Math.abs(o.widthCm - w) < 0.01 && Math.abs(o.heightCm - h) < 0.01
-                                )
-                                if (isFinite(w) && isFinite(h) && match && match.value !== 'custom') {
-                                    setSelectedPaperSize(new Set([match.value]))
-                                } else {
-                                    setSelectedPaperSize(new Set(['custom']))
-                                }
-                            }}
+                        <Divider />
+                        <Controller
+                            name="paperSize"
+                            control={control}
+                            render={({ field }) => (
+                                <Select 
+                                    label="Paper Size" 
+                                    selectionMode="single"
+                                    selectedKeys={new Set([field.value])}
+                                    onSelectionChange={(keys: Selection) => {
+                                        if (keys === 'all') return
+                                        const key = Array.from(keys)[0] as PaperSize | undefined
+                                        if (!key) return
+                                        field.onChange(key)
+                                        const preset = presetFor(key)
+                                        if (preset && key !== 'custom') {
+                                            setValue('widthCm', String(preset.widthCm), { shouldValidate: true })
+                                            setValue('heightCm', String(preset.heightCm), { shouldValidate: true })
+                                        }
+                                    }}
+                                    labelPlacement='outside'
+                                >
+                                    {PAPER_SIZES.map((option) => (
+                                        <SelectItem key={option.value}>{option.label}</SelectItem>
+                                    ))}
+                                </Select>
+                            )}
                         />
-                    </div>
-                    <Select 
-                        label="Orientation" 
-                        selectionMode="single"
-                        selectedKeys={new Set([selectedOrientation])}
-                        onSelectionChange={(keys) => {
-                            if (keys === 'all') return
-                            const key = Array.from(keys)[0] as string | undefined
-                            if (key) setSelectedOrientation(key)
-                        }}
-                    >
-                        {orientationOptions.map((option) => (
-                            <SelectItem 
-                                key={option.value}
-                            >
-                                {option.label}
-                            </SelectItem>
-                        ))}
-                    </Select>
-                </ModalBody>
-                <ModalFooter className='flex justify-end border-t border-default-300 gap-2'>
-                    <Button variant='light' color='danger' onPress={() => props.onOpenChange(false)}>Cancel</Button>
-                    <Button color='secondary' onPress={() => props.onOpenChange(false)}>Create</Button>
-                </ModalFooter>
+                        <div className='flex gap-2'>
+                            <Controller
+                                name="widthCm"
+                                control={control}
+                                render={({ field }) => (
+                                    <Input
+                                        label="Width (cm)"
+                                        value={paperSize === 'custom' ? field.value : String(presetFor(paperSize)?.widthCm ?? '')}
+                                        onValueChange={(val) => {
+                                            field.onChange(val)
+                                            tryAutoSelectPreset(val, height)
+                                        }}
+                                        isInvalid={!!errors.widthCm}
+                                        errorMessage={errors.widthCm?.message}
+                                    />
+                                )}
+                            />
+                            <Controller
+                                name="heightCm"
+                                control={control}
+                                render={({ field }) => (
+                                    <Input
+                                        label="Height (cm)"
+                                        value={paperSize === 'custom' ? field.value : String(presetFor(paperSize)?.heightCm ?? '')}
+                                        onValueChange={(val) => {
+                                            field.onChange(val)
+                                            tryAutoSelectPreset(width, val)
+                                        }}
+                                        isInvalid={!!errors.heightCm}
+                                        errorMessage={errors.heightCm?.message}
+                                    />
+                                )}
+                            />
+                        </div>
+                        <Controller
+                            name="orientation"
+                            control={control}
+                            render={({ field }) => (
+                                <Select 
+                                    label="Orientation" 
+                                    selectionMode="single"
+                                    selectedKeys={new Set([field.value])}
+                                    onSelectionChange={(keys: Selection) => {
+                                        if (keys === 'all') return
+                                        const key = Array.from(keys)[0] as Orientation | undefined
+                                        if (key) field.onChange(key)
+                                    }}
+                                    labelPlacement='outside'
+                                >
+                                    {ORIENTATIONS.map((option) => (
+                                        <SelectItem key={option.value}>{option.label}</SelectItem>
+                                    ))}
+                                </Select>
+                            )}
+                        />
+                    </ModalBody>
+                    <ModalFooter className='flex justify-end border-t border-default-300 gap-2'>
+                        <Button 
+                            type='button'
+                            variant='light' 
+                            color='danger' 
+                            onPress={() => props.onOpenChange(false)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button 
+                            type='submit' 
+                            color='secondary' 
+                            isDisabled={!isValid || isSubmitting}
+                        >
+                            Create
+                        </Button>
+                    </ModalFooter>
+                </form>
             </ModalContent>
         </Modal>
     )
