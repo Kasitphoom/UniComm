@@ -77,6 +77,24 @@ export const createTemplate = createAsyncThunk(
     }
 )
 
+export const getParsedTemplateSchema = createAsyncThunk(
+    "templates/getParsedTemplateSchema",
+    async (id: string) => {
+        console.log("Fetching parsed template schema for template ID:", id)
+        const res = await fetch(`/api/templates/${id}/parser`, {
+            credentials: "include",
+        })
+        if (!res.ok) {
+            const text = await res.text()
+            throw new Error(text || "Failed to fetch parsed template schema")
+        }
+        const data = (await res.json()) as {
+            data: any
+        }
+        return data.data
+    }
+)
+
 const initialState: TemplatesState = {
     list: {
         items: [],
@@ -89,6 +107,11 @@ const initialState: TemplatesState = {
     },
     detail: {
         data: undefined,
+        status: "idle",
+        error: null,
+    },
+    parsedTemplate: {
+        data: null,
         status: "idle",
         error: null,
     },
@@ -122,6 +145,11 @@ const templatesSlice = createSlice({
             state.detail.error = null
             state.detail.data = undefined
         },
+        resetParsedSchema(state) {
+            state.parsedTemplate.status = "idle"
+            state.parsedTemplate.error = null
+            state.parsedTemplate.data = null
+        }
     },
     extraReducers: (builder) => {
         // fetchTemplates
@@ -185,9 +213,24 @@ const templatesSlice = createSlice({
                 state.detail.status = "failed"
                 state.detail.error = action.error.message || "Unknown error"
             })
+        
+        // getParsedTemplateSchema
+        builder
+            .addCase(getParsedTemplateSchema.pending, (state) => {
+                state.parsedTemplate.status = "loading"
+                state.parsedTemplate.error = null
+            })
+            .addCase(getParsedTemplateSchema.fulfilled, (state, action) => {
+                state.parsedTemplate.status = "succeeded"
+                state.parsedTemplate.data = action.payload
+            })
+            .addCase(getParsedTemplateSchema.rejected, (state, action) => {
+                state.parsedTemplate.status = "failed"
+                state.parsedTemplate.error = action.error.message || "Unknown error"
+            })
     },
 })
 
-export const { setQuery, setPage, setPerPage, resetList, resetCreate } =
+export const { setQuery, setPage, setPerPage, resetList, resetCreate, resetParsedSchema } =
     templatesSlice.actions
 export default templatesSlice.reducer

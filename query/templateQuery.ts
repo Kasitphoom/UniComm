@@ -1,4 +1,5 @@
 import { getBusinessPrismaByCookie } from "@/lib/prisma-business"
+import { TemplateWithUser } from "@/types/template"
 import { sanitizeQuery } from "@/utils/sanitizer"
 
 export const getTemplateWithPagination = async (query: string, currentPage: number = 1, itemsPerPage: number = 8) => {
@@ -62,4 +63,13 @@ export const getTemplateByUserId = async (userId?: string, itemsPerPage: number 
     })
 
     return templates
+}
+
+export const getTemplateData = async (templateId: string): Promise<TemplateWithUser | null> => {
+    const prismaBusiness = await getBusinessPrismaByCookie()
+    const template = await prismaBusiness.templates.findUnique({
+        where: { id: templateId },
+        include: { user: true },
+    })
+    return template
 }

@@ -15,7 +15,22 @@ class StorageService {
     }
 
     getFileUrl(filePath: string): string {
+        // If it's already an absolute URL, return as-is
+        if (/^https?:\/\//i.test(filePath)) return filePath
+        // Prefer configured base URL when provided
+        const base = process.env.STORAGE_BASE_URL
+        if (base) {
+            const normalizedBase = base.endsWith('/') ? base : base + '/'
+            const normalizedPath = filePath.replace(/^\/+/, '')
+            return new URL(normalizedPath, normalizedBase).toString()
+        }
+        // Fallback (dev placeholder)
         return `https://storage.service/${filePath}`
+    }
+
+    async getFileContent(filePath: string): Promise<string> {
+        // Implementation for getting file content
+        return Promise.resolve('<xml></xml>')
     }
 }
 
@@ -33,6 +48,15 @@ class VercelStorageService extends StorageService {
 
         const blob = await upload(filename, file, { access: 'public', handleUploadUrl: uploadAPIUrl })
         return blob.url
+    }
+
+    async getFileContent(filePath: string): Promise<string> {
+        const fileUrl = this.getFileUrl(filePath)
+        const response = await fetch(fileUrl)
+        if (!response.ok) {
+            throw new Error(`Failed to fetch file content from ${fileUrl}`)
+        }
+        return response.text()
     }
 }
 

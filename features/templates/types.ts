@@ -1,4 +1,6 @@
 import type { Template, TemplateListItem } from "@/types/template"
+import { Template as PDFTemplate } from "@pdfme/common"
+import { Schema } from "@pdfme/common"
 
 export type RequestStatus = "idle" | "loading" | "succeeded" | "failed"
 
@@ -18,7 +20,14 @@ export interface SingleTemplatesFetchState {
     data?: Template
 }
 
+export interface ParsedTemplateFetchState {
+    status: RequestStatus
+    error: string | null
+    data?: PDFTemplate | null
+}
+
 export interface TemplatesState {
     list: TemplatesListState
     detail: SingleTemplatesFetchState
+    parsedTemplate: ParsedTemplateFetchState
 }
