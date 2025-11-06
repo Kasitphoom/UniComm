@@ -11,7 +11,7 @@ export type UserContextValue = {
     memberships: BusinessMembershipDTO[]
     activeBusinessId: string | null
     role: string | null
-    currentBusinessProfile?: { businessId: string; email: string; displayName: string; role: string } | null
+    currentBusinessProfile?: { id: string; businessId: string; email: string; displayName: string; role: string } | null
     businessProfiles?: Array<{ businessId: string; email: string; displayName: string; role: string }>
     isAuthenticated: boolean
     loading: boolean

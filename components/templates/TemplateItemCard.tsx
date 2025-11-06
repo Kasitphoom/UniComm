@@ -1,4 +1,6 @@
 'use client'
+import { setSidebarOpen } from '@/features/ui/uiSlice'
+import { useAppDispatch } from '@/store/hooks'
 import { TemplateWithUser } from '@/types/template'
 import { Card, CardBody, CardFooter, Skeleton, User } from '@heroui/react'
 import Image from 'next/image'
@@ -6,11 +8,13 @@ import { usePathname, useRouter } from 'next/navigation'
 import React from 'react'
 
 const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
+    const dispatch = useAppDispatch()
     const router = useRouter()
     const pathname = usePathname()
 
     const onCardClick = () => {
         router.push(`${pathname}/${template.id}`)
+        dispatch(setSidebarOpen(false))
     }
 
     return (

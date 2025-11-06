@@ -46,7 +46,7 @@ const SideBar = () => {
 
     return (
         <motion.div 
-            className={`sticky h-svh border border-l-1 border-default-200 ${sidebarOpen ? 'max-w-[300px]' : 'max-w-[70px]'} w-full flex flex-col transition-all`}
+            className={`sticky h-svh border-r border-default-200 ${sidebarOpen ? 'max-w-[300px]' : 'max-w-[70px]'} w-full flex flex-col transition-all`}
             transition={{
                 ease: 'easeInOut',
                 duration: 1
@@ -91,7 +91,7 @@ const SideBar = () => {
                                                 href={item.href}
                                                 icon={item.icon}
                                                 label={item.name}
-                                                active={pathname === item.href}
+                                                active={pathname.split('/')[1] === item.href.replace('/','')}
                                                 compact={!sidebarOpen}
                                                 badgeCount={0}
                                             />

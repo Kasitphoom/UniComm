@@ -3,6 +3,9 @@ import { getBusinessPrismaByCookie } from "@/lib/prisma-business"
 import { sanitizeQuery } from "@/utils/sanitizer"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
+import { getStorageService } from "@/utils/upload/modules"
+import { readFile } from "node:fs/promises"
+import path from "node:path"
 
 export async function GET(req: Request) {
     try {
@@ -59,6 +62,7 @@ export async function POST(req: Request) {
     try {
         const session = await getServerSession(authOptions)
         const uid = (session as any)?.user?.currentBusinessProfile?.id as string | undefined
+        const businessId = (session as any)?.user?.currentBusinessProfile?.businessId as string | undefined
         console.log((session as any))
         if (!uid)
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
@@ -85,11 +89,34 @@ export async function POST(req: Request) {
                 { error: "Business user not found" },
                 { status: 404 }
             )
+        
+        const storageService = getStorageService()
+        if (!storageService)
+            return NextResponse.json(
+                { error: "Storage service not configured" },
+                { status: 500 }
+            )
+        
+        const filePath = `${businessId}/${bu.id}/templates/${encodeURIComponent(templateName)}.xml`
+
+        // Load XML template from local file and inject dimensions
+        const templatePath = path.join(process.cwd(), 'app', 'api', 'templates', 'template.xml')
+        let xmlContent = await readFile(templatePath, 'utf8')
+        // If orientation is landscape, swap width/height logically
+        const w = String(widthCm)
+        const h = String(heightCm)
+        const [finalW, finalH] = orientation === 'landscape' ? [h, w] : [w, h]
+        xmlContent = xmlContent
+            .replace(/REPLACE_WIDTH/g, finalW)
+            .replace(/REPLACE_HEIGHT/g, finalH)
+
+        // Upload to storage
+        const fileUrl = await storageService.uploadFile(Buffer.from(xmlContent, 'utf8'), filePath)
 
         const created = await prisma.templates.create({
             data: {
                 title: templateName,
-                filePath: "",
+                filePath: fileUrl,
                 userId: uid,
             },
             include: { user: true },
