@@ -6,6 +6,8 @@ import * as yup from 'yup'
 import { yupResolver } from '@hookform/resolvers/yup'
 import { createTemplate } from '@/features/templates/templatesSlice';
 import { useAppDispatch } from '@/store/hooks';
+import { usePathname, useRouter } from 'next/navigation';
+import { setSidebarOpen } from '@/features/ui/uiSlice';
 
 interface SelectBusinessModalProps {
     isOpen: boolean;
@@ -77,6 +79,8 @@ const schema: yup.ObjectSchema<FormValues> = yup
 
 const CreateTemplateModal = (props: SelectBusinessModalProps) => {
     const dispatch = useAppDispatch()
+    const pathname = usePathname()
+    const router = useRouter()
     const {
         control,
         handleSubmit,
@@ -117,7 +121,9 @@ const CreateTemplateModal = (props: SelectBusinessModalProps) => {
 
     const onSubmit = async (data: FormValues) => {
         try {
-            await dispatch(createTemplate(data)).unwrap()
+            const createdTemplate = await dispatch(createTemplate(data)).unwrap()
+            router.push(`${pathname}/${createdTemplate.id}`)
+            dispatch(setSidebarOpen(false))
             props.onOpenChange(false)
         } catch (err) {
             // Optionally surface error to the user; keeping console for now
@@ -152,6 +158,7 @@ const CreateTemplateModal = (props: SelectBusinessModalProps) => {
                                     labelPlacement='outside'
                                     isInvalid={!!errors.templateName}
                                     errorMessage={errors.templateName?.message}
+                                    autoComplete='off'
                                 />
                             )}
                         />
@@ -252,6 +259,7 @@ const CreateTemplateModal = (props: SelectBusinessModalProps) => {
                             type='submit' 
                             color='secondary' 
                             isDisabled={!isValid || isSubmitting}
+                            isLoading={isSubmitting}
                         >
                             Create
                         </Button>

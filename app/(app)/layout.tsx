@@ -27,11 +27,11 @@ export default function RootLayout({
                 className={`${poppins.className} antialiased`}
             >
                 <Providers>
-                    <div className="flex">
+                    <div className="flex h-svh">
                         <SideBar />
                         <div className="flex flex-col w-full">
                             <Header />
-                            <div className="flex-1 bg-default-100">
+                            <div className="flex-1 bg-default-100 overflow-auto">
                                 {children}
                             </div>
                         </div>
