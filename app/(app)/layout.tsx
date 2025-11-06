@@ -29,9 +29,9 @@ export default function RootLayout({
                 <Providers>
                     <div className="flex h-svh">
                         <SideBar />
-                        <div className="flex flex-col w-full">
+                        <div className="flex flex-col w-full min-w-0">
                             <Header />
-                            <div className="flex-1 bg-default-100 overflow-auto">
+                            <div className="flex-1 min-w-0 min-h-0 bg-default-100 overflow-auto">
                                 {children}
                             </div>
                         </div>

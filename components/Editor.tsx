@@ -52,7 +52,7 @@ const Editor = ({ type, id, data }: { type: "pdf" | "email", id: string, data: T
     }, [editorRef.current])
 
     return (
-        <div className='h-full flex items-center justify-center' ref={editorRef}>
+        <div className='relative h-full w-full min-w-0 overflow-hidden flex items-center justify-center' ref={editorRef}>
             <Spinner size="lg" color='secondary'> Initialising data... </Spinner>
         </div>
     )

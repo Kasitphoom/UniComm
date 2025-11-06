@@ -46,7 +46,7 @@ const SideBar = () => {
 
     return (
         <motion.div 
-            className={`sticky h-svh border-r border-default-200 ${sidebarOpen ? 'max-w-[300px]' : 'max-w-[70px]'} w-full flex flex-col transition-all`}
+            className={`sticky h-svh border-r border-default-200 ${sidebarOpen ? 'w-[300px]' : 'w-[70px]'} shrink-0 flex-none flex flex-col transition-[width] duration-300`}
             transition={{
                 ease: 'easeInOut',
                 duration: 1
