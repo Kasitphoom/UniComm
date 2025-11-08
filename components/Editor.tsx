@@ -5,16 +5,31 @@ import { Designer } from '@pdfme/ui';
 import { TemplateWithUser } from '@/types/template';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { Spinner } from '@heroui/react';
-import { getParsedTemplateSchema } from '@/features/templates/templatesSlice';
+import { getParsedTemplateSchema, updateTemplate } from '@/features/templates/templatesSlice';
 
 const Editor = ({ type, id, data }: { type: "pdf" | "email", id: string, data: TemplateWithUser | null }) => {
     const dispatch = useAppDispatch()
     const parsedTemplateState = useAppSelector(state => state.templates.parsedTemplate)
     const editorRef = useRef<HTMLDivElement>(null)
     const desginerRef = useRef<Designer | null>(null)
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const latestTemplateRef = useRef<Template | null>(null)
 
     const initiateEditor = () => {
         dispatch(getParsedTemplateSchema(id))
+    }
+
+    const editorChangeCallback = (updatedTemplate: Template) => {
+        // Debounce updates: wait 1s after the last change before dispatching
+        latestTemplateRef.current = updatedTemplate
+        if (debounceRef.current) clearTimeout(debounceRef.current)
+        debounceRef.current = setTimeout(() => {
+            const payload = latestTemplateRef.current
+            if (payload) {
+                console.log("Debounced template dispatch:", payload)
+                dispatch(updateTemplate({ id, templateData: payload }))
+            }
+        }, 5000)
     }
 
     useEffect(() => {
@@ -34,8 +49,10 @@ const Editor = ({ type, id, data }: { type: "pdf" | "email", id: string, data: T
                             colorPrimary: '#7828c8',
                         }
                     }
-                }
+                },
             })
+
+            desginerRef.current.onChangeTemplate(editorChangeCallback)
             return
         }
 
@@ -50,6 +67,13 @@ const Editor = ({ type, id, data }: { type: "pdf" | "email", id: string, data: T
         console.log("Editor ref:", editorRef.current)
         initiateEditor()
     }, [editorRef.current])
+
+    // Cleanup debounce timer on unmount
+    useEffect(() => {
+        return () => {
+            if (debounceRef.current) clearTimeout(debounceRef.current)
+        }
+    }, [])
 
     return (
         <div className='relative h-full w-full min-w-0 overflow-hidden flex items-center justify-center' ref={editorRef}>

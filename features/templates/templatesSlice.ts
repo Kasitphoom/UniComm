@@ -6,6 +6,7 @@ import type {
     TemplateListItem,
     TemplateWithUser,
 } from "@/types/template"
+import { Template as PDFTemplateType } from "@pdfme/common"
 
 // Thunk: fetch list of templates
 export const fetchTemplates = createAsyncThunk(
@@ -92,6 +93,25 @@ export const getParsedTemplateSchema = createAsyncThunk(
             data: any
         }
         return data.data
+    }
+)
+
+export const updateTemplate = createAsyncThunk(
+    "templates/updateTemplate",
+    async (params: { id: string; templateData: PDFTemplateType }) => {
+        const { id, templateData } = params
+        const res = await fetch(`/api/templates/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify(templateData),
+        })
+        if (!res.ok) {
+            const text = await res.text()
+            throw new Error(text || "Failed to update template")
+        }
+        const data = (await res.json()) as TemplateWithUser
+        return data
     }
 )
 
@@ -227,6 +247,20 @@ const templatesSlice = createSlice({
             .addCase(getParsedTemplateSchema.rejected, (state, action) => {
                 state.parsedTemplate.status = "failed"
                 state.parsedTemplate.error = action.error.message || "Unknown error"
+            })
+        
+        // updateTemplate
+        builder
+            .addCase(updateTemplate.pending, (state) => {
+                state.detail.status = "loading"
+                state.detail.error = null
+            })
+            .addCase(updateTemplate.fulfilled, (state, _action) => {
+                state.detail.status = "succeeded"
+            })
+            .addCase(updateTemplate.rejected, (state, action) => {
+                state.detail.status = "failed"
+                state.detail.error = action.error.message || "Unknown error"
             })
     },
 })

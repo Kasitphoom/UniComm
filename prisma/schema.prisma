@@ -42,7 +42,7 @@ model BusinessUser {
 // ========= TEMPLATE MODELS =========
 model Templates {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  title       String
+  title       String   @unique
   filePath    String
   userId      String
   user        BusinessUser @relation(fields: [userId], references: [id])

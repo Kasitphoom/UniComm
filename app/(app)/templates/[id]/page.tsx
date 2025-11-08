@@ -14,7 +14,9 @@ const page = async ({ params }: { params: Promise<{ id: string }> }) => {
     }
 
     return (
-        <Editor type="pdf" id={id} data={template} />
+        <div className='h-full'>
+            <Editor type="pdf" id={id} data={template} />
+        </div>
     )
 }
 

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server"
-import { getBusinessPrismaByCookie } from "@/lib/prisma-business"
+import { getBusinessPrisma, getBusinessPrismaByCookie } from "@/lib/prisma-business"
 import { sanitizeQuery } from "@/utils/sanitizer"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { getStorageService } from "@/utils/upload/modules"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
+import { requireAuth } from "@/lib/api-auth"
 
 export async function GET(req: Request) {
     try {
@@ -60,12 +61,11 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
     try {
-        const session = await getServerSession(authOptions)
-        const uid = (session as any)?.user?.currentBusinessProfile?.id as string | undefined
-        const businessId = (session as any)?.user?.currentBusinessProfile?.businessId as string | undefined
-        console.log((session as any))
-        if (!uid)
-            return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+        const auth = await requireAuth(req)
+        if (!auth.ok) return auth.response
+
+        const {userId: uid, businessId } = auth
+        console.log(auth)
 
         const body = await req.json()
         const {
@@ -82,7 +82,21 @@ export async function POST(req: Request) {
             )
         }
 
-        const prisma = await getBusinessPrismaByCookie()
+        if (!uid) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+        }
+
+        const prisma = await getBusinessPrisma(businessId!)
+        const findExistingTemplate = await prisma.templates.findUnique({
+            where: { title: templateName },
+        })
+        if (findExistingTemplate) {
+            return NextResponse.json(
+                { error: "Template with the same name already exists" },
+                { status: 400 }
+            )
+        }
+
         const bu = await prisma.businessUser.findUnique({ where: { id: uid } })
         if (!bu)
             return NextResponse.json(
