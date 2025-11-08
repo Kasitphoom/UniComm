@@ -8,6 +8,7 @@ import { Spinner } from '@heroui/react';
 import { getParsedTemplateSchema, updateTemplate } from '@/features/templates/templatesSlice';
 
 const Editor = ({ type, id, data }: { type: "pdf" | "email", id: string, data: TemplateWithUser | null }) => {
+    // TODO: When this component is not insight, unmount the component to force re-initialization
     const dispatch = useAppDispatch()
     const parsedTemplateState = useAppSelector(state => state.templates.parsedTemplate)
     const editorRef = useRef<HTMLDivElement>(null)
