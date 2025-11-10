@@ -64,7 +64,6 @@ export const authOptions: NextAuthOptions = {
             }
 
             if (account?.provider === 'salesforce') {
-                console.log( "Salesforce sign in callback", user, account );
                 const email = (user as any)?.email
                 if (!email) return false
                 const existing = await prisma.user.findUnique({ where: { email } })

@@ -54,7 +54,6 @@ class VercelStorageService extends StorageService {
             throw new Error(`Failed to fetch file content from ${filePath}`)
         }
         const content = await response.text()
-        console.log('Fetched file content:', content)
         return content
     }
 }

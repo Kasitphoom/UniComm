@@ -62,7 +62,6 @@ export const createTemplate = createAsyncThunk(
         widthCm?: string | undefined;
         heightCm?: string | undefined;
     }) => {
-        console.log('createTemplate payload:', payload)
         const res = await fetch("/api/templates", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -81,7 +80,6 @@ export const createTemplate = createAsyncThunk(
 export const getParsedTemplateSchema = createAsyncThunk(
     "templates/getParsedTemplateSchema",
     async (id: string) => {
-        console.log("Fetching parsed template schema for template ID:", id)
         const res = await fetch(`/api/templates/${id}/parser`, {
             credentials: "include",
         })

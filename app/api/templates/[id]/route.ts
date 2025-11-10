@@ -49,8 +49,6 @@ export async function PATCH(
         }
 
         const xmlContent = await transformTemplateToXml(body)
-
-        console.log('Generated XML Content:', xmlContent)
         
         const storageService = getStorageService()
         if (!storageService) {
@@ -59,8 +57,6 @@ export async function PATCH(
                 { status: 500 }
             )
         }
-
-        console.log(body)
 
         const fileKey = `${auth.businessId!}/templates/${encodeURIComponent(existingTemplate.title)}.xml`
 

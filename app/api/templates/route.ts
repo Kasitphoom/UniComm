@@ -65,7 +65,6 @@ export async function POST(req: Request) {
         if (!auth.ok) return auth.response
 
         const {userId: uid, businessId } = auth
-        console.log(auth)
 
         const body = await req.json()
         const {

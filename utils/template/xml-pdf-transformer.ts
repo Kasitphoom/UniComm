@@ -22,7 +22,6 @@ export const transformXmlToTemplate = async (xmlContent: string): Promise<Templa
     const widthMm = Number(widthAttr) ? Number(widthAttr) * 10 : 210
     const heightMm = Number(heightAttr) ? Number(heightAttr) * 10 : 297
 
-    console.log(parsedXml)
 
     // Normalize pages produced by transformTemplateToXml (array of page objects)
     const rawPages = (doc as any).Page
@@ -91,8 +90,6 @@ export const transformXmlToTemplate = async (xmlContent: string): Promise<Templa
         return pageSchemas
     })
 
-    console.log('[XML To Template]', { widthMm, heightMm, schemas })
-
     // If there was at least one raw page but it parsed into zero schemas, ensure we return [[]]
     // This preserves the presence of an empty page rather than no pages.
     const normalizedSchemas = (pages.length > 0 && schemas.length === 0) ? [[]] : schemas.length === 0 ? [[]] : schemas
@@ -125,7 +122,6 @@ export const transformTemplateToXml = async (template: Template): Promise<string
 
     const widthCm = widthMm / 10
     const heightCm = heightMm / 10
-    console.log("[Template To XML]", template)
 
     // Build XML following recommended schema:
     // <text name="..." x="..." y="..." width="..." ...>content</text>
