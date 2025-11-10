@@ -49,6 +49,8 @@ export async function PATCH(
         }
 
         const xmlContent = await transformTemplateToXml(body)
+
+        console.log('Generated XML Content:', xmlContent)
         
         const storageService = getStorageService()
         if (!storageService) {
@@ -58,10 +60,11 @@ export async function PATCH(
             )
         }
 
-        console.log(xmlContent)
+        console.log(body)
 
-        const filePath = `${auth.businessId!}/templates/${encodeURIComponent(existingTemplate.title)}.xml`
-        await storageService.uploadFile(Buffer.from(xmlContent), filePath)
+        const fileKey = `${auth.businessId!}/templates/${encodeURIComponent(existingTemplate.title)}.xml`
+
+        await storageService.uploadFile(Buffer.from(xmlContent, 'utf8'), fileKey)
 
         const updated = await prisma.templates.update({
             where: { id },

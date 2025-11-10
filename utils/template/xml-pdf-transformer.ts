@@ -15,8 +15,6 @@ export const transformXmlToTemplate = async (xmlContent: string): Promise<Templa
     const parser = new XMLParser({ ignoreAttributes: false })
     const parsedXml: XMLOutput = parser.parse(xmlContent)
 
-    console.log('Parsed XML:', parsedXml)
-
     const doc = parsedXml?.Document || {}
     const widthAttr = (doc as any)["@_width"]
     const heightAttr = (doc as any)["@_height"]
@@ -24,16 +22,27 @@ export const transformXmlToTemplate = async (xmlContent: string): Promise<Templa
     const widthMm = Number(widthAttr) ? Number(widthAttr) * 10 : 210
     const heightMm = Number(heightAttr) ? Number(heightAttr) * 10 : 297
 
+    console.log(parsedXml)
+
     // Normalize pages produced by transformTemplateToXml (array of page objects)
     const rawPages = (doc as any).Page
-    const pages: any[] = Array.isArray(rawPages)
-        ? rawPages
-        : rawPages
-        ? [rawPages]
-        : []
+    // Handle edge cases where an empty page may be represented as '' or null
+    let pages: any[] = []
+    if (Array.isArray(rawPages)) {
+        pages = rawPages
+    } else if (rawPages !== undefined && rawPages !== null) {
+        // If rawPages is an empty string, treat as a single empty page
+        if (rawPages === '') {
+            pages = [{}] // Represent one empty page node
+        } else {
+            pages = [rawPages]
+        }
+    }
 
     const schemas: Schema[][] = pages.map((pageNode) => {
+        // If pageNode is an empty object (representing an empty page) return [] (page with no items)
         if (!pageNode || typeof pageNode !== 'object') return []
+        if (Object.keys(pageNode).length === 0) return []
         const pageSchemas: Schema[] = []
         for (const [tag, value] of Object.entries(pageNode)) {
             const items = Array.isArray(value) ? value : [value]
@@ -82,10 +91,14 @@ export const transformXmlToTemplate = async (xmlContent: string): Promise<Templa
         return pageSchemas
     })
 
-    console.log('Transformed schemas:', schemas)
+    console.log('[XML To Template]', { widthMm, heightMm, schemas })
+
+    // If there was at least one raw page but it parsed into zero schemas, ensure we return [[]]
+    // This preserves the presence of an empty page rather than no pages.
+    const normalizedSchemas = (pages.length > 0 && schemas.length === 0) ? [[]] : schemas.length === 0 ? [[]] : schemas
 
     const template: Template = {
-        schemas,
+        schemas: normalizedSchemas,
         basePdf: {
             width: widthMm,
             height: heightMm,
@@ -112,6 +125,7 @@ export const transformTemplateToXml = async (template: Template): Promise<string
 
     const widthCm = widthMm / 10
     const heightCm = heightMm / 10
+    console.log("[Template To XML]", template)
 
     // Build XML following recommended schema:
     // <text name="..." x="..." y="..." width="..." ...>content</text>

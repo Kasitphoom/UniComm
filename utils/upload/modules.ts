@@ -14,20 +14,6 @@ class StorageService {
         return Promise.resolve()
     }
 
-    getFileUrl(filePath: string): string {
-        // If it's already an absolute URL, return as-is
-        if (/^https?:\/\//i.test(filePath)) return filePath
-        // Prefer configured base URL when provided
-        const base = process.env.STORAGE_BASE_URL
-        if (base) {
-            const normalizedBase = base.endsWith('/') ? base : base + '/'
-            const normalizedPath = filePath.replace(/^\/+/, '')
-            return new URL(normalizedPath, normalizedBase).toString()
-        }
-        // Fallback (dev placeholder)
-        return `https://storage.service/${filePath}`
-    }
-
     async getFileContent(filePath: string): Promise<string> {
         // Implementation for getting file content
         return Promise.resolve('<xml></xml>')
@@ -35,10 +21,22 @@ class StorageService {
 }
 
 class VercelStorageService extends StorageService {
-    uploadFile(file: Buffer, filename: string): Promise<string> {
+    async uploadFile(file: Buffer, filename: string): Promise<string> {
         // dynamically import vercel blob storage sdk
         return import('@vercel/blob').then( async ({ put }) => {
-            const blob = await put(filename, file, { access: 'public', allowOverwrite: true })
+            // Infer content type from extension
+            const lowered = filename.toLowerCase()
+            const contentType = lowered.endsWith('.xml')
+                ? 'application/xml; charset=utf-8'
+                : lowered.endsWith('.json')
+                ? 'application/json; charset=utf-8'
+                : 'application/octet-stream'
+            const blob = await put(filename, file, {
+                access: 'public',
+                allowOverwrite: true,
+                contentType,
+                cacheControlMaxAge: 0,
+            })
             return blob.url
         });
     }
@@ -51,12 +49,13 @@ class VercelStorageService extends StorageService {
     }
 
     async getFileContent(filePath: string): Promise<string> {
-        const fileUrl = this.getFileUrl(filePath)
-        const response = await fetch(fileUrl)
+        const response = await fetch(filePath, { cache: 'no-store' })
         if (!response.ok) {
-            throw new Error(`Failed to fetch file content from ${fileUrl}`)
+            throw new Error(`Failed to fetch file content from ${filePath}`)
         }
-        return response.text()
+        const content = await response.text()
+        console.log('Fetched file content:', content)
+        return content
     }
 }
 
