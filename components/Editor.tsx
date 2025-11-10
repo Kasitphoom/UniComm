@@ -30,7 +30,6 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const latestTemplateRef = useRef<Template | null>(null)
 
-    // ---- utilities ----
     const safeDestroy = useCallback(() => {
         if (designerRef.current) {
             try {
@@ -64,18 +63,15 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
         [dispatch, id]
     )
 
-    // ---- fetch fresh on mount / id change / pathname change ----
     useEffect(() => {
         fetchFresh()
-        // Cleanup when leaving/unmounting
         return () => {
             if (debounceRef.current) clearTimeout(debounceRef.current)
             safeDestroy()
             dispatch(resetParsedSchema())
         }
-    }, [fetchFresh, dispatch, safeDestroy, pathname]) // pathname ensures "come back again" refetch
+    }, [fetchFresh, dispatch, safeDestroy, pathname])
 
-    // ---- create/update designer once data is ready ----
     useEffect(() => {
         if (!templateData || status !== 'succeeded') return
 
@@ -99,7 +95,6 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
         }
     }, [status, templateData, handleDesignerChange])
 
-    // ---- UI ----
     const isLoading = status === 'idle' || status === 'loading'
     const hasError = status === 'failed'
 
