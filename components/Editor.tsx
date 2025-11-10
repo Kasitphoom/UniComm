@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef } from 'react'
 import { Designer } from '@pdfme/ui'
 import type { Template } from '@pdfme/common'
+import { text, image, multiVariableText } from '@pdfme/schemas'
 import { Spinner } from '@heroui/react'
 import { usePathname } from 'next/navigation'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
@@ -52,6 +53,7 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
     const handleDesignerChange = useCallback(
         (updated: Template) => {
             latestTemplateRef.current = updated
+            console.log(updated)
             if (debounceRef.current) clearTimeout(debounceRef.current)
             debounceRef.current = setTimeout(() => {
                 const payload = latestTemplateRef.current
@@ -83,6 +85,11 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
                 options: {
                     zoomLevel: 1,
                     theme: { token: { colorPrimary: '#7828c8' } },
+                },
+                plugins: {
+                    text,
+                    image,
+                    multiVariableText
                 },
             })
             designerRef.current.onChangeTemplate(handleDesignerChange)

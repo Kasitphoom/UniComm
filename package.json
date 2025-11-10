@@ -13,6 +13,7 @@
     "@hookform/resolvers": "^5.2.2",
     "@pdfme/common": "^5.4.6",
     "@pdfme/generator": "^5.4.6",
+    "@pdfme/schemas": "^5.4.7",
     "@pdfme/ui": "^5.4.6",
     "@prisma/client": "^6.17.1",
     "@prisma/extension-accelerate": "^2.0.2",
