@@ -131,8 +131,14 @@ export async function POST(req: Request) {
                 title: templateName,
                 filePath: fileUrl,
                 userId: uid,
+                versions: {
+                    create: {
+                        filePath: filePath,
+                        version: 'initial',
+                    }
+                }
             },
-            include: { user: true },
+            include: { user: true, versions: { orderBy: { createdAt: "desc" }, take: 1 }},
         })
 
         return NextResponse.json(created, { status: 201 })

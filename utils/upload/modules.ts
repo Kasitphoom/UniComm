@@ -1,3 +1,5 @@
+import { PutCommandOptions } from '@vercel/blob';
+
 class StorageService {
     uploadFile(file: Buffer, filename: string): Promise<string> {
         // Implementation for uploading file
@@ -21,7 +23,7 @@ class StorageService {
 }
 
 class VercelStorageService extends StorageService {
-    async uploadFile(file: Buffer, filename: string): Promise<string> {
+    async uploadFile(file: Buffer, filename: string, overrideOptions?: Partial<PutCommandOptions>): Promise<string> {
         // dynamically import vercel blob storage sdk
         return import('@vercel/blob').then( async ({ put }) => {
             // Infer content type from extension
@@ -32,10 +34,9 @@ class VercelStorageService extends StorageService {
                 ? 'application/json; charset=utf-8'
                 : 'application/octet-stream'
             const blob = await put(filename, file, {
-                access: 'public',
-                allowOverwrite: true,
-                contentType,
-                cacheControlMaxAge: 0,
+                access: overrideOptions?.access ?? 'public',
+                contentType: overrideOptions?.contentType ?? contentType,
+                ...overrideOptions,
             })
             return blob.url
         });

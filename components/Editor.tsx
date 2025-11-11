@@ -5,13 +5,15 @@ import { Designer } from '@pdfme/ui'
 import type { Template } from '@pdfme/common'
 import { text, image, multiVariableText } from '@pdfme/schemas'
 import { Spinner } from '@heroui/react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import {
     getParsedTemplateSchema,
     resetParsedSchema,
     updateTemplate,
 } from '@/features/templates/templatesSlice'
+import { saveTemplateDraft, loadTemplateDraft, clearTemplateDraft, hashTemplate } from '@/lib/draftStore'
+import { TemplateWithUser } from '@/types/template'
 
 type EditorProps = {
     type: 'pdf' | 'email'
@@ -21,6 +23,7 @@ type EditorProps = {
 const Editor: React.FC<EditorProps> = ({ type, id }) => {
     const dispatch = useAppDispatch()
     const pathname = usePathname()
+    const router = useRouter()
 
     const { status, data: templateData, error } = useAppSelector(
         (s) => s.templates.parsedTemplate
@@ -30,20 +33,10 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
     const designerRef = useRef<Designer | null>(null)
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
     const latestTemplateRef = useRef<Template | null>(null)
-
-    // Guard flags (refs so they’re always current inside handlers)
-    const dirtyRef = useRef(false)
-    const savingRef = useRef(false)
-
-    const markDirty = () => {
-        dirtyRef.current = true
-    }
-    const markClean = () => {
-        dirtyRef.current = false
-    }
-    const setSaving = (v: boolean) => {
-        savingRef.current = v
-    }
+    const lastDraftTplRef = useRef<Template | null>(null)
+    const lastUploadedHashRef = useRef<string | null>(null)
+    const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const isFlushingRef = useRef<boolean>(false)
 
     const safeDestroy = useCallback(() => {
         if (designerRef.current) {
@@ -57,41 +50,42 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
         }
     }, [])
 
+    const flushToCloud = useCallback(async () => {
+        const tpl = lastDraftTplRef.current ?? (await loadTemplateDraft(id))
+        if (!tpl) return
+
+        const tplHash = await hashTemplate(tpl)
+        if (tplHash === lastUploadedHashRef.current) return // unchanged → skip
+
+        try {
+            const action = await dispatch(updateTemplate({ id, templateData: tpl }))
+            // unwrap if you use RTK  - optional:
+            // const payload = await (action as any).unwrap?.()
+            const hash = (action.payload as TemplateWithUser).versions?.[0]?.version 
+            lastUploadedHashRef.current = hash ?? tplHash
+        } catch (e) {
+            console.warn('Checkpoint error:', e)
+        }
+    }, [dispatch, id])
+
+    const scheduleIdleUpload = useCallback(() => {
+        if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
+        idleTimerRef.current = setTimeout(() => { void flushToCloud() }, 20 * 60 * 1000) // 20 minutes
+    }, [flushToCloud])
+
     const fetchFresh = useCallback(() => {
         dispatch(resetParsedSchema())
         dispatch(getParsedTemplateSchema(id))
-        // entering page with fresh data => clean state
-        markClean()
-        setSaving(false)
     }, [dispatch, id])
 
     // Debounced push of template updates to the store/API
     const handleDesignerChange = useCallback(
-        (updated: Template) => {
+        async (updated: Template) => {
             latestTemplateRef.current = updated
-            markDirty()
-
-            if (debounceRef.current) clearTimeout(debounceRef.current)
-            debounceRef.current = setTimeout(() => {
-                const payload = latestTemplateRef.current
-                if (!payload) return
-                setSaving(true)
-                // If your slice uses RTK Thunk, you can unwrap(). If not, keep the then/catch.
-                const action = dispatch(updateTemplate({ id, templateData: payload }))
-                
-                Promise.resolve(action?.unwrap?.() ?? action)
-                    .then(() => {
-                        // saved successfully
-                        markClean()
-                    })
-                    .catch((e: any) => {
-                        console.warn('Save failed (keeping dirty):', e)
-                        // keep dirty = true
-                    })
-                    .finally(() => {
-                        setSaving(false)
-                    })
-            }, 2000)
+            latestTemplateRef.current = updated
+            lastDraftTplRef.current = updated
+            await saveTemplateDraft(id, updated) // fast local autosave
+            scheduleIdleUpload()
         },
         [dispatch, id]
     )
@@ -102,6 +96,8 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
             if (debounceRef.current) clearTimeout(debounceRef.current)
             safeDestroy()
             dispatch(resetParsedSchema())
+            // Attempt a final flush on unmount
+            void flushToCloud()
         }
     }, [fetchFresh, dispatch, safeDestroy, pathname])
 
@@ -122,79 +118,75 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
             return
         }
 
-        if (designerRef.current) {
-            designerRef.current.updateTemplate(templateData)
+        const updateTemplate = async () => {
+            if (designerRef.current) {
+                const templateDraft = await loadTemplateDraft(id)
+                designerRef.current.updateTemplate(templateData ?? templateDraft)
+            }
         }
+
+        updateTemplate()
     }, [status, templateData, handleDesignerChange])
 
     // -------- Navigation Guards (close/reload, link clicks, back/forward) --------
     useEffect(() => {
-        const shouldBlock = () => dirtyRef.current || savingRef.current
-
-        // 1) Block tab close / hard reload
-        const beforeUnload = (e: BeforeUnloadEvent) => {
-            if (!shouldBlock()) return
-            e.preventDefault()
-            // Some browsers need returnValue set
-            e.returnValue = ''
+        const onPageHide = async () => {
+            const tpl = lastDraftTplRef.current ?? (await loadTemplateDraft(id))
+            if (!tpl) return
+            const tplHash = await hashTemplate(tpl)
+            if (tplHash === lastUploadedHashRef.current) return
+            await flushToCloud()
         }
-
-        // 2) Block internal navigations via link clicks
-        const onDocumentClick = (e: MouseEvent) => {
-            if (!shouldBlock()) return
-
-            // We only care about unmodified left-clicks
-            if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
-                return
-            }
-
-            const anchor = (e.target as HTMLElement)?.closest?.('a[href]') as HTMLAnchorElement | null
-            if (!anchor) return
-
-            const href = anchor.getAttribute('href')
-            if (!href || href.startsWith('#')) return
-
-            const isSameOrigin =
-                anchor.origin === window.location.origin || href.startsWith('/') || href.startsWith('?')
-
-            if (!isSameOrigin) {
-                // External link – also confirm
-                const ok = window.confirm('You have unsaved changes. Leave this page?')
-                if (!ok) {
-                    e.preventDefault()
-                    e.stopPropagation()
-                }
-                return
-            }
-
-            // Same-origin navigation (likely Next.js Link)
-            const ok = window.confirm('You have unsaved changes. Leave this page?')
-            if (!ok) {
-                e.preventDefault()
-                e.stopPropagation()
+        const onVisibility = () => {
+            if (document.visibilityState === 'hidden') {
+                void flushToCloud()
             }
         }
-
-        // 3) Block back/forward
-        const onPopState = (e: PopStateEvent) => {
-            if (!shouldBlock()) return
-            const ok = window.confirm('You have unsaved changes. Leave this page?')
-            if (!ok) {
-                // Cancel navigation by pushing current URL back
-                history.pushState(null, '', window.location.href)
-            }
-        }
-
-        window.addEventListener('beforeunload', beforeUnload)
-        document.addEventListener('click', onDocumentClick, true) // capture phase to beat Next Link
-        window.addEventListener('popstate', onPopState)
-
+        window.addEventListener('pagehide', onPageHide)
+        window.addEventListener('beforeunload', onPageHide)
+        window.addEventListener('popstate', onPageHide) // back/forward
+        document.addEventListener('visibilitychange', onVisibility)
         return () => {
-            window.removeEventListener('beforeunload', beforeUnload)
-            document.removeEventListener('click', onDocumentClick, true)
-            window.removeEventListener('popstate', onPopState)
+            window.removeEventListener('pagehide', onPageHide)
+            window.removeEventListener('beforeunload', onPageHide)
+            window.removeEventListener('popstate', onPageHide)
+            document.removeEventListener('visibilitychange', onVisibility)
         }
-    }, [])
+    }, [flushToCloud, id])
+
+    // Intercept internal link clicks to flush before navigating
+    useEffect(() => {
+        const clickHandler = async (e: MouseEvent) => {
+            const target = e.target as Element | null
+            if (!target) return
+            const a = target.closest('a') as HTMLAnchorElement | null
+            if (!a) return
+            if (a.target === '_blank' || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+            const href = a.getAttribute('href')
+            if (!href) return
+            const url = new URL(href, window.location.href)
+            if (url.origin !== window.location.origin) return
+
+            // Same-page hash changes don't need flushing
+            const nextPath = url.pathname + url.search
+            const currPath = window.location.pathname + window.location.search
+            if (nextPath === currPath) return
+
+            e.preventDefault()
+            if (isFlushingRef.current) return
+            isFlushingRef.current = true
+            try {
+                await flushToCloud()
+            } catch (err) {
+                console.warn('Flush before navigate failed:', err)
+            } finally {
+                isFlushingRef.current = false
+            }
+            router.push(url.pathname + url.search + url.hash)
+        }
+        document.addEventListener('click', clickHandler, true)
+        return () => document.removeEventListener('click', clickHandler, true)
+    }, [flushToCloud, router])
 
     const isLoading = status === 'idle' || status === 'loading'
     const hasError = status === 'failed'

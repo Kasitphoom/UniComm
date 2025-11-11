@@ -4,6 +4,7 @@ import { Template } from "@pdfme/common"
 import { transformTemplateToXml } from "@/utils/template/xml-pdf-transformer"
 import { requireAuth } from '@/lib/api-auth'
 import { getStorageService } from "@/utils/upload/modules"
+import { hashTemplate } from "@/lib/draftStore"
 
 export async function GET(
     _req: Request,
@@ -48,6 +49,7 @@ export async function PATCH(
             )
         }
 
+        const hashedTemplate = await hashTemplate(body)
         const xmlContent = await transformTemplateToXml(body)
         
         const storageService = getStorageService()
@@ -58,21 +60,92 @@ export async function PATCH(
             )
         }
 
-        const fileKey = `${auth.businessId!}/templates/${encodeURIComponent(existingTemplate.title)}.xml`
+        const fileKey = `${auth.businessId!}/templates/${encodeURIComponent(`${id}.${hashedTemplate}`)}.xml`
 
-        await storageService.uploadFile(Buffer.from(xmlContent, 'utf8'), fileKey)
+        const existingVersions = await prisma.templateVersion.findMany({
+            where: { templateId: id, version: hashedTemplate },
+            orderBy: { version: 'desc' },
+            take: 1,
+        })
+
+        if (existingVersions.length > 0) {
+            const updated = await prisma.templates.update({
+                where: { id },
+                data: {
+                    filePath: fileKey,
+                },
+                include: {
+                    versions: {
+                        where: {
+                            version: hashedTemplate,
+                        },
+                        orderBy: { createdAt: 'desc' },
+                        take: 1,
+                    }
+                }
+            })
+
+            return NextResponse.json({ updated, xmlPreview: xmlContent.slice(0, 500) })
+        }
+
+        const newUrl = await storageService.uploadFile(Buffer.from(xmlContent, 'utf8'), fileKey)
 
         const updated = await prisma.templates.update({
             where: { id },
             data: {
-                updatedAt: new Date(),
+                versions: {
+                    create: {
+                        filePath: newUrl,
+                        version: hashedTemplate,
+                    },
+                },
+                filePath: newUrl,
             },
+            include: {
+                versions: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 1,
+                }
+            }
         })
 
         return NextResponse.json({ updated, xmlPreview: xmlContent.slice(0, 500) })
     } catch (err: any) {
         return NextResponse.json(
             { error: err?.message || "Failed to update template" },
+            { status: 500 }
+        )
+    }
+}
+
+export const DELETE = async (
+    req: Request,
+    context: { params: Promise<{ id: string }> }
+) => {
+    try {
+        const auth = await requireAuth(req)
+        if (!auth.ok) return auth.response
+        const { id } = await context.params
+        const prisma = await getBusinessPrisma(auth.businessId!)
+
+        const existingTemplate = await prisma.templates.findUnique({
+            where: { id },
+        })
+        if (!existingTemplate) {
+            return NextResponse.json(
+                { error: "Template not found" },
+                { status: 404 }
+            )
+        }
+
+        await prisma.templates.delete({
+            where: { id },
+        })
+
+        return NextResponse.json({ message: "Template deleted" })
+    } catch (err: any) {
+        return NextResponse.json(
+            { error: err?.message || "Failed to delete template" },
             { status: 500 }
         )
     }

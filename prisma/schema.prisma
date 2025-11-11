@@ -46,6 +46,16 @@ model Templates {
   filePath    String
   userId      String
   user        BusinessUser @relation(fields: [userId], references: [id])
+  versions    TemplateVersion[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model TemplateVersion {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  templateId  String
+  template    Templates @relation(fields: [templateId], references: [id])
+  version     String
+  filePath    String
+  createdAt   DateTime @default(now())
 }

@@ -5,6 +5,7 @@ import type {
   Prisma,
   Templates as PrismaTemplate,
   BusinessUser as PrismaBusinessUser,
+  TemplateVersion,
 } from '@/app/generated/business/prisma'
 
 // Base model types (default selection = all scalar fields)
@@ -12,7 +13,7 @@ export type Template = PrismaTemplate
 export type TemplateUser = PrismaBusinessUser
 
 // Rich payloads using Prisma helpers
-export type TemplateWithUser = Prisma.TemplatesGetPayload<{ include: { user: true } }>
+export type TemplateWithUser = Prisma.TemplatesGetPayload<{ include: { user: true, versions: true } }>
 
 // DTOs for create/update operations
 // Note: prefer CreateInput to use relation connect; use Unchecked* when setting userId directly.
@@ -25,6 +26,7 @@ export type TemplateUncheckedUpdateInput = Prisma.TemplatesUncheckedUpdateInput
 export type TemplateListItem = Pick<Template, 'id' | 'title' | 'filePath' | 'createdAt' | 'updatedAt'> & {
   userId: string
   user: TemplateUser
+  versions: TemplateVersion[]
 }
 
 export type TemplateQuery = {

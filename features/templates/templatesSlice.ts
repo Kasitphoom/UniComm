@@ -94,6 +94,21 @@ export const getParsedTemplateSchema = createAsyncThunk(
     }
 )
 
+export const deleteTemplate = createAsyncThunk(
+    "templates/deleteTemplate",
+    async (id: string) => {
+        const res = await fetch(`/api/templates/${id}`, {
+            method: "DELETE",
+            credentials: "include",
+        })
+        if (!res.ok) {
+            const text = await res.text()
+            throw new Error(text || "Failed to delete template")
+        }
+        return id
+    }
+)
+
 export const updateTemplate = createAsyncThunk(
     "templates/updateTemplate",
     async (params: { id: string; templateData: PDFTemplateType }) => {
@@ -222,6 +237,7 @@ const templatesSlice = createSlice({
                             updatedAt: action.payload.updatedAt as any,
                             userId: action.payload.userId as string,
                             user: action.payload.user as any,
+                            versions: action.payload.versions as any,
                         },
                         ...state.list.items,
                     ]
