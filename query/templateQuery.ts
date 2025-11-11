@@ -17,7 +17,7 @@ export const getTemplateWithPagination = async (query: string, currentPage: numb
         take: itemsPerPage,
         skip: (currentPage - 1) * itemsPerPage,
         orderBy: {
-            createdAt: 'desc',
+            updatedAt: 'desc',
         },
         include: {
             user: true,
@@ -56,7 +56,7 @@ export const getTemplateByUserId = async (userId?: string, itemsPerPage: number 
         },
         take: itemsPerPage,
         orderBy: {
-            createdAt: 'desc',
+            updatedAt: 'desc',
         },
         include: {
             user: true,
