@@ -155,6 +155,7 @@ export const DELETE = async (
 
         return NextResponse.json({ message: "Template deleted" })
     } catch (err: any) {
+        console.log(err)
         return NextResponse.json(
             { error: err?.message || "Failed to delete template" },
             { status: 500 }

@@ -3,8 +3,8 @@
 import React, { useCallback, useEffect, useRef } from 'react'
 import { Designer } from '@pdfme/ui'
 import type { Template } from '@pdfme/common'
-import { text, image, multiVariableText, table, date, dateTime } from '@pdfme/schemas'
-import { Spinner } from '@heroui/react'
+import { text, multiVariableText, image, svg, table, line, rectangle, ellipse, dateTime, date, time, select, radioGroup, checkbox } from '@pdfme/schemas'
+import { addToast, Spinner } from '@heroui/react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import {
@@ -116,7 +116,7 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
                     zoomLevel: 1,
                     theme: { token: { colorPrimary: '#7828c8' } },
                 },
-                plugins: { text, multiVariableText, image, table, date, dateTime},
+                plugins: { text, multiVariableText, image, svg, table, line, rectangle, ellipse, dateTime, date, time, select },
             })
             designerRef.current.onChangeTemplate(handleDesignerChange)
             return
