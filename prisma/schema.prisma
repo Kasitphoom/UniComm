@@ -45,7 +45,7 @@ model Templates {
   title       String   @unique
   filePath    String
   userId      String
-  user        BusinessUser @relation(fields: [userId], references: [id])
+  user        BusinessUser @relation(fields: [userId], references: [id], onDelete: Cascade)
   versions    TemplateVersion[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -54,7 +54,7 @@ model Templates {
 model TemplateVersion {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
   templateId  String
-  template    Templates @relation(fields: [templateId], references: [id])
+  template    Templates @relation(fields: [templateId], references: [id], onDelete: Cascade)
   version     String
   filePath    String
   createdAt   DateTime @default(now())

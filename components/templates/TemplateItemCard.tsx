@@ -2,6 +2,7 @@
 import { setSidebarOpen } from '@/features/ui/uiSlice'
 import { useAppDispatch } from '@/store/hooks'
 import { TemplateWithUser } from '@/types/template'
+import { timeDifferenceFormatter } from '@/utils/DateFormatter'
 import { Card, CardBody, CardFooter, Skeleton, User } from '@heroui/react'
 import { Dot } from 'lucide-react'
 import Image from 'next/image'
@@ -25,7 +26,7 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
             </CardBody>
             <CardFooter className='flex flex-col gap-2 items-start justify-between'>
                 <p className='line-clamp-2 text-ellipsis overflow-hidden'>{ template.title }</p>
-                <div className='flex gap-2 items-center'>
+                <div className='flex gap-2 items-center flex-wrap'>
                     <User
                         name={ template.user.displayName }
                         avatarProps={{ 
@@ -34,7 +35,7 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
                         }}
                     />
                     <Dot size={12} className='text-default-400' />
-                    <p className='text-xs text-default-400'>{ new Date(template.updatedAt).toLocaleDateString() }</p>
+                    <p className='text-xs text-default-400'>{ timeDifferenceFormatter(new Date(template.updatedAt)) }</p>
                 </div>
             </CardFooter>
         </Card>

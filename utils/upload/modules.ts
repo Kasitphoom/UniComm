@@ -57,6 +57,11 @@ class VercelStorageService extends StorageService {
         const content = await response.text()
         return content
     }
+
+    async deleteFile (fileUrl: string): Promise<void> {
+        const { del } = await import('@vercel/blob')
+        await del(fileUrl)
+    }
 }
 
 export const getStorageService = (): StorageService => {

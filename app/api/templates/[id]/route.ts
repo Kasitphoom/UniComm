@@ -130,12 +130,23 @@ export const DELETE = async (
 
         const existingTemplate = await prisma.templates.findUnique({
             where: { id },
+            include: {
+                versions: true,
+            }
         })
         if (!existingTemplate) {
             return NextResponse.json(
                 { error: "Template not found" },
                 { status: 404 }
             )
+        }
+
+        // Delete associated file from storage
+        const storageService = getStorageService()
+        if (storageService && existingTemplate.versions.length > 0) {
+            for (const version of existingTemplate.versions) {
+                await storageService.deleteFile(version.filePath)
+            }
         }
 
         await prisma.templates.delete({
