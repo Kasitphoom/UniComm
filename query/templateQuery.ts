@@ -21,6 +21,7 @@ export const getTemplateWithPagination = async (query: string, currentPage: numb
         },
         include: {
             user: true,
+            versions: { orderBy: { createdAt: "desc" } },
         }
     })
 
@@ -59,6 +60,7 @@ export const getTemplateByUserId = async (userId?: string, itemsPerPage: number 
         },
         include: {
             user: true,
+            versions: { orderBy: { createdAt: "desc" } },
         },
     })
 
