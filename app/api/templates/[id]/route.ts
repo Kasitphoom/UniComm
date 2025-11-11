@@ -72,7 +72,7 @@ export async function PATCH(
             const updated = await prisma.templates.update({
                 where: { id },
                 data: {
-                    filePath: fileKey,
+                    filePath: existingVersions[0].filePath,
                 },
                 include: {
                     versions: {

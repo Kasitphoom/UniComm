@@ -269,8 +269,9 @@ const templatesSlice = createSlice({
                 state.detail.status = "loading"
                 state.detail.error = null
             })
-            .addCase(updateTemplate.fulfilled, (state, _action) => {
+            .addCase(updateTemplate.fulfilled, (state, action) => {
                 state.detail.status = "succeeded"
+                state.detail.data = action.payload
             })
             .addCase(updateTemplate.rejected, (state, action) => {
                 state.detail.status = "failed"

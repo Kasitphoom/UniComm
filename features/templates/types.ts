@@ -1,4 +1,4 @@
-import type { Template, TemplateListItem } from "@/types/template"
+import type { TemplateWithUser, TemplateListItem } from "@/types/template"
 import { Template as PDFTemplate } from "@pdfme/common"
 import { Schema } from "@pdfme/common"
 
@@ -17,7 +17,7 @@ export interface TemplatesListState {
 export interface SingleTemplatesFetchState {
     status: RequestStatus
     error: string | null
-    data?: Template
+    data?: TemplateWithUser | null
 }
 
 export interface ParsedTemplateFetchState {

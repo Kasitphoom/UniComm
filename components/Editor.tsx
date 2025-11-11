@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef } from 'react'
 import { Designer } from '@pdfme/ui'
 import type { Template } from '@pdfme/common'
-import { text, image, multiVariableText } from '@pdfme/schemas'
+import { text, image, multiVariableText, table, date, dateTime } from '@pdfme/schemas'
 import { Spinner } from '@heroui/react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
@@ -27,6 +27,10 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
 
     const { status, data: templateData, error } = useAppSelector(
         (s) => s.templates.parsedTemplate
+    )
+
+    const currentTemplateDetail = useAppSelector(
+        (s) => s.templates.detail.data
     )
 
     const containerRef = useRef<HTMLDivElement>(null)
@@ -55,7 +59,7 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
         if (!tpl) return
 
         const tplHash = await hashTemplate(tpl)
-        if (tplHash === lastUploadedHashRef.current) return // unchanged → skip
+        if (tplHash === lastUploadedHashRef.current || tplHash === currentTemplateDetail?.versions?.[0].version) return // unchanged → skip
 
         try {
             const action = await dispatch(updateTemplate({ id, templateData: tpl }))
@@ -112,7 +116,7 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
                     zoomLevel: 1,
                     theme: { token: { colorPrimary: '#7828c8' } },
                 },
-                plugins: { text, image, multiVariableText },
+                plugins: { text, multiVariableText, image, table, date, dateTime},
             })
             designerRef.current.onChangeTemplate(handleDesignerChange)
             return
