@@ -13,10 +13,12 @@ export type XMLOutput = {
 // Coerce XML string primitives back to JS primitives
 const coerce = (v: unknown): number | string | boolean | unknown => {
     if (typeof v !== "string") return v
+    // Allow empty or whitespace-only text explicitly as empty string
+    if (v.trim() === "") return ""
     if (v === "true") return true
     if (v === "false") return false
     const n = Number(v)
-    return v.trim() !== "" && !Number.isNaN(n) ? n : v
+    return !Number.isNaN(n) ? n : v
 }
 
 /**
@@ -71,8 +73,15 @@ const xmlBodyToJs = (node: any): any => {
 export const transformXmlToTemplate = async (
     xmlContent: string
 ): Promise<Template> => {
-    const parser = new XMLParser({ ignoreAttributes: false })
+    // Do not ignore empty nodes: alwaysCreateTextNode ensures even empty tags produce a '#text' key
+    const parser = new XMLParser({
+        ignoreAttributes: false,
+        allowBooleanAttributes: true,
+        alwaysCreateTextNode: true,
+        trimValues: false,
+    })
     const parsedXml = parser.parse(xmlContent) as any
+    console.log(JSON.stringify(parsedXml, null, 2))
 
     const doc = parsedXml?.Document ?? {}
     const widthAttr = doc["@_width"]
@@ -167,7 +176,7 @@ function valueToXmlBody(val: unknown): any {
     const body: Record<string, any> = {}
 
     for (const [k, v] of Object.entries(obj)) {
-        if (v == null || v === "") continue
+        if (v == null) continue
 
         if (k === "content") {
             // Inner text
@@ -191,7 +200,7 @@ function valueToXmlBody(val: unknown): any {
             for (const [ak, av] of Object.entries(
                 v as Record<string, unknown>
             )) {
-                if (av == null || av === "") continue
+                if (av == null) continue
                 body[`@_${ak}`] = av
             }
             continue
@@ -290,6 +299,6 @@ export const transformTemplateToXml = async (
         },
     }
 
-    const builder = new XMLBuilder({ ignoreAttributes: false })
+    const builder = new XMLBuilder({ ignoreAttributes: false, suppressBooleanAttributes: false })
     return builder.build(xmlObj)
 }
