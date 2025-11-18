@@ -85,6 +85,7 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
     // Debounced push of template updates to the store/API
     const handleDesignerChange = useCallback(
         async (updated: Template) => {
+            console.log(updated)
             latestTemplateRef.current = updated
             latestTemplateRef.current = updated
             lastDraftTplRef.current = updated

@@ -75,7 +75,7 @@ const SideBar = () => {
                     <ChevronsLeft size={16}/>
                 </div>
             </div>
-            <div className="flex flex-col gap-6 p-4">
+            <div className="flex flex-1 flex-col gap-6 p-4">
                 {
                     Navigations.map((navGroup, index) => (
                         <React.Fragment key={navGroup.groupName}>
@@ -105,6 +105,9 @@ const SideBar = () => {
                         </React.Fragment>
                     ))
                 }
+            </div>
+            <div className="p-4 flex justify-center items-center border-t border-default-200">
+                <p className="text-xs text-default-400">v{process.env.NEXT_PUBLIC_APP_VERSION}</p>
             </div>
         </motion.div>
     )
