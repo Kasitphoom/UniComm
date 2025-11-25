@@ -1,5 +1,5 @@
 'use client'
-import { deleteTemplate } from '@/features/templates/templatesSlice'
+import { deleteTemplate, fetchTemplates, fetchUserTemplates } from '@/features/templates/templatesSlice'
 import { setSidebarOpen } from '@/features/ui/uiSlice'
 import { useAppDispatch } from '@/store/hooks'
 import { TemplateWithUser } from '@/types/template'
@@ -8,13 +8,14 @@ import { Button, Card, CardBody, CardFooter, Dropdown, DropdownMenu, DropdownTri
 import { Dot, EllipsisVertical, TrashIcon } from 'lucide-react'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import React, { Key } from 'react'
 
 const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
     const dispatch = useAppDispatch()
     const router = useRouter()
     const pathname = usePathname()
+    const searchParams = useSearchParams()
 
     const onCardClick = () => {
         router.push(`${pathname}/${template.id}`)
@@ -30,9 +31,16 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
         })
     }
 
-    const onAction = (key: Key) => {
+    const onAction = async (key: Key) => {
         if (key === 'Delete') {
-            onTemplateDelete()
+            await onTemplateDelete()
+            dispatch(fetchUserTemplates({
+                query: searchParams.get('query') || '',
+            }))
+            dispatch(fetchTemplates({
+                query: searchParams.get('query') || '',
+                page: searchParams.get('page') ? parseInt(searchParams.get('page') as string, 10) : 1,
+            }))
         }
     }
 
