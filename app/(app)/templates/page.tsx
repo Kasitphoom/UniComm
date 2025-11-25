@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { Suspense } from 'react'
 import { Metadata } from 'next'
 import TabNavigation from '@/components/templates/TabNavigation'
 import ControlBar from '@/components/templates/ControlBar'
@@ -11,15 +11,17 @@ export const metadata: Metadata = {
 
 const page = () => {
     return (
-        <div className='flex flex-col gap-4 px-6 py-4'>
-            <h1 className='font-bold text-xl'>
-                Templates
-            </h1>
-            <TabNavigation />
-            <ControlBar />
-            <TemplateView userOnly/>
-            <TemplateView lable='All Templates'/>
-        </div>
+        <Suspense>
+            <div className='flex flex-col gap-4 px-6 py-4'>
+                <h1 className='font-bold text-xl'>
+                    Templates
+                </h1>
+                <TabNavigation />
+                <ControlBar />
+                <TemplateView userOnly/>
+                <TemplateView lable='All Templates'/>
+            </div>
+        </Suspense>
     )
 }
 
