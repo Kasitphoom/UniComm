@@ -19,6 +19,7 @@ const TemplateView = ({
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
+    const viewMode = useAppSelector(state => state.ui.viewMode);
 
     const { 
         items: allTemplateList, 
@@ -106,7 +107,7 @@ const TemplateView = ({
                             </div>
                         ) : (
                             <div className='flex flex-col gap-4'>
-                                <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 py-4 gap-4'>
+                                <div className={`grid grid-cols-1 ${viewMode === 'grid' ? " md:grid-cols-2 lg:grid-cols-4" : ""}  py-4 gap-4`}>
                                     {
                                         lists.map((template) => (
                                             <TemplateItemCard key={template.id} template={template} />

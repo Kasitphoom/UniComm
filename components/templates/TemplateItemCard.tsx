@@ -1,7 +1,7 @@
 'use client'
 import { deleteTemplate, fetchTemplates, fetchUserTemplates } from '@/features/templates/templatesSlice'
 import { setSidebarOpen } from '@/features/ui/uiSlice'
-import { useAppDispatch } from '@/store/hooks'
+import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { TemplateWithUser } from '@/types/template'
 import { timeDifferenceFormatter } from '@/utils/DateFormatter'
 import { Button, Card, CardBody, CardFooter, Dropdown, DropdownMenu, DropdownTrigger, DropdownItem, Skeleton, User, addToast } from '@heroui/react'
@@ -16,6 +16,7 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
     const router = useRouter()
     const pathname = usePathname()
     const searchParams = useSearchParams()
+    const viewMode = useAppSelector(state => state.ui.viewMode)
 
     const onCardClick = () => {
         router.push(`${pathname}/${template.id}`)
@@ -45,38 +46,64 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
     }
 
     return (
-        <Card className='h-70' shadow='sm' isPressable onPress={onCardClick}>
+        <Card className={viewMode === "grid" ? 'h-70' : ""} shadow={viewMode === "grid" ? 'sm' : "none"} isPressable onPress={onCardClick}>
             <CardBody>
-                <Skeleton className='w-full h-full rounded-md'></Skeleton>
-            </CardBody>
-            <CardFooter className='relative flex flex-col gap-2 items-start justify-between'>
-                <p className='line-clamp-2 text-ellipsis overflow-hidden'>{ template.title }</p>
-                <div className='flex gap-2 items-center flex-wrap'>
-                    <User
-                        name={ template.user.displayName }
-                        avatarProps={{ 
-                            name: template.user.displayName?.toUpperCase(),
-                            size: 'sm'
-                        }}
-                    />
-                    <Dot size={12} className='text-default-400' />
-                    <p className='text-xs text-default-400' suppressHydrationWarning>
-                        { timeDifferenceFormatter(new Date(template.updatedAt)) }
-                    </p>
-                </div>
-                <Dropdown>
-                    <DropdownTrigger>
-                        <div className='absolute top-2 right-2 w-fit hover:cursor-pointer hover:bg-default-200 p-2 rounded-full transition-background'>
-                            <EllipsisVertical size={16} />
+                {
+                    viewMode === 'grid' ? (
+                        <Skeleton className='w-full h-full rounded-md'></Skeleton>
+                    ) : (
+                        <div className='flex items-center justify-between w-full'>
+                            <p className='line-clamp-2 text-ellipsis overflow-hidden'>{ template.title }</p>
+                            <div className='flex gap-2 items-center flex-wrap'>
+                                <User
+                                    name={ template.user.displayName }
+                                    avatarProps={{ 
+                                        name: template.user.displayName?.toUpperCase(),
+                                        size: 'sm',
+                                        className: "h-6 w-6 text-[10px]"
+                                    }}
+                                />
+                                <Dot size={12} className='text-default-400' />
+                                <p className='text-xs text-default-400' suppressHydrationWarning>
+                                    { timeDifferenceFormatter(new Date(template.updatedAt)) }
+                                </p>
+                            </div>
                         </div>
-                    </DropdownTrigger>
-                    <DropdownMenu onAction={onAction}>
-                        <DropdownItem key="Delete" color="danger" className='text-danger' startContent={<TrashIcon size={16} />}>
-                            Delete
-                        </DropdownItem>
-                    </DropdownMenu>
-                </Dropdown>
-            </CardFooter>
+                    ) 
+                }
+            </CardBody>
+            {
+                viewMode === 'grid' && (
+                    <CardFooter className='relative flex flex-col gap-2 items-start justify-between'>
+                        <p className='line-clamp-2 text-ellipsis overflow-hidden'>{ template.title }</p>
+                        <div className='flex gap-2 items-center flex-wrap'>
+                            <User
+                                name={ template.user.displayName }
+                                avatarProps={{ 
+                                    name: template.user.displayName?.toUpperCase(),
+                                    size: 'sm'
+                                }}
+                            />
+                            <Dot size={12} className='text-default-400' />
+                            <p className='text-xs text-default-400' suppressHydrationWarning>
+                                { timeDifferenceFormatter(new Date(template.updatedAt)) }
+                            </p>
+                        </div>
+                        <Dropdown>
+                            <DropdownTrigger>
+                                <div className='absolute top-2 right-2 w-fit hover:cursor-pointer hover:bg-default-200 p-2 rounded-full transition-background'>
+                                    <EllipsisVertical size={16} />
+                                </div>
+                            </DropdownTrigger>
+                            <DropdownMenu onAction={onAction}>
+                                <DropdownItem key="Delete" color="danger" className='text-danger' startContent={<TrashIcon size={16} />}>
+                                    Delete
+                                </DropdownItem>
+                            </DropdownMenu>
+                        </Dropdown>
+                    </CardFooter>
+                )
+            }
         </Card>
     )
 }

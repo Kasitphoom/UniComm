@@ -1,10 +1,17 @@
 'use client'
 import { Tab, Tabs } from '@heroui/react'
 import { LayoutGrid, List } from 'lucide-react';
-import React, { useEffect } from 'react'
+import React, { useEffect } from 'react';
+import { setViewMode as setReduxViewMode } from '@/features/ui/uiSlice';
+import { useAppDispatch } from '@/store/hooks';
 
 const ViewMode = () => {
+    const dispatch = useAppDispatch();
     const [viewMode, setViewMode] = React.useState<string | number>('grid');
+
+    useEffect(() => {
+        dispatch(setReduxViewMode(viewMode as 'grid' | 'list'));
+    }, [viewMode, dispatch]);
 
     return (
         <Tabs
