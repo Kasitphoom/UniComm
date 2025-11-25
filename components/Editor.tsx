@@ -14,6 +14,7 @@ import {
 } from '@/features/templates/templatesSlice'
 import { saveTemplateDraft, loadTemplateDraft, clearTemplateDraft, hashTemplate } from '@/lib/draftStore'
 import { TemplateWithUser } from '@/types/template'
+import ComponentBlocks from '@/lib/template/plugins/ComponentBlocks'
 
 type EditorProps = {
     type: 'pdf' | 'email'
@@ -117,7 +118,7 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
                     zoomLevel: 1,
                     theme: { token: { colorPrimary: '#7828c8' } },
                 },
-                plugins: { text, multiVariableText, image, svg, table, line, rectangle, ellipse, dateTime, date, time, select },
+                plugins: { text, multiVariableText, image, svg, table, line, rectangle, ellipse, dateTime, date, time, select, ComponentBlocks },
             })
             designerRef.current.onChangeTemplate(handleDesignerChange)
             return
