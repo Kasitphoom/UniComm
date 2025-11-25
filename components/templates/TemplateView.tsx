@@ -1,26 +1,25 @@
 'use client'
 import { ChevronDown } from 'lucide-react'
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { Pagination } from '@heroui/react'
+import { Pagination, Spinner } from '@heroui/react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import TemplateItemCard from './TemplateItemCard'
-import { TemplateWithUser } from '@/types/template'
+import { useAppDispatch, useAppSelector } from '@/store/hooks'
+import { fetchTemplates } from '@/features/templates/templatesSlice'
 
 const TemplateView = ({ 
     lable = "For you", 
-    lists, 
-    total, 
-    currentPage 
+    userOnly = false,
 }: {
     lable?: string, 
-    lists: Array<TemplateWithUser>, 
-    total?: number, 
-    currentPage?: number 
+    userOnly?: boolean,
 }) => {
+    const dispatch = useAppDispatch();
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
+    const {items: lists, status, currentPage, totalPages} = useAppSelector(state => state.templates.list)
     const [isExpanded, setIsExpanded] = useState(true);
 
     const onPageChange = (page: number) => {
@@ -33,6 +32,18 @@ const TemplateView = ({
         const url = qs ? `${pathname}?${qs}` : pathname
         router.push(url)
     }
+
+    useEffect(() => {
+        const page = searchParams.get('page');
+        const query = searchParams.get('query');
+
+        dispatch(fetchTemplates({
+            query: query || '',
+            page: page ? parseInt(page) : 1,
+            userOnly: userOnly,
+        }))
+
+    }, [searchParams])
 
     return (
         <motion.div className='flex flex-col gap-4'>
@@ -66,6 +77,10 @@ const TemplateView = ({
                             <div className='text-center text-default-500 py-8'>
                                 No items to display.
                             </div>
+                        ) : status === "loading" ? (
+                            <div className='text-center text-default-500 py-8'>
+                                <Spinner size="md" color="secondary"/>
+                            </div>
                         ) : (
                             <div className='flex flex-col gap-4'>
                                 <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 py-4 gap-4'>
@@ -76,12 +91,12 @@ const TemplateView = ({
                                     }
                                 </div>
                                 {
-                                    total && currentPage && (
+                                    !userOnly && totalPages && currentPage && (
                                         <div className='flex justify-center'>
                                             <Pagination
                                                 color="secondary"
                                                 page={currentPage}
-                                                total={total}
+                                                total={totalPages}
                                                 onChange={onPageChange}
                                                 classNames={{
                                                     item: 'bg-white',

@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server"
-import { getBusinessPrisma, getBusinessPrismaByCookie } from "@/lib/prisma-business"
+import { getBusinessPrisma } from "@/lib/prisma-business"
 import { sanitizeQuery } from "@/utils/sanitizer"
-import { getServerSession } from "next-auth"
-import { authOptions } from "@/lib/auth"
 import { getStorageService } from "@/utils/upload/modules"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
@@ -10,6 +8,9 @@ import { requireAuth } from "@/lib/api-auth"
 
 export async function GET(req: Request) {
     try {
+        const auth = await requireAuth(req)
+        if (!auth.ok) return auth.response
+
         const { searchParams } = new URL(req.url)
         const rawQuery = searchParams.get("query") || undefined
         const page = Math.max(
@@ -20,28 +21,40 @@ export async function GET(req: Request) {
             50,
             Math.max(1, parseInt(searchParams.get("perPage") || "8", 10) || 8)
         )
+        const userOnly = searchParams.get("userOnly") === "true"
 
         const q = sanitizeQuery(rawQuery)
-        const prisma = await getBusinessPrismaByCookie()
+        const prisma = await getBusinessPrisma(auth.businessId!)
 
-        const where = q
-            ? {
-                  title: {
-                      contains: q,
-                      mode: "insensitive" as const,
-                  },
-              }
-            : undefined
+        // Build dynamic where clause
+        const where: any = {}
+
+        if (q) {
+            where.title = {
+                contains: q,
+                mode: "insensitive" as const,
+            }
+        }
+
+        if (userOnly) {
+            // Require authenticated session to filter by user
+            where.userId = auth.userId
+        }
+        // If no filters applied, use undefined to avoid empty object edge cases
+        const whereOrUndefined = Object.keys(where).length ? where : undefined
 
         const [templates, totalCount] = await Promise.all([
             prisma.templates.findMany({
-                where,
-                orderBy: { createdAt: "desc" },
+                where: whereOrUndefined,
+                orderBy: { updatedAt: "desc" },
                 take: perPage,
                 skip: (page - 1) * perPage,
-                include: { user: true },
+                include: { 
+                    user: true,
+                    versions: { orderBy: { createdAt: "desc" } },
+                },
             }),
-            prisma.templates.count({ where }),
+            prisma.templates.count({ where: whereOrUndefined }),
         ])
 
         const totalPages = Math.max(0, Math.ceil(totalCount / perPage))

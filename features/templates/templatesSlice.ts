@@ -12,13 +12,14 @@ import { Template as PDFTemplateType } from "@pdfme/common"
 export const fetchTemplates = createAsyncThunk(
     "templates/fetchTemplates",
     async (
-        params: { query?: string; page?: number; perPage?: number } = {}
+        params: { query?: string; page?: number; perPage?: number; userOnly?: boolean } = {}
     ) => {
         const search = new URLSearchParams()
         if (params.query) search.set("query", params.query)
         if (params.page && params.page > 1)
             search.set("page", String(params.page))
         if (params.perPage) search.set("perPage", String(params.perPage))
+        if (params.userOnly) search.set("userOnly", params.userOnly.toString())
         const qs = search.toString()
         const res = await fetch(`/api/templates${qs ? `?${qs}` : ""}`, {
             credentials: "include",
