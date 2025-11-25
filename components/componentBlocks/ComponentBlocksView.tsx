@@ -41,7 +41,7 @@ const ComponentBlocksView = ({ label = 'Component Blocks' }: ComponentBlocksView
                         transition={{ duration: 0.25, ease: 'easeInOut' }}
                         className='overflow-hidden'
                     >
-                        {status === 'loading' ? (
+                        {false ? ( // status === 'loading'
                             <div className='text-center text-default-500 py-8'>Loading...</div>
                         ) : blocks.length === 0 ? (
                             <div className='text-center text-default-500 py-8'>No component blocks to display.</div>
