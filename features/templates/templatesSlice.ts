@@ -37,6 +37,33 @@ export const fetchTemplates = createAsyncThunk(
     }
 )
 
+export const fetchUserTemplates = createAsyncThunk(
+    "templates/fetchUserTemplates",
+    async (params: { query?: string; page?: number; perPage?: number; } = {}) => {
+        const search = new URLSearchParams()
+        search.set("userOnly", "true")
+        if (params.query) search.set("query", params.query)
+        if (params.page && params.page > 1)
+            search.set("page", String(params.page))
+        if (params.perPage) search.set("perPage", String(params.perPage))
+        const qs = search.toString()
+        const res = await fetch(`/api/templates${qs ? `?${qs}` : ""}`, {
+            credentials: "include",
+        })
+        if (!res.ok) {
+            const text = await res.text()
+            throw new Error(text || "Failed to fetch user templates")
+        }
+        const data = (await res.json()) as {
+            templates: TemplateListItem[]
+            currentPage: number
+            total: number
+        }
+        return data
+    }
+)
+
+
 // Thunk: fetch one template by id
 export const fetchTemplateById = createAsyncThunk(
     "templates/fetchById",
@@ -130,6 +157,17 @@ export const updateTemplate = createAsyncThunk(
 )
 
 const initialState: TemplatesState = {
+    user: {
+        list: {
+            items: [],
+            status: "idle",
+            error: null,
+            query: "",
+            currentPage: 1,
+            totalPages: 0,
+            perPage: 8,
+        },
+    },
     list: {
         items: [],
         status: "idle",
@@ -201,6 +239,23 @@ const templatesSlice = createSlice({
             .addCase(fetchTemplates.rejected, (state, action) => {
                 state.list.status = "failed"
                 state.list.error = action.error.message || "Unknown error"
+            })
+        
+        // fetchUserTemplates
+        builder
+            .addCase(fetchUserTemplates.pending, (state) => {
+                state.user.list.status = "loading"
+                state.user.list.error = null
+            })
+            .addCase(fetchUserTemplates.fulfilled, (state, action) => {
+                state.user.list.status = "succeeded"
+                state.user.list.items = action.payload.templates
+                state.user.list.currentPage = action.payload.currentPage
+                state.user.list.totalPages = action.payload.total
+            })
+            .addCase(fetchUserTemplates.rejected, (state, action) => {
+                state.user.list.status = "failed"
+                state.user.list.error = action.error.message || "Unknown error"
             })
 
         // fetchTemplateById

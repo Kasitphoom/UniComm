@@ -6,20 +6,37 @@ import { Pagination, Spinner } from '@heroui/react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import TemplateItemCard from './TemplateItemCard'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
-import { fetchTemplates } from '@/features/templates/templatesSlice'
+import { fetchTemplates, fetchUserTemplates } from '@/features/templates/templatesSlice'
 
-const TemplateView = ({ 
-    lable = "For you", 
+const TemplateView = ({
+    lable = "For you",
     userOnly = false,
 }: {
-    lable?: string, 
+    lable?: string,
     userOnly?: boolean,
 }) => {
     const dispatch = useAppDispatch();
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
-    const {items: lists, status, currentPage, totalPages} = useAppSelector(state => state.templates.list)
+
+    const { 
+        items: allTemplateList, 
+        status: allStatus, 
+        currentPage: allCurrentPage, 
+        totalPages: allTotalPage 
+    } = useAppSelector(state => state.templates.list)
+    const { 
+        items: userList, 
+        status: userStatus, 
+        currentPage: userCurrentPage, 
+        totalPages: userTotalPages 
+    } = useAppSelector(state => state.templates.user.list)
+    const lists = userOnly ? userList : allTemplateList;
+    const status = userOnly ? userStatus : allStatus;
+    const currentPage = userOnly ? userCurrentPage : allCurrentPage;
+    const totalPages = userOnly ? userTotalPages : allTotalPage;
+
     const [isExpanded, setIsExpanded] = useState(true);
 
     const onPageChange = (page: number) => {
@@ -27,7 +44,7 @@ const TemplateView = ({
         const params = new URLSearchParams(searchParams.toString())
 
         params.set('page', page.toString())
-        
+
         const qs = params.toString()
         const url = qs ? `${pathname}?${qs}` : pathname
         router.push(url)
@@ -37,11 +54,17 @@ const TemplateView = ({
         const page = searchParams.get('page');
         const query = searchParams.get('query');
 
-        dispatch(fetchTemplates({
-            query: query || '',
-            page: page ? parseInt(page) : 1,
-            userOnly: userOnly,
-        }))
+        if (userOnly) {
+            dispatch(fetchUserTemplates({
+                query: query || '',
+            }))
+        } else {
+            dispatch(fetchTemplates({
+                query: query || '',
+                page: page ? parseInt(page) : 1,
+                userOnly: userOnly,
+            }))
+        }
 
     }, [searchParams])
 
@@ -79,7 +102,7 @@ const TemplateView = ({
                             </div>
                         ) : status === "loading" ? (
                             <div className='text-center text-default-500 py-8'>
-                                <Spinner size="md" color="secondary"/>
+                                <Spinner size="md" color="secondary" />
                             </div>
                         ) : (
                             <div className='flex flex-col gap-4'>
