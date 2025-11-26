@@ -5,7 +5,7 @@ import { Controller, useForm } from 'react-hook-form'
 import * as yup from 'yup'
 import { yupResolver } from '@hookform/resolvers/yup'
 import { createTemplate } from '@/features/templates/templatesSlice';
-import { useAppDispatch } from '@/store/hooks';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { usePathname, useRouter } from 'next/navigation';
 import { setSidebarOpen } from '@/features/ui/uiSlice';
 
@@ -81,6 +81,7 @@ const CreateTemplateModal = (props: SelectBusinessModalProps) => {
     const dispatch = useAppDispatch()
     const pathname = usePathname()
     const router = useRouter()
+    const { error } = useAppSelector(state => state.templates.detail)
     const {
         control,
         handleSubmit,
@@ -156,8 +157,8 @@ const CreateTemplateModal = (props: SelectBusinessModalProps) => {
                                     label="Template Name"
                                     placeholder="Enter template name"
                                     labelPlacement='outside'
-                                    isInvalid={!!errors.templateName}
-                                    errorMessage={errors.templateName?.message}
+                                    isInvalid={!!errors.templateName || !!error}
+                                    errorMessage={errors.templateName?.message || JSON.parse(error || "{}").error}
                                     autoComplete='off'
                                 />
                             )}

@@ -2,6 +2,7 @@
 import React, { useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
+import { useAppSelector } from '@/store/hooks'
 
 interface ComponentBlocksViewProps {
     label?: string
@@ -9,6 +10,7 @@ interface ComponentBlocksViewProps {
 
 const ComponentBlocksView = ({ label = 'Component Blocks' }: ComponentBlocksViewProps) => {
     const [isExpanded, setIsExpanded] = useState(true)
+    const viewMode = useAppSelector(state => state.ui.viewMode)
 
     // Placeholder data; integrate with Redux / API later
     const blocks: any[] = []
@@ -46,7 +48,7 @@ const ComponentBlocksView = ({ label = 'Component Blocks' }: ComponentBlocksView
                         ) : blocks.length === 0 ? (
                             <div className='text-center text-default-500 py-8'>No component blocks to display.</div>
                         ) : (
-                            <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 py-4 gap-4'>
+                            <div className={`grid grid-cols-1 ${viewMode === 'grid' ? " md:grid-cols-2 lg:grid-cols-4" : ""}  py-4 gap-4`}>
                                 {/* Map block cards here */}
                             </div>
                         )}
