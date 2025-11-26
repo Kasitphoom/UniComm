@@ -146,7 +146,7 @@ export async function POST(req: Request) {
                 userId: uid,
                 versions: {
                     create: {
-                        filePath: filePath,
+                        filePath: fileUrl,
                         version: 'initial',
                     }
                 }

@@ -133,7 +133,7 @@ export async function POST(req: Request) {
                 versions: {
                     create: {
                         version: "initial",
-                        filePath: filePath,
+                        filePath: fileUrl,
                     },
                 },
             },
