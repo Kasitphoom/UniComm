@@ -9,7 +9,7 @@ export type ComponentBlock = PrismaComponentBlock
 export type ComponentBlockUser = PrismaBusinessUser
 export type ComponentBlockWithUser = Prisma.ComponentBlockGetPayload<{ include: { user: true, versions: true } }>
 
-export type ComponentBlockListItem = Pick<ComponentBlock, 'id' | 'name' | 'description' | 'filePath' | 'createdAt' | 'updatedAt'> & {
+export type ComponentBlockListItem = Pick<ComponentBlock, 'id' | 'name' | 'filePath' | 'createdAt' | 'updatedAt'> & {
   userId: string
   user: ComponentBlockUser
   versions: ComponentBlockVersion[]

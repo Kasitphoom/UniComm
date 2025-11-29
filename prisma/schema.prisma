@@ -65,7 +65,6 @@ model TemplateVersion {
 model ComponentBlock {
   id          String                  @id @default(auto()) @map("_id") @db.ObjectId
   name        String                  @unique
-  description String
   filePath    String
   userId      String
   user        BusinessUser            @relation(fields: [userId], references: [id], onDelete: Cascade)

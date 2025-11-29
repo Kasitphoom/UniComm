@@ -4,10 +4,10 @@ import ViewMode from '../ViewMode'
 import SearchBar from '../SearchBar'
 import { Button, ButtonGroup, Dropdown, DropdownMenu, DropdownTrigger, DropdownItem } from '@heroui/react'
 import { ChevronDown, Layers } from 'lucide-react'
+import CreateComponentBlockModal from './CreateComponentBlockModal'
 
 const ComponentBlocksControlBar = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
-    // Placeholder: modal for creating component blocks could go here
     return (
         <div className='flex gap-4 justify-end'>
             <ViewMode />
@@ -29,7 +29,7 @@ const ComponentBlocksControlBar = () => {
                     </DropdownMenu>
                 </Dropdown>
             </ButtonGroup>
-            {/* Future: <CreateComponentBlockModal isOpen={isModalOpen} onOpenChange={setIsModalOpen} /> */}
+            <CreateComponentBlockModal isOpen={isModalOpen} onOpenChange={setIsModalOpen} />
         </div>
     )
 }

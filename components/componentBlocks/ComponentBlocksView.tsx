@@ -1,20 +1,43 @@
 'use client'
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
-import { useAppSelector } from '@/store/hooks'
+import { useAppDispatch, useAppSelector } from '@/store/hooks'
+import { Pagination, Spinner } from '@heroui/react'
+import { fetchComponentBlocks } from '@/features/componentBlocks/componentBlocksSlice'
+import { useSearchParams, useRouter } from 'next/navigation'
+import ComponentBlockCard from './ComponentBlockCard'
 
 interface ComponentBlocksViewProps {
     label?: string
 }
 
 const ComponentBlocksView = ({ label = 'Component Blocks' }: ComponentBlocksViewProps) => {
+    const dispatch = useAppDispatch()
+    const searchParams = useSearchParams()
+    const router = useRouter()
     const [isExpanded, setIsExpanded] = useState(true)
     const viewMode = useAppSelector(state => state.ui.viewMode)
 
-    // Placeholder data; integrate with Redux / API later
-    const blocks: any[] = []
-    const status: 'idle' | 'loading' | 'error' = 'idle'
+    const { status, items, currentPage, totalPages } = useAppSelector(state => state.componentBlocks.list)
+
+    useEffect(() => {
+        dispatch(fetchComponentBlocks({
+            query: searchParams.get('query') || '',
+            page: searchParams.get('page') ? parseInt(searchParams.get('page') as string, 10) : 1,
+        }))
+    }, [dispatch, searchParams])
+
+    const onPageChange = (page: number) => {
+        const params = new URLSearchParams(searchParams.toString())
+
+        params.set('page', page.toString())
+
+        const qs = params.toString()
+        const url = qs ? `?${qs}` : ''
+        
+        router.push(url)
+    }
 
     return (
         <motion.div className='flex flex-col gap-4'>
@@ -43,15 +66,32 @@ const ComponentBlocksView = ({ label = 'Component Blocks' }: ComponentBlocksView
                         transition={{ duration: 0.25, ease: 'easeInOut' }}
                         className='overflow-hidden'
                     >
-                        {false ? ( // status === 'loading'
-                            <div className='text-center text-default-500 py-8'>Loading...</div>
-                        ) : blocks.length === 0 ? (
+                        {status === 'loading' ? (
+                            <div className='text-center text-default-500 py-8'>
+                                <Spinner color='secondary' />
+                            </div>
+                        ) : items.length === 0 ? (
                             <div className='text-center text-default-500 py-8'>No component blocks to display.</div>
                         ) : (
                             <div className={`grid grid-cols-1 ${viewMode === 'grid' ? " md:grid-cols-2 lg:grid-cols-4" : ""}  py-4 gap-4`}>
-                                {/* Map block cards here */}
+                                {
+                                    items.map(block => (
+                                        <ComponentBlockCard key={block.id} block={block} />
+                                    ))
+                                }
                             </div>
                         )}
+                        <div className='flex justify-center'>
+                            <Pagination
+                                color="secondary"
+                                page={currentPage}
+                                total={totalPages}
+                                onChange={onPageChange}
+                                classNames={{
+                                    item: 'bg-white',
+                                }}
+                            />
+                        </div>
                     </motion.div>
                 )}
             </AnimatePresence>

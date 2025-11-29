@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server"
 import { getBusinessPrisma } from "@/lib/prisma-business"
-import { sanitizeQuery } from "@/utils/sanitizer"
-import { getStorageService } from "@/utils/upload/modules"
 import { requireAuth } from "@/lib/api-auth"
+import { getStorageService } from "@/utils/upload/modules"
+import { sanitizeQuery } from "@/utils/sanitizer"
+import path from "node:path"
+import { readFile } from "node:fs/promises"
 
 // GET /api/components
 // Supports: query, page, perPage, userOnly
@@ -77,70 +79,74 @@ export async function POST(req: Request) {
         }
 
         const body = await req.json()
-        const { name, description, content } = body || {}
-        if (!name || !description || typeof content !== "string") {
+        // Support both legacy JSON content creation and new XML-based creation
+        const { name, orientation, widthCm, heightCm } = body || {}
+
+        if (!name || !orientation || !widthCm || !heightCm) {
             return NextResponse.json(
-                {
-                    error: "Missing any of: name, description, content (string)",
-                },
+                { error: "Missing any of the following in the body: name, orientation, widthCm, heightCm" },
                 { status: 400 }
             )
         }
 
+        if (!uid) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+        }
+
         const prisma = await getBusinessPrisma(businessId!)
-        const existing = await prisma.componentBlock.findUnique({
-            where: { 
-                name 
-            },
+        const findExistingTemplate = await prisma.componentBlock.findUnique({
+            where: { name },
         })
-        if (existing) {
+        if (findExistingTemplate) {
             return NextResponse.json(
-                { error: "Component block with this name already exists" },
+                { error: "Template with the same name already exists" },
                 { status: 400 }
             )
         }
 
         const bu = await prisma.businessUser.findUnique({ where: { id: uid } })
-        if (!bu) {
+        if (!bu)
             return NextResponse.json(
                 { error: "Business user not found" },
                 { status: 404 }
             )
-        }
-
+        
         const storageService = getStorageService()
-        if (!storageService) {
+        if (!storageService)
             return NextResponse.json(
                 { error: "Storage service not configured" },
                 { status: 500 }
             )
-        }
+        
+        const filePath = `${businessId}/componentBlock/${encodeURIComponent(name)}.xml`
 
-        const filePath = `${businessId}/component-blocks/${encodeURIComponent(
-            name
-        )}.json`
-        const fileUrl = await storageService.uploadFile(
-            Buffer.from(content, "utf8"),
-            filePath
-        )
+        // Load XML template from local file and inject dimensions
+        const templatePath = path.join(process.cwd(), 'app', 'api', 'templates', 'template.xml')
+        let xmlContent = await readFile(templatePath, 'utf8')
+        // If orientation is landscape, swap width/height logically
+        const w = String(widthCm)
+        const h = String(heightCm)
+        const [finalW, finalH] = orientation === 'landscape' ? [h, w] : [w, h]
+        xmlContent = xmlContent
+            .replace(/REPLACE_WIDTH/g, finalW)
+            .replace(/REPLACE_HEIGHT/g, finalH)
+
+        // Upload to storage
+        const fileUrl = await storageService.uploadFile(Buffer.from(xmlContent, 'utf8'), filePath)
 
         const created = await prisma.componentBlock.create({
             data: {
-                name,
-                description,
+                name: name,
                 filePath: fileUrl,
                 userId: uid,
                 versions: {
                     create: {
-                        version: "initial",
                         filePath: fileUrl,
-                    },
-                },
+                        version: 'initial',
+                    }
+                }
             },
-            include: {
-                user: true,
-                versions: { orderBy: { createdAt: "desc" }, take: 1 },
-            },
+            include: { user: true, versions: { orderBy: { createdAt: "desc" }, take: 1 }},
         })
 
         return NextResponse.json(created, { status: 201 })

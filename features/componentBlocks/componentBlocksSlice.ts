@@ -70,9 +70,11 @@ export const fetchUserComponentBlocks = createAsyncThunk(
 export const createComponentBlock = createAsyncThunk(
     "componentBlocks/create",
     async (payload: {
-        name?: string
-        description?: string
-        content?: string
+        name?: string | undefined;
+        paperSize?: "custom" | "a4" | "letter" | "legal" | undefined;
+        orientation?: "portrait" | "landscape" | undefined;
+        widthCm?: string | undefined;
+        heightCm?: string | undefined;
     }) => {
         const res = await fetch("/api/components", {
             method: "POST",
@@ -82,7 +84,7 @@ export const createComponentBlock = createAsyncThunk(
         })
         if (!res.ok) {
             const text = await res.text()
-            throw new Error(text || "Failed to create component block")
+            throw new Error(text || "Failed to create template")
         }
         const data = (await res.json()) as ComponentBlockWithUser
         return data
@@ -172,7 +174,6 @@ const componentBlocksSlice = createSlice({
                         {
                             id: action.payload.id,
                             name: action.payload.name as string,
-                            description: action.payload.description as string,
                             filePath: action.payload.filePath as string,
                             createdAt: action.payload.createdAt as any,
                             updatedAt: action.payload.updatedAt as any,
