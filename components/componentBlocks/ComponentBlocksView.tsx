@@ -39,6 +39,8 @@ const ComponentBlocksView = ({ label = 'Component Blocks' }: ComponentBlocksView
         router.push(url)
     }
 
+    console.log(currentPage)
+
     return (
         <motion.div className='flex flex-col gap-4'>
             <div className='flex'>

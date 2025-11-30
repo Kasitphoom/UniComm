@@ -1,14 +1,16 @@
 'use client'
 import React from 'react'
 import { Card, CardBody, CardFooter, Dropdown, DropdownMenu, DropdownTrigger, DropdownItem, Skeleton, User } from '@heroui/react'
-import { ChevronDown, Dot, EllipsisVertical } from 'lucide-react'
+import { ChevronDown, Dot, EllipsisVertical, TrashIcon } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
-import { useAppSelector } from '@/store/hooks'
+import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { timeDifferenceFormatter } from '@/utils/DateFormatter'
 import type { ComponentBlockWithUser } from '@/types/componentBlock'
+import { deleteComponentBlock, fetchComponentBlocks } from '@/features/componentBlocks/componentBlocksSlice'
 
 const ComponentBlockCard = ({ block }: { block: ComponentBlockWithUser }) => {
+	const dispatch = useAppDispatch()
 	const router = useRouter()
 	const pathname = usePathname()
 	const searchParams = useSearchParams()
@@ -19,8 +21,13 @@ const ComponentBlockCard = ({ block }: { block: ComponentBlockWithUser }) => {
 	}
 
 	const onAction = async (key: any) => {
-		// Placeholder for actions (e.g., delete, rename)
-		// Implement thunk actions similar to templates when backend is ready
+		if (key === 'Delete') {
+			await dispatch(deleteComponentBlock(block.id))
+			dispatch(fetchComponentBlocks({
+				query: searchParams.get('query') || '',
+				page: searchParams.get('page') ? parseInt(searchParams.get('page') as string, 10) : 1,
+			}))
+		}
 	}
 
 	return (
@@ -74,7 +81,9 @@ const ComponentBlockCard = ({ block }: { block: ComponentBlockWithUser }) => {
 								</div>
 							</DropdownTrigger>
 							<DropdownMenu onAction={onAction}>
-								<DropdownItem key='Options'>Options</DropdownItem>
+								<DropdownItem key="Delete" color="danger" className='text-danger' startContent={<TrashIcon size={16} />}>
+                                    Delete
+                                </DropdownItem>
 							</DropdownMenu>
 						</Dropdown>
 					</CardFooter>

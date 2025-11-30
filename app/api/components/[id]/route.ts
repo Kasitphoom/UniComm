@@ -67,7 +67,7 @@ export const DELETE = async (
             }
         }
 
-        await prisma.templates.delete({
+        await prisma.componentBlock.delete({
             where: { id },
         })
 

@@ -128,6 +128,21 @@ export const updateComponentBlockTemplate = createAsyncThunk(
     }
 )
 
+export const deleteComponentBlock = createAsyncThunk(
+    "componentBlocks/delete",
+    async (id: string) => {
+        const res = await fetch(`/api/components/${id}`, {
+            method: "DELETE",
+            credentials: "include",
+        })
+        if (!res.ok) {
+            const text = await res.text()
+            throw new Error(text || "Failed to delete component block")
+        }
+        return id
+    }
+)
+
 const initialListState = (): ComponentBlocksState["list"] => ({
     items: [],
     status: "idle",
