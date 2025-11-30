@@ -9,14 +9,16 @@ import { getStorageService } from "@/utils/upload/modules"
 // GET /api/components/:id
 export async function GET(
     _req: Request,
-    { params }: { params: { id: string } }
+    context: { params: Promise<{ id: string }> }
 ) {
     try {
+        const { id } = await context.params
+
         const auth = await requireAuth(_req)
         if (!auth.ok) return auth.response
         const prisma = await getBusinessPrisma(auth.businessId!)
         const block = await prisma.componentBlock.findUnique({
-            where: { id: params.id },
+            where: { id },
             include: {
                 user: true,
                 versions: { orderBy: { createdAt: "desc" } },

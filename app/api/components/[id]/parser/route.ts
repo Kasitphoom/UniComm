@@ -6,14 +6,15 @@ import { transformXmlToTemplate } from "@/utils/template/xml-pdf-transformer"
 
 // For components, parser returns the JSON content for latest version
 export async function GET(
-    req: Request,
-    { params }: { params: { id: string } }
+    request: Request, context: { params: Promise<{ id: string }> }
 ) {
     try {
-        const auth = await requireAuth(req)
+        const { id } = await context.params
+
+        const auth = await requireAuth(request)
         if (!auth.ok) return auth.response
         const prisma = await getBusinessPrisma(auth.businessId!)
-        const block = await prisma.componentBlock.findUnique({ where: { id: params.id } })
+        const block = await prisma.componentBlock.findUnique({ where: { id } })
         if (!block) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
         const storage = getStorageService()
