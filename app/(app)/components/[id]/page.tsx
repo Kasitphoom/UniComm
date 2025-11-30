@@ -1,4 +1,5 @@
 import Editor from '@/components/Editor'
+import { componentBlockAdapter } from '@/lib/editor/adapter'
 import { getTemplateData } from '@/query/templateQuery'
 import { redirect } from 'next/navigation'
 import React from 'react'
@@ -14,7 +15,7 @@ const page = async ({ params }: { params: Promise<{ id: string }> }) => {
 
     return (
         <div className='h-full'>
-            <Editor type="pdf" id={id} />
+            <Editor id={id} resource='component' draftKeyPrefix='components'/>
         </div>
     )
 }

@@ -118,7 +118,7 @@ export async function POST(req: Request) {
                 { status: 500 }
             )
         
-        const filePath = `${businessId}/componentBlock/${encodeURIComponent(name)}.xml`
+        const filePath = `${businessId}/component-block/${encodeURIComponent(name)}.xml`
 
         // Load XML template from local file and inject dimensions
         const templatePath = path.join(process.cwd(), 'app', 'api', 'templates', 'template.xml')

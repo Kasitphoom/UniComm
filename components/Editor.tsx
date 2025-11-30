@@ -10,21 +10,28 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { saveTemplateDraft, loadTemplateDraft, hashTemplate } from '@/lib/draftStore'
 import { TemplateWithUser } from '@/types/template'
 import ComponentBlocks from '@/lib/template/plugins/ComponentBlocks'
-import { EditorAdapter, templateAdapter } from '@/lib/editor/adapter'
+import { componentBlockAdapter, EditorAdapter, templateAdapter } from '@/lib/editor/adapter'
 
 type EditorProps = {
-    type: 'template' | 'componentBlock'
     contentType?: 'pdf' | 'email'
     id: string
-    adapter?: EditorAdapter
+    resource?: 'template' | 'component'
     draftKeyPrefix?: string // namespace for local draft storage (defaults to 'template')
 }
 
-const Editor: React.FC<EditorProps> = ({ type, id, adapter = templateAdapter, draftKeyPrefix = 'template' }) => {
+/**
+ * Editor component for editing templates.
+ * @param id Template ID to load and edit
+ * @param resource Resource type: 'template' or 'component'
+ * @param draftKeyPrefix Prefix for draft storage keys
+ * @returns JSX Element
+ */
+const Editor: React.FC<EditorProps> = ({ id, resource = 'template', draftKeyPrefix = 'template' }) => {
     const dispatch = useAppDispatch()
     const pathname = usePathname()
     const router = useRouter()
     const draftId = `${draftKeyPrefix}:${id}`
+    const adapter: EditorAdapter = resource === 'template' ? templateAdapter : componentBlockAdapter // map by resource when component adapter exists
 
     const { status, data: templateData, error } = useAppSelector(adapter.selectParsed)
 
@@ -59,7 +66,7 @@ const Editor: React.FC<EditorProps> = ({ type, id, adapter = templateAdapter, dr
         if (tplHash === lastUploadedHashRef.current || tplHash === currentTemplateDetail?.versions?.[0].version) return // unchanged → skip
 
         try {
-            const payload = await adapter.updateResource(dispatch, { id, templateData: tpl }, type)
+            const payload = await adapter.updateResource(dispatch, { id, templateData: tpl })
             const hash = payload.versions?.[0]?.version 
             lastUploadedHashRef.current = hash ?? tplHash
         } catch (e) {

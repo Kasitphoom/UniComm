@@ -8,6 +8,7 @@ import {
 } from "@/features/templates/templatesSlice"
 import { TemplateWithUser } from "@/types/template"
 import { ComponentBlockWithUser } from "@/types/componentBlock"
+import { getParsedComponentBlockSchema, resetParsedComponentBlockSchema, updateComponentBlockTemplate } from "@/features/componentBlocks/componentBlocksSlice"
 
 // Adapter interface for the generic Editor component
 export interface EditorAdapter {
@@ -16,10 +17,9 @@ export interface EditorAdapter {
     updateResource: (
         dispatch: AppDispatch,
         params: { id: string; templateData: Template },
-        type: "template" | "componentBlock"
     ) => Promise<TemplateWithUser | ComponentBlockWithUser>,
     selectParsed: (state: RootState) => RootState["templates"]["parsedTemplate"]
-    selectDetail: (state: RootState) => RootState["templates"]["detail"]["data"]
+    selectDetail: (state: RootState) => RootState["templates"]["detail"]["data"] | RootState["componentBlocks"]["detail"]["data"]
 }
 
 export const templateAdapter: EditorAdapter = {
@@ -39,15 +39,15 @@ export const templateAdapter: EditorAdapter = {
 
 export const componentBlockAdapter: EditorAdapter = {
     loadParsed: (dispatch, id) => {
-        // 
+        dispatch(getParsedComponentBlockSchema(id))
     },
     resetParsed: (dispatch) => {
-        // Implement component block parsed schema reset if needed
+        dispatch(resetParsedComponentBlockSchema())
     },
     updateResource: async (dispatch, { id, templateData }) => {
-        // Implement component block update logic if needed
-        return {} as ComponentBlockWithUser
+        const action = await dispatch(updateComponentBlockTemplate({ id, templateData }))
+        return (action as any).payload
     },
-    selectParsed: (state) => state.templates.parsedTemplate, // Adjust if component blocks have separate state
-    selectDetail: (state) => state.templates.detail.data, // Adjust if component blocks have separate state
+    selectParsed: (state) => state.componentBlocks.parsedSchema,
+    selectDetail: (state) => state.componentBlocks.detail.data,
 }

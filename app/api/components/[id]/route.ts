@@ -112,7 +112,7 @@ export async function PATCH(
             )
         }
 
-        const fileKey = `${auth.businessId!}/templates/${encodeURIComponent(`${id}.${hashedTemplate}`)}.xml`
+        const fileKey = `${auth.businessId!}/component-block/${encodeURIComponent(`${id}.${hashedTemplate}`)}.xml`
 
         const existingVersions = await prisma.componentBlockVersion.findMany({
             where: { componentBlockId: id, version: hashedTemplate },
@@ -142,7 +142,7 @@ export async function PATCH(
 
         const newUrl = await storageService.uploadFile(Buffer.from(xmlContent, 'utf8'), fileKey)
 
-        const updated = await prisma.templates.update({
+        const updated = await prisma.componentBlock.update({
             where: { id },
             data: {
                 versions: {

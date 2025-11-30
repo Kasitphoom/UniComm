@@ -5,6 +5,7 @@ import type {
     ComponentBlockListItem,
     ComponentBlockWithUser,
 } from "@/types/componentBlock"
+import { Template } from "@pdfme/common"
 
 export const fetchComponentBlocks = createAsyncThunk(
     "componentBlocks/fetchAll",
@@ -91,6 +92,42 @@ export const createComponentBlock = createAsyncThunk(
     }
 )
 
+export const getParsedComponentBlockSchema = createAsyncThunk(
+    "components/getParsedComponentschema",
+    async (id: string) => {
+        const res = await fetch(`/api/components/${id}/parser`, {
+            credentials: "include",
+        })
+        if (!res.ok) {
+            const text = await res.text()
+            throw new Error(text || "Failed to fetch parsed template schema")
+        }
+        const data = (await res.json()) as {
+            data: Template
+        }
+        return data.data
+    }
+)
+
+export const updateComponentBlockTemplate = createAsyncThunk(
+    "component/updateComponentBlockTemplate",
+    async (params: { id: string; templateData: Template }) => {
+        const { id, templateData } = params
+        const res = await fetch(`/api/components/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify(templateData),
+        })
+        if (!res.ok) {
+            const text = await res.text()
+            throw new Error(text || "Failed to update template")
+        }
+        const data = (await res.json()) as ComponentBlockWithUser
+        return data
+    }
+)
+
 const initialListState = (): ComponentBlocksState["list"] => ({
     items: [],
     status: "idle",
@@ -105,6 +142,7 @@ const initialState: ComponentBlocksState = {
     user: { list: initialListState() },
     list: initialListState(),
     detail: { data: undefined, status: "idle", error: null },
+    parsedSchema: { data: undefined, status: "idle", error: null },
 }
 
 const componentBlocksSlice = createSlice({
@@ -129,9 +167,15 @@ const componentBlocksSlice = createSlice({
             state.detail.error = null
             state.detail.data = undefined
         },
+        resetParsedComponentBlockSchema(state) {
+            state.parsedSchema.status = "idle"
+            state.parsedSchema.error = null
+            state.parsedSchema.data = undefined
+        },
     },
     extraReducers: (builder) => {
         builder
+        // Fetch all component blocks
             .addCase(fetchComponentBlocks.pending, (state) => {
                 state.list.status = "loading"
                 state.list.error = null
@@ -147,6 +191,7 @@ const componentBlocksSlice = createSlice({
                 state.list.error = action.error.message || "Unknown error"
             })
 
+        // Fetch user component blocks
             .addCase(fetchUserComponentBlocks.pending, (state) => {
                 state.user.list.status = "loading"
                 state.user.list.error = null
@@ -162,6 +207,7 @@ const componentBlocksSlice = createSlice({
                 state.user.list.error = action.error.message || "Unknown error"
             })
 
+        // Create component block
             .addCase(createComponentBlock.pending, (state) => {
                 state.detail.status = "loading"
                 state.detail.error = null
@@ -189,9 +235,37 @@ const componentBlocksSlice = createSlice({
                 state.detail.status = "failed"
                 state.detail.error = action.error.message || "Unknown error"
             })
+
+        // Get parsed component block schema
+            .addCase(getParsedComponentBlockSchema.pending, (state) => {
+                state.parsedSchema.status = "loading"
+                state.parsedSchema.error = null
+            })
+            .addCase(getParsedComponentBlockSchema.fulfilled, (state, action) => {
+                state.parsedSchema.status = "succeeded"
+                state.parsedSchema.data = action.payload
+            })
+            .addCase(getParsedComponentBlockSchema.rejected, (state, action) => {
+                state.parsedSchema.status = "failed"
+                state.parsedSchema.error = action.error.message || "Unknown error"
+            })
+
+        // Update component block template
+            .addCase(updateComponentBlockTemplate.pending, (state) => {
+                state.detail.status = "loading"
+                state.detail.error = null
+            })
+            .addCase(updateComponentBlockTemplate.fulfilled, (state, action) => {
+                state.detail.status = "succeeded"
+                state.detail.data = action.payload
+            })
+            .addCase(updateComponentBlockTemplate.rejected, (state, action) => {
+                state.detail.status = "failed"
+                state.detail.error = action.error.message || "Unknown error"
+            })
     },
 })
 
-export const { setQuery, setPage, setPerPage, resetList, resetCreate } =
+export const { setQuery, setPage, setPerPage, resetList, resetCreate, resetParsedComponentBlockSchema } =
     componentBlocksSlice.actions
 export default componentBlocksSlice.reducer
