@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@heroui/react": "^2.8.5",
+    "@heroui/use-infinite-scroll": "^2.2.12",
     "@hookform/resolvers": "^5.2.2",
     "@pdfme/common": "^5.4.6",
     "@pdfme/generator": "^5.4.6",

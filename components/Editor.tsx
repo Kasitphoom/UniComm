@@ -9,7 +9,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { saveTemplateDraft, loadTemplateDraft, hashTemplate } from '@/lib/draftStore'
 import { TemplateWithUser } from '@/types/template'
-import ComponentBlocks from '@/lib/template/plugins/ComponentBlocks'
+import ComponentBlocks from '@/lib/template/plugins/componentBlocks/ComponentBlocks'
 import { componentBlockAdapter, EditorAdapter, templateAdapter } from '@/lib/editor/adapter'
 
 type EditorProps = {

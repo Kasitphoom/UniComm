@@ -3,9 +3,11 @@ import { createSvgStr } from "@pdfme/schemas/utils"
 import { Blocks } from "lucide"
 import type { UIRenderProps } from "@pdfme/common"
 import { text, multiVariableText, image, svg, table, line, rectangle, ellipse, dateTime, date, time, select, radioGroup } from '@pdfme/schemas'
+import { ComponentBlocksPropPanel } from "./propPanel"
 
-type ComponentBlocksSchema = Schema & {
-    componentSchemas?: Array<Schema>
+export type ComponentBlocksSchema = Schema & {
+    componentSchemas?: Array<Schema>,
+    componentName: string,
 }
 
 // Built-in plugin map for rendering child schemas by their `type`
@@ -172,19 +174,7 @@ const ComponentBlocks: Plugin<ComponentBlocksSchema> = {
             }
         }
     },
-
-    propPanel: {
-        schema: {},
-        defaultSchema: {
-            type: "ComponentBlocks",
-            name: "Custom",
-            position: { x: 10, y: 10 },
-            width: 40,
-            height: 20,
-            componentSchemas: [],
-        } as ComponentBlocksSchema,
-    },
-
+    propPanel: ComponentBlocksPropPanel,
     icon: createSvgStr(Blocks)
 }
 
