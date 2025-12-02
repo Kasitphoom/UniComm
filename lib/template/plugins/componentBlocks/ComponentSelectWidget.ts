@@ -8,7 +8,6 @@ interface ApiResponse {
     total: number
 }
 
-// Simple debounce utility to prevent API flooding
 function debounce<T extends (...args: any[]) => void>(func: T, wait: number) {
     let timeout: NodeJS.Timeout
     return function (this: any, ...args: Parameters<T>) {
@@ -17,23 +16,33 @@ function debounce<T extends (...args: any[]) => void>(func: T, wait: number) {
     }
 }
 
-// 2. Styles
+// 1. UPDATED STYLES
 const styles = {
     container: {
         width: "100%",
         position: "relative" as const,
         fontFamily: "sans-serif",
+        display: "flex",
+        alignItems: "center",
     },
-    // Changed to look like an input field
     input: {
         width: "100%",
-        padding: "8px 12px",
+        padding: "8px 32px 8px 12px", // Added right padding for the icon
         border: "1px solid #d9d9d9",
-        borderRadius: "8px",
+        borderRadius: "8px", // UPDATED: 8px
         backgroundColor: "#fff",
         fontSize: "14px",
         outline: "none",
-        boxSizing: "border-box" as const, // Important for input width
+        boxSizing: "border-box" as const,
+        transition: "border-color 0.2s",
+    },
+    icon: {
+        position: "absolute" as const,
+        right: "10px",
+        width: "16px",
+        height: "16px",
+        pointerEvents: "none" as const, // Clicks go through to the input
+        color: "#999",
     },
     dropdown: {
         position: "absolute" as const,
@@ -43,11 +52,11 @@ const styles = {
         maxHeight: "200px",
         overflowY: "auto" as const,
         border: "1px solid #d9d9d9",
-        borderRadius: "8px",
+        borderRadius: "8px", // UPDATED: 8px
         backgroundColor: "#fff",
         zIndex: "1000",
         marginTop: "4px",
-        boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+        boxShadow: "0 4px 12px rgba(0,0,0,0.15)", // Slightly softer shadow
         display: "none",
     },
     listItem: {
@@ -65,6 +74,8 @@ const styles = {
         cursor: "pointer",
         textAlign: "center" as const,
         fontSize: "12px",
+        borderBottomLeftRadius: "8px",
+        borderBottomRightRadius: "8px",
     },
     loadingText: {
         padding: "10px",
@@ -77,100 +88,103 @@ const styles = {
 export const componentSelectWidget = (props: PropPanelWidgetProps) => {
     const { rootElement, changeSchemas, activeSchema } = props
 
-    // 1. Setup State
+    // State
     let currentPage = 1
     let isLoading = false
-    let currentQuery = "" // Track the search text
+    let currentQuery = ""
     
-    // Get initial value
     const currentSelection =
         (activeSchema as unknown as ComponentBlocksSchema).componentName || ""
 
-    // 2. Clear Container & Apply Styles
+    // Clear & Setup
     rootElement.innerHTML = ""
     Object.assign(rootElement.style, { width: "100%", marginBottom: "10px" })
 
-    // 3. Create UI Elements
     const container = document.createElement("div")
     Object.assign(container.style, styles.container)
 
-    // --- Input Field (Formerly Display Box) ---
+    // --- Input Field ---
     const input = document.createElement("input")
     input.type = "text"
-    input.placeholder = "Search component..."
-    input.value = currentSelection // Set initial value
+    input.placeholder = "Select component..."
+    input.value = currentSelection
     Object.assign(input.style, styles.input)
+
+    // --- Chevron Icon (SVG) ---
+    // We use createElementNS for SVGs
+    const iconSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg")
+    iconSvg.setAttribute("viewBox", "0 0 24 24")
+    iconSvg.setAttribute("fill", "none")
+    iconSvg.setAttribute("stroke", "currentColor")
+    iconSvg.setAttribute("stroke-width", "2")
+    iconSvg.setAttribute("stroke-linecap", "round")
+    iconSvg.setAttribute("stroke-linejoin", "round")
+    Object.assign(iconSvg.style, styles.icon)
+
+    const iconPath = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    iconPath.setAttribute("d", "M6 9l6 6 6-6") // Chevron Down shape
+    iconSvg.appendChild(iconPath)
 
     // --- Dropdown Container ---
     const dropdown = document.createElement("div")
     Object.assign(dropdown.style, styles.dropdown)
 
-    // --- List ---
     const ul = document.createElement("ul")
     Object.assign(ul.style, { listStyle: "none", padding: "0", margin: "0" })
 
-    // --- Status / Load More ---
     const statusArea = document.createElement("div")
 
-    // 4. Helper Functions
+    // --- Helper Functions ---
 
     const showDropdown = () => {
         dropdown.style.display = "block"
-        // If list is empty, fetch initial data
+        input.style.borderColor = "#4096ff" // Highlight border focus
+        // Rotate icon optionally
+        iconSvg.style.transform = "rotate(180deg)"
+        iconSvg.style.transition = "transform 0.2s"
+        
         if (ul.children.length === 0) {
             fetchData(1, currentQuery, true)
         }
     }
 
     const hideDropdown = () => {
-        // specific timeout allows click events on list items to fire before hiding
         setTimeout(() => {
             if (document.activeElement !== input) {
                 dropdown.style.display = "none"
+                input.style.borderColor = "#d9d9d9" // Reset border
+                iconSvg.style.transform = "rotate(0deg)" // Reset rotation
             }
         }, 150)
     }
 
     const handleSelect = (item: ComponentBlockListItem) => {
-        // A. Update Input Value
         input.value = item.name
-        currentQuery = item.name // Sync query so we don't re-search immediately
-
-        // B. Update PDFME Schema
+        currentQuery = item.name
         changeSchemas([
             {
                 key: "componentName",
                 value: item.name,
                 schemaId: activeSchema.id,
             },
-            // Example: Save ID if needed
-            // { key: "componentId", value: item.id, schemaId: activeSchema.id }
         ])
-
-        // C. Close Dropdown
         dropdown.style.display = "none"
     }
 
     const renderItems = (items: ComponentBlockListItem[], append: boolean) => {
-        if (!append) {
-            ul.innerHTML = "" // Clear list for new searches
-        }
+        if (!append) ul.innerHTML = ""
 
         items.forEach((item) => {
             const li = document.createElement("li")
             Object.assign(li.style, styles.listItem)
             li.textContent = item.name
 
-            // Hover effects
             li.onmouseenter = () => { li.style.backgroundColor = "#e6f7ff" }
             li.onmouseleave = () => { li.style.backgroundColor = "transparent" }
-
-            // Click Handler
             li.onmousedown = (e) => {
-                e.preventDefault() // Prevent input blur
+                e.preventDefault()
                 handleSelect(item)
             }
-
             ul.appendChild(li)
         })
     }
@@ -183,22 +197,18 @@ export const componentSelectWidget = (props: PropPanelWidgetProps) => {
 
         btn.onmouseenter = () => { btn.style.backgroundColor = "#e0e0e0" }
         btn.onmouseleave = () => { btn.style.backgroundColor = "#f5f5f5" }
-
-        // Use onmousedown to prevent focus loss issues
         btn.onmousedown = (e) => {
-            e.preventDefault() 
+            e.preventDefault()
             e.stopPropagation()
             fetchData(currentPage + 1, currentQuery, false)
         }
         statusArea.appendChild(btn)
     }
 
-    // Main API Fetch Logic
     const fetchData = async (page: number, query: string, resetList: boolean) => {
         if (isLoading) return
         isLoading = true
 
-        // Show loading state
         statusArea.innerHTML = ""
         const loadingMsg = document.createElement("div")
         loadingMsg.textContent = "Loading..."
@@ -206,57 +216,51 @@ export const componentSelectWidget = (props: PropPanelWidgetProps) => {
         statusArea.appendChild(loadingMsg)
 
         try {
-            // Encode query parameter
             const encodedQuery = encodeURIComponent(query)
             const response = await fetch(`/api/components?page=${page}&query=${encodedQuery}`)
-
             const json = (await response.json()) as ApiResponse
             const componentBlocks = json.componentBlocks || []
-            
             const newItems = Array.isArray(componentBlocks) ? componentBlocks : []
 
             if (newItems.length > 0) {
-                renderItems(newItems, !resetList) // Append if not resetting
+                renderItems(newItems, !resetList)
                 currentPage = page
                 renderLoadMore()
             } else {
-                if (resetList) ul.innerHTML = "" // Clear previous results if new search is empty
+                if (resetList) ul.innerHTML = ""
                 statusArea.innerHTML =
                     '<div style="padding:10px; color:#999; font-size:12px; text-align:center">No results found</div>'
             }
         } catch (err) {
             console.error(err)
-            statusArea.innerHTML =
-                '<div style="color:red; padding:10px; font-size:12px;">Error loading data</div>'
+            statusArea.innerHTML = '<div style="color:red; padding:10px; font-size:12px;">Error loading data</div>'
         } finally {
             isLoading = false
         }
     }
 
-    // 5. Event Listeners
-
-    // A. Focus: Open dropdown
+    // --- Listeners ---
     input.addEventListener("focus", showDropdown)
-
-    // B. Blur: Hide dropdown (with delay handled in hideDropdown)
     input.addEventListener("blur", hideDropdown)
 
-    // C. Input: Handle typing with Debounce
     const handleInput = debounce((e: Event) => {
         const val = (e.target as HTMLInputElement).value
         currentQuery = val
         currentPage = 1
-        dropdown.style.display = "block" // Ensure dropdown is visible when typing
-        fetchData(1, val, true) // Reset list = true
-    }, 300) // 300ms delay
+        dropdown.style.display = "block"
+        fetchData(1, val, true)
+    }, 300)
 
     input.addEventListener("input", handleInput)
 
-    // 6. Assembly
+    // --- Assembly ---
     dropdown.appendChild(ul)
     dropdown.appendChild(statusArea)
 
+    // Append Input AND Icon to Container
     container.appendChild(input)
+    container.appendChild(iconSvg) 
+    
     container.appendChild(dropdown)
     rootElement.appendChild(container)
 }
