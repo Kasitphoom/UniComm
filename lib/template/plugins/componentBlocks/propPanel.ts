@@ -23,6 +23,7 @@ export const ComponentBlocksPropPanel: PropPanel<ComponentBlocksSchema> = {
         height: 20,
         componentSchemas: [],
         componentName: "",
+        isResized: false,
     } as ComponentBlocksSchema,
     widgets: {
         componentSelectWidget,

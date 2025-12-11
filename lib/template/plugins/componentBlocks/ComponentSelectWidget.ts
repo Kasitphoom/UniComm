@@ -161,12 +161,28 @@ export const componentSelectWidget = (props: PropPanelWidgetProps) => {
     const handleSelect = (item: ComponentBlockListItem) => {
         input.value = item.name
         currentQuery = item.name
+
+        // Previously we fetched and parsed the component immediately:
+        // const result = await fetch(`/api/components/${item.id}/parser`, { credentials: "include" })
+        // const template = await result.json() as { data: Template }
+
         changeSchemas([
             {
                 key: "componentName",
                 value: item.name,
                 schemaId: activeSchema.id,
             },
+            {
+                key: "isResized",
+                value: false,
+                schemaId: activeSchema.id,
+            },
+            // ComponentBlocks now refreshes schemas during render, so persisting them here is unnecessary.
+            // {
+            //     key: "componentSchemas",
+            //     value: template.data.schemas[0] || [],
+            //     schemaId: activeSchema.id,
+            // }
         ])
         dropdown.style.display = "none"
     }

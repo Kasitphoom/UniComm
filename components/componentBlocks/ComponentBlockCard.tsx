@@ -8,6 +8,7 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { timeDifferenceFormatter } from '@/utils/DateFormatter'
 import type { ComponentBlockWithUser } from '@/types/componentBlock'
 import { deleteComponentBlock, fetchComponentBlocks } from '@/features/componentBlocks/componentBlocksSlice'
+import { setSidebarOpen } from '@/features/ui/uiSlice'
 
 const ComponentBlockCard = ({ block }: { block: ComponentBlockWithUser }) => {
 	const dispatch = useAppDispatch()
@@ -18,6 +19,7 @@ const ComponentBlockCard = ({ block }: { block: ComponentBlockWithUser }) => {
 
 	const onCardClick = () => {
 		router.push(`${pathname}/${block.id}`)
+		dispatch(setSidebarOpen(false))
 	}
 
 	const onAction = async (key: any) => {

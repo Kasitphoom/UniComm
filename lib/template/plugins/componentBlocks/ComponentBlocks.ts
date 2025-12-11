@@ -6,8 +6,9 @@ import { text, multiVariableText, image, svg, table, line, rectangle, ellipse, d
 import { ComponentBlocksPropPanel } from "./propPanel"
 
 export type ComponentBlocksSchema = Schema & {
-    componentSchemas?: Array<Schema>,
-    componentName: string,
+    componentSchemas?: Array<Schema>
+    componentName: string
+    isResized?: boolean
 }
 
 // Built-in plugin map for rendering child schemas by their `type`
@@ -25,6 +26,47 @@ const builtinPluginMap: Record<string, Plugin<any>> = {
     time,
     select,
     radioGroup,
+}
+
+type ComponentLookupResponse = {
+    componentBlocks?: Array<{ id: string; name: string }>
+}
+
+type ComponentTemplateResponse = {
+    data?: {
+        schemas?: Schema[][]
+    }
+}
+
+const fetchLatestComponentSchemas = async (componentName?: string): Promise<Schema[] | null> => {
+    const normalized = componentName?.trim()
+    if (!normalized || typeof window === "undefined" || typeof fetch === "undefined") {
+        return null
+    }
+
+    try {
+        const listResp = await fetch(
+            `/api/components?query=${encodeURIComponent(normalized)}&perPage=1`,
+            { credentials: "include" }
+        )
+        if (!listResp.ok) return null
+        const listJson = (await listResp.json()) as ComponentLookupResponse
+        const candidate = (listJson.componentBlocks || []).find(
+            (block) => block.name?.toLowerCase() === normalized.toLowerCase()
+        ) || listJson.componentBlocks?.[0]
+        if (!candidate?.id) return null
+
+        const parserResp = await fetch(`/api/components/${candidate.id}/parser`, {
+            credentials: "include",
+        })
+        if (!parserResp.ok) return null
+        const parserJson = (await parserResp.json()) as ComponentTemplateResponse
+        const pageSchemas = parserJson?.data?.schemas?.[0]
+        return Array.isArray(pageSchemas) ? (pageSchemas as Schema[]) : null
+    } catch (err) {
+        console.error("ComponentBlocks: failed to fetch component schema", err)
+        return null
+    }
 }
 
 // Simple square component: draws a gray square in UI and PDF
@@ -51,7 +93,7 @@ const ComponentBlocks: Plugin<ComponentBlocksSchema> = {
     },
 
     ui: async (arg: UIRenderProps<ComponentBlocksSchema>) => {
-        const { rootElement, schema } = arg as any
+        const { rootElement, schema } = arg
 
         // Reset root element to avoid duplicate renders
         while (rootElement.firstChild) rootElement.removeChild(rootElement.firstChild)
@@ -61,11 +103,40 @@ const ComponentBlocks: Plugin<ComponentBlocksSchema> = {
         container.style.height = "100%"
         container.style.boxSizing = "border-box"
         container.style.position = "relative"
-        container.style.border = "1px solid #666"
-        container.style.background = "#f9fafb"
         rootElement.appendChild(container)
 
-        const children = schema.componentSchemas || []
+        let children = schema.componentSchemas || []
+        const requiresAutoResize = schema.isResized !== true
+
+        if (schema.componentName) {
+            const loading = document.createElement("div")
+            loading.style.position = "absolute"
+            loading.style.inset = "0"
+            loading.style.display = "flex"
+            loading.style.alignItems = "center"
+            loading.style.justifyContent = "center"
+            loading.style.fontSize = "10px"
+            loading.style.color = "#6b7280"
+            loading.textContent = `Loading ${schema.componentName}...`
+            container.appendChild(loading)
+
+            const latest = await fetchLatestComponentSchemas(schema.componentName)
+            if (container.contains(loading)) {
+                container.removeChild(loading)
+            }
+
+            if (latest) {
+                const prevJson = JSON.stringify(children)
+                const nextJson = JSON.stringify(latest)
+                if (prevJson !== nextJson) {
+                    if (typeof arg.onChange === "function" && arg.mode === "designer") {
+                        arg.onChange({ key: "componentSchemas", value: latest })
+                    }
+                }
+                schema.componentSchemas = latest
+                children = latest
+            }
+        }
         if (!children.length) {
             const label = document.createElement("div")
             label.style.position = "absolute"
@@ -108,6 +179,19 @@ const ComponentBlocks: Plugin<ComponentBlocksSchema> = {
         const groupWidthMm = Math.max(0.0001, maxX - minX)
         const groupHeightMm = Math.max(0.0001, maxY - minY)
 
+        if (requiresAutoResize) {
+            schema.width = groupWidthMm
+            schema.height = groupHeightMm
+            schema.isResized = true
+            if (typeof arg.onChange === "function" && arg.mode === "designer") {
+                arg.onChange([
+                    { key: "width", value: groupWidthMm },
+                    { key: "height", value: groupHeightMm },
+                    { key: "isResized", value: true },
+                ])
+            }
+        }
+
         // Optionally show group bounds overlay
         const overlay = document.createElement("div")
         overlay.style.position = "absolute"
@@ -116,7 +200,6 @@ const ComponentBlocks: Plugin<ComponentBlocksSchema> = {
         overlay.style.width = "100%"
         overlay.style.height = "100%"
         overlay.style.boxSizing = "border-box"
-        overlay.style.border = "1px dashed #6b7280"
         overlay.style.pointerEvents = "none"
         container.appendChild(overlay)
 
@@ -146,9 +229,18 @@ const ComponentBlocks: Plugin<ComponentBlocksSchema> = {
             if (plugin && typeof plugin.ui === "function") {
                 // Delegate rendering to the child's own UI, using wrapper as rootElement
                 try {
-                    await plugin.ui({ ...(arg as any), schema: s as any, rootElement: wrapper })
+                    const childValue = (s as any).content ?? (s as any).value ?? ""
+                    await plugin.ui({
+                        ...(arg as any),
+                        schema: s as any,
+                        rootElement: wrapper,
+                        value: childValue,
+                        
+                    })
+                    console.log("ComponentBlocks: rendered child of type", type)
                 } catch (e) {
                     // Fallback: show a simple label if child UI fails
+                    console.log("ComponentBlocks: child UI render error", e)
                     const fallback = document.createElement("div")
                     fallback.style.width = "100%"
                     fallback.style.height = "100%"
