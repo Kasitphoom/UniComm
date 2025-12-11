@@ -16,7 +16,7 @@
     "bcryptjs": "^3.0.2",
     "framer-motion": "^12.23.24",
     "mailgun.js": "^12.1.1",
-    "next": "15.5.6",
+    "next": "15.5.7",
     "next-auth": "^4.24.11",
     "next-swagger-doc": "^0.4.1",
     "react": "19.1.0",
