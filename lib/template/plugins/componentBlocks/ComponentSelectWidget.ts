@@ -88,6 +88,11 @@ const styles = {
 export const componentSelectWidget = (props: PropPanelWidgetProps) => {
     const { rootElement, changeSchemas, activeSchema } = props
 
+    const pathMatch = typeof window !== "undefined"
+        ? window.location.pathname.match(/\/components\/([^/]+)/)
+        : null
+    const currentComponentId = pathMatch?.[1]
+
     // State
     let currentPage = 1
     let isLoading = false
@@ -161,11 +166,6 @@ export const componentSelectWidget = (props: PropPanelWidgetProps) => {
     const handleSelect = (item: ComponentBlockListItem) => {
         input.value = item.name
         currentQuery = item.name
-
-        // Previously we fetched and parsed the component immediately:
-        // const result = await fetch(`/api/components/${item.id}/parser`, { credentials: "include" })
-        // const template = await result.json() as { data: Template }
-
         changeSchemas([
             {
                 key: "componentName",
@@ -177,12 +177,6 @@ export const componentSelectWidget = (props: PropPanelWidgetProps) => {
                 value: false,
                 schemaId: activeSchema.id,
             },
-            // ComponentBlocks now refreshes schemas during render, so persisting them here is unnecessary.
-            // {
-            //     key: "componentSchemas",
-            //     value: template.data.schemas[0] || [],
-            //     schemaId: activeSchema.id,
-            // }
         ])
         dropdown.style.display = "none"
     }
@@ -236,7 +230,9 @@ export const componentSelectWidget = (props: PropPanelWidgetProps) => {
             const response = await fetch(`/api/components?page=${page}&query=${encodedQuery}`)
             const json = (await response.json()) as ApiResponse
             const componentBlocks = json.componentBlocks || []
-            const newItems = Array.isArray(componentBlocks) ? componentBlocks : []
+            const newItems = (Array.isArray(componentBlocks) ? componentBlocks : []).filter(
+                (item) => !currentComponentId || item.id !== currentComponentId
+            )
 
             if (newItems.length > 0) {
                 renderItems(newItems, !resetList)
