@@ -1,24 +1,23 @@
 'use client'
-import { Button, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from '@heroui/react';
+import { Button, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from '@heroui/react'
 import React from 'react'
 import { useForm } from 'react-hook-form'
 import * as yup from 'yup'
 import { yupResolver } from '@hookform/resolvers/yup'
-import { createTemplate } from '@/features/templates/templatesSlice';
-import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { usePathname, useRouter } from 'next/navigation';
-import { setSidebarOpen } from '@/features/ui/uiSlice';
-import DesignSetupFields, { Orientation, PaperSize, PAPER_SIZES, ORIENTATIONS } from '@/components/common/DesignSetupFields'
+import { useAppDispatch } from '@/store/hooks'
+import { usePathname, useRouter } from 'next/navigation'
+import { setSidebarOpen } from '@/features/ui/uiSlice'
+import DesignSetupFields from '@/components/common/DesignSetupFields'
+import { createComponentBlock } from '@/features/componentBlocks/componentBlocksSlice'
+import { Orientation, PaperSize, PAPER_SIZES, ORIENTATIONS } from '@/components/common/DesignSetupFields'
 
 interface SelectBusinessModalProps {
     isOpen: boolean;
     onOpenChange: (open: boolean) => void;
 }
 
-// Reuse enums from shared fields
-
 type FormValues = {
-    templateName: string
+    componentName: string
     paperSize: PaperSize
     orientation: Orientation
     widthCm: string
@@ -27,12 +26,12 @@ type FormValues = {
 
 const schema: yup.ObjectSchema<FormValues> = yup
     .object({
-        templateName: yup
+        componentName: yup
             .string()
             .trim()
-            .min(1, 'Template name is required')
+            .min(1, 'Component name is required')
             .max(100, 'Max 100 characters')
-            .required('Template name is required'),
+            .required('Component name is required'),
         paperSize: yup
             .mixed<PaperSize>()
             .oneOf(PAPER_SIZES.map(p => p.value) as PaperSize[])
@@ -66,11 +65,10 @@ const schema: yup.ObjectSchema<FormValues> = yup
     })
     .required()
 
-const CreateTemplateModal = (props: SelectBusinessModalProps) => {
+const CreateComponentBlockModal = (props: SelectBusinessModalProps) => {
     const dispatch = useAppDispatch()
     const pathname = usePathname()
     const router = useRouter()
-    const { error } = useAppSelector(state => state.templates.detail)
     const {
         control,
         handleSubmit,
@@ -81,7 +79,7 @@ const CreateTemplateModal = (props: SelectBusinessModalProps) => {
         mode: 'onChange',
         resolver: yupResolver(schema),
         defaultValues: {
-            templateName: '',
+            componentName: '',
             paperSize: 'a4',
             orientation: 'portrait',
             widthCm: '21.0',
@@ -91,13 +89,19 @@ const CreateTemplateModal = (props: SelectBusinessModalProps) => {
 
     const onSubmit = async (data: FormValues) => {
         try {
-            const createdTemplate = await dispatch(createTemplate(data)).unwrap()
-            router.push(`${pathname}/${createdTemplate.id}`)
+            const created = await dispatch(createComponentBlock({
+                name: data.componentName,
+                paperSize: data.paperSize,
+                orientation: data.orientation,
+                widthCm: data.widthCm,
+                heightCm: data.heightCm,
+            })).unwrap()
+            router.push(`${pathname}/${created.id}`)
             dispatch(setSidebarOpen(false))
             props.onOpenChange(false)
         } catch (err) {
             // Optionally surface error to the user; keeping console for now
-            console.error('Failed to create template:', err)
+            console.error('Failed to create component block:', err)
         }
     }
 
@@ -113,16 +117,15 @@ const CreateTemplateModal = (props: SelectBusinessModalProps) => {
         >
             <ModalContent>
                 <form onSubmit={handleSubmit(onSubmit)}>
-                    <ModalHeader className="flex flex-col gap-1 border-b border-default-300">Create Template</ModalHeader>
+                    <ModalHeader className="flex flex-col gap-1 border-b border-default-300">Create Component Block</ModalHeader>
                     <ModalBody>
                         <DesignSetupFields
                             control={control}
                             errors={errors}
                             setValue={setValue}
                             watch={watch}
-                            nameField={'templateName'}
-                            nameLabel={'Template Name'}
-                            externalErrorMessage={error}
+                            nameField={'componentName'}
+                            nameLabel={'Component Name'}
                         />
                     </ModalBody>
                     <ModalFooter className='flex justify-end border-t border-default-300 gap-2'>
@@ -149,4 +152,4 @@ const CreateTemplateModal = (props: SelectBusinessModalProps) => {
     )
 }
 
-export default CreateTemplateModal
+export default CreateComponentBlockModal
