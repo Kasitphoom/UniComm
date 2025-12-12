@@ -234,7 +234,7 @@ const ComponentBlocks: Plugin<ComponentBlocksSchema> = {
             container.appendChild(wrapper)
 
             const type = (s as any).type as string
-            const plugin = builtinPluginMap[type]
+            const plugin = type === "ComponentBlocks" ? ComponentBlocks : builtinPluginMap[type]
             if (plugin && typeof plugin.ui === "function") {
                 // Delegate rendering to the child's own UI, using wrapper as rootElement
                 try {
@@ -246,10 +246,8 @@ const ComponentBlocks: Plugin<ComponentBlocksSchema> = {
                         value: childValue,
                         
                     })
-                    console.log("ComponentBlocks: rendered child of type", type)
                 } catch (e) {
                     // Fallback: show a simple label if child UI fails
-                    console.log("ComponentBlocks: child UI render error", e)
                     const fallback = document.createElement("div")
                     fallback.style.width = "100%"
                     fallback.style.height = "100%"
