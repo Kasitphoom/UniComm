@@ -3,6 +3,7 @@ import CredentialsProvider from "next-auth/providers/credentials"
 import GoogleProvider from "next-auth/providers/google"
 import SalesforceProvider from "next-auth/providers/salesforce"
 import prisma from "@/lib/prisma-main"
+import { getBusinessPrisma } from "@/lib/prisma-business"
 import bcrypt from "bcryptjs"
 
 export const authOptions: NextAuthOptions = {
@@ -63,7 +64,6 @@ export const authOptions: NextAuthOptions = {
             }
 
             if (account?.provider === 'salesforce') {
-                console.log( "Salesforce sign in callback", user, account );
                 const email = (user as any)?.email
                 if (!email) return false
                 const existing = await prisma.user.findUnique({ where: { email } })
@@ -88,9 +88,45 @@ export const authOptions: NextAuthOptions = {
                         : []
                     ;(token as any).businessIds = memberships.map((m) => m.businessId)
                     ;(token as any).memberships = memberships
+
+                    // Determine and cache ONLY the current business profile for the selected/active business
+                    // Resolve the user's email for BusinessUser lookup
+                    let email: string | null = (user as any)?.email ?? (token as any)?.email ?? null
+                    if (!email && userId) {
+                        const dbUser = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } })
+                        email = dbUser?.email ?? null
+                    }
+
+                    // Pick active business if already set; otherwise, if single membership, default to it
+                    let activeId: string | null = (token as any).activeBusinessId ?? null
+                    if (!activeId && memberships.length === 1) {
+                        activeId = memberships[0].businessId
+                        ;(token as any).activeBusinessId = activeId
+                    }
+
+                    let currentProfile: { id: string, businessId: string, email: string, displayName: string, role: string } | null = null
+                    if (email && activeId) {
+                        try {
+                            const bpClient = getBusinessPrisma(activeId)
+                            const bu = await bpClient.businessUser.findUnique({ where: { email } })
+                            if (bu) {
+                                currentProfile = {
+                                    id: bu.id,
+                                    businessId: activeId,
+                                    email: (bu as any).email,
+                                    displayName: (bu as any).displayName ?? '',
+                                    role: String((bu as any).role),
+                                }
+                            }
+                        } catch {
+                            // ignore lookup errors
+                        }
+                    }
+                    ;(token as any).currentBusinessProfile = currentProfile
                 } catch {
                     ;(token as any).businessIds = []
                     ;(token as any).memberships = []
+                    ;(token as any).currentBusinessProfile = null
                 }
             }
 
@@ -100,6 +136,34 @@ export const authOptions: NextAuthOptions = {
                 const allowed: string[] = ((token as any).businessIds as string[]) || []
                 if (allowed.includes(requested)) {
                     ;(token as any).activeBusinessId = requested
+
+                    // Update current business profile when active business changes
+                    try {
+                        const userId = (token as any).id as string | undefined
+                        // Resolve email
+                        let email: string | null = (token as any)?.email ?? null
+                        if (!email && userId) {
+                            const dbUser = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } })
+                            email = dbUser?.email ?? null
+                        }
+                        let currentProfile: any = null
+                        if (email) {
+                            const bpClient = getBusinessPrisma(requested)
+                            const bu = await bpClient.businessUser.findUnique({ where: { email } })
+                            if (bu) {
+                                currentProfile = {
+                                    id: bu.id,
+                                    businessId: requested,
+                                    email: (bu as any).email,
+                                    displayName: (bu as any).displayName ?? '',
+                                    role: String((bu as any).role),
+                                }
+                            }
+                        }
+                        ;(token as any).currentBusinessProfile = currentProfile
+                    } catch {
+                        ;(token as any).currentBusinessProfile = null
+                    }
                 }
             }
 
@@ -113,6 +177,7 @@ export const authOptions: NextAuthOptions = {
                 ;(session.user as any).memberships =
                     (token as any).memberships || []
                 ;(session.user as any).activeBusinessId = (token as any).activeBusinessId || null
+                ;(session.user as any).currentBusinessProfile = (token as any).currentBusinessProfile || null
             }
             // Also expose activeBusinessId at the session root for server-side convenience
             ;(session as any).activeBusinessId = (token as any).activeBusinessId || null
