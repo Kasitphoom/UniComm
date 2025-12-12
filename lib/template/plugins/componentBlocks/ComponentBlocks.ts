@@ -222,6 +222,15 @@ const ComponentBlocks: Plugin<ComponentBlocksSchema> = {
             wrapper.style.width = `${widthPct}%`
             wrapper.style.height = `${heightPct}%`
             wrapper.style.boxSizing = "border-box"
+            wrapper.style.transformOrigin = "center"
+            const rotation = typeof (s as any).rotate === "number" ? (s as any).rotate : 0
+            if (rotation) {
+                wrapper.style.transform = `rotate(${rotation}deg)`
+            }
+            if (typeof (s as any).opacity === "number") {
+                wrapper.style.opacity = `${Math.max(0, Math.min(1, (s as any).opacity))}`
+            }
+            wrapper.style.overflow = "visible"
             container.appendChild(wrapper)
 
             const type = (s as any).type as string
