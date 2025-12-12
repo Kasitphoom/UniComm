@@ -30,7 +30,6 @@ const SelectBusinessModal = (props: SelectBusinessModalProps) => {
         setLoading(true);
         const businessResponse: BusinessListResponse = await APICallHandler('/api/business', 'GET')
         setBusinesses(businessResponse.businesses);
-        console.log(businessResponse)
         setLoading(false);
     }
 
