@@ -1,4 +1,5 @@
 import Editor from '@/components/Editor'
+import { componentBlockAdapter } from '@/lib/editor/adapter'
 import { getTemplateData } from '@/query/templateQuery'
 import { redirect } from 'next/navigation'
 import React from 'react'
@@ -9,12 +10,12 @@ const page = async ({ params }: { params: Promise<{ id: string }> }) => {
 
     if (!id) {
         // navigate back to templates page
-        redirect('/templates')
+        redirect('/components')
     }
 
     return (
         <div className='h-full'>
-            <Editor id={id} resource='template' />
+            <Editor id={id} resource='component' draftKeyPrefix='components'/>
         </div>
     )
 }

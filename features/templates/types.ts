@@ -30,4 +30,7 @@ export interface TemplatesState {
     list: TemplatesListState
     detail: SingleTemplatesFetchState
     parsedTemplate: ParsedTemplateFetchState
+    user: {
+        list: TemplatesListState
+    }
 }

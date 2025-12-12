@@ -2,7 +2,7 @@
 import React from 'react'
 import { usePathname } from 'next/navigation'
 import { Divider } from '@heroui/react';
-import { ChevronsLeft, LayoutDashboard, NotepadTextDashed } from 'lucide-react';
+import { BlocksIcon, ChevronsLeft, LayoutDashboard, NotepadTextDashed } from 'lucide-react';
 import { motion } from 'motion/react';
 import Image from 'next/image';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -39,9 +39,14 @@ const SideBar = () => {
                     name: 'Templates',
                     href: '/templates',
                     icon: <NotepadTextDashed size={16} />,
+                },
+                {
+                    name: 'Component Blocks',
+                    href: '/components',
+                    icon: <BlocksIcon size={16} />,
                 }
             ]
-        }
+        },
     ]
 
     return (

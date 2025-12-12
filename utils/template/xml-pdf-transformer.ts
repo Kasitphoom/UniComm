@@ -81,7 +81,6 @@ export const transformXmlToTemplate = async (
         trimValues: false,
     })
     const parsedXml = parser.parse(xmlContent) as any
-    console.log(JSON.stringify(parsedXml, null, 2))
 
     const doc = parsedXml?.Document ?? {}
     const widthAttr = doc["@_width"]

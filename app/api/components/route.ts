@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server"
 import { getBusinessPrisma } from "@/lib/prisma-business"
-import { sanitizeQuery } from "@/utils/sanitizer"
-import { getStorageService } from "@/utils/upload/modules"
-import { readFile } from "node:fs/promises"
-import path from "node:path"
 import { requireAuth } from "@/lib/api-auth"
+import { getStorageService } from "@/utils/upload/modules"
+import { sanitizeQuery } from "@/utils/sanitizer"
+import path from "node:path"
+import { readFile } from "node:fs/promises"
 
+// GET /api/components
+// Supports: query, page, perPage, userOnly
 export async function GET(req: Request) {
     try {
         const auth = await requireAuth(req)
@@ -26,70 +28,63 @@ export async function GET(req: Request) {
         const q = sanitizeQuery(rawQuery)
         const prisma = await getBusinessPrisma(auth.businessId!)
 
-        // Build dynamic where clause
         const where: any = {}
-
         if (q) {
-            where.title = {
-                contains: q,
-                mode: "insensitive" as const,
-            }
+            where.name = { contains: q, mode: "insensitive" as const }
         }
-
         if (userOnly) {
-            // Require authenticated session to filter by user
             where.userId = auth.userId
         }
-        // If no filters applied, use undefined to avoid empty object edge cases
         const whereOrUndefined = Object.keys(where).length ? where : undefined
 
-        const [templates, totalCount] = await Promise.all([
-            prisma.templates.findMany({
+        const [blocks, totalCount] = await Promise.all([
+            prisma.componentBlock.findMany({
                 where: whereOrUndefined,
                 orderBy: { updatedAt: "desc" },
                 take: perPage,
                 skip: (page - 1) * perPage,
-                include: { 
+                include: {
                     user: true,
                     versions: { orderBy: { createdAt: "desc" } },
                 },
             }),
-            prisma.templates.count({ where: whereOrUndefined }),
+            prisma.componentBlock.count({ where: whereOrUndefined }),
         ])
 
         const totalPages = Math.max(0, Math.ceil(totalCount / perPage))
 
         return NextResponse.json({
-            templates,
+            componentBlocks: blocks,
             currentPage: page,
             total: totalPages,
         })
     } catch (err: any) {
         return NextResponse.json(
-            { error: err?.message || "Failed to fetch templates" },
+            { error: err?.message || "Failed to fetch component blocks" },
             { status: 500 }
         )
     }
 }
 
+// POST /api/components
+// Body: { name, description, content }
 export async function POST(req: Request) {
     try {
         const auth = await requireAuth(req)
         if (!auth.ok) return auth.response
 
-        const {userId: uid, businessId } = auth
+        const { userId: uid, businessId } = auth
+        if (!uid) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+        }
 
         const body = await req.json()
-        const {
-            templateName,
-            orientation,
-            widthCm,
-            heightCm,
-        } = body || {}
+        // Support both legacy JSON content creation and new XML-based creation
+        const { name, orientation, widthCm, heightCm } = body || {}
 
-        if (!templateName || !orientation || !widthCm || !heightCm) {
+        if (!name || !orientation || !widthCm || !heightCm) {
             return NextResponse.json(
-                { error: "Missing any of the following in the body: templateName, orientation, widthCm, heightCm" },
+                { error: "Missing any of the following in the body: name, orientation, widthCm, heightCm" },
                 { status: 400 }
             )
         }
@@ -99,8 +94,8 @@ export async function POST(req: Request) {
         }
 
         const prisma = await getBusinessPrisma(businessId!)
-        const findExistingTemplate = await prisma.templates.findUnique({
-            where: { title: templateName },
+        const findExistingTemplate = await prisma.componentBlock.findUnique({
+            where: { name },
         })
         if (findExistingTemplate) {
             return NextResponse.json(
@@ -123,7 +118,7 @@ export async function POST(req: Request) {
                 { status: 500 }
             )
         
-        const filePath = `${businessId}/templates/${encodeURIComponent(templateName)}.xml`
+        const filePath = `${businessId}/component-block/${encodeURIComponent(name)}.xml`
 
         // Load XML template from local file and inject dimensions
         const templatePath = path.join(process.cwd(), 'app', 'api', 'templates', 'template.xml')
@@ -139,9 +134,9 @@ export async function POST(req: Request) {
         // Upload to storage
         const fileUrl = await storageService.uploadFile(Buffer.from(xmlContent, 'utf8'), filePath)
 
-        const created = await prisma.templates.create({
+        const created = await prisma.componentBlock.create({
             data: {
-                title: templateName,
+                name: name,
                 filePath: fileUrl,
                 userId: uid,
                 versions: {
@@ -157,7 +152,7 @@ export async function POST(req: Request) {
         return NextResponse.json(created, { status: 201 })
     } catch (err: any) {
         return NextResponse.json(
-            { error: err?.message || "Failed to create template" },
+            { error: err?.message || "Failed to create component block" },
             { status: 500 }
         )
     }

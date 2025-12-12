@@ -3,35 +3,39 @@
 import React, { useCallback, useEffect, useRef } from 'react'
 import { Designer } from '@pdfme/ui'
 import type { Template } from '@pdfme/common'
-import { text, multiVariableText, image, svg, table, line, rectangle, ellipse, dateTime, date, time, select, radioGroup, checkbox } from '@pdfme/schemas'
-import { addToast, Spinner } from '@heroui/react'
+import { text, multiVariableText, image, svg, table, line, rectangle, ellipse, dateTime, date, time, select } from '@pdfme/schemas'
+import { Spinner } from '@heroui/react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
-import {
-    getParsedTemplateSchema,
-    resetParsedSchema,
-    updateTemplate,
-} from '@/features/templates/templatesSlice'
-import { saveTemplateDraft, loadTemplateDraft, clearTemplateDraft, hashTemplate } from '@/lib/draftStore'
+import { saveTemplateDraft, loadTemplateDraft, hashTemplate } from '@/lib/draftStore'
 import { TemplateWithUser } from '@/types/template'
+import ComponentBlocks from '@/lib/template/plugins/componentBlocks/ComponentBlocks'
+import { componentBlockAdapter, EditorAdapter, templateAdapter } from '@/lib/editor/adapter'
 
 type EditorProps = {
-    type: 'pdf' | 'email'
+    contentType?: 'pdf' | 'email'
     id: string
+    resource?: 'template' | 'component'
+    draftKeyPrefix?: string // namespace for local draft storage (defaults to 'template')
 }
 
-const Editor: React.FC<EditorProps> = ({ type, id }) => {
+/**
+ * Editor component for editing templates.
+ * @param id Template ID to load and edit
+ * @param resource Resource type: 'template' or 'component'
+ * @param draftKeyPrefix Prefix for draft storage keys
+ * @returns JSX Element
+ */
+const Editor: React.FC<EditorProps> = ({ id, resource = 'template', draftKeyPrefix = 'template' }) => {
     const dispatch = useAppDispatch()
     const pathname = usePathname()
     const router = useRouter()
+    const draftId = `${draftKeyPrefix}:${id}`
+    const adapter: EditorAdapter = resource === 'template' ? templateAdapter : componentBlockAdapter // map by resource when component adapter exists
 
-    const { status, data: templateData, error } = useAppSelector(
-        (s) => s.templates.parsedTemplate
-    )
+    const { status, data: templateData, error } = useAppSelector(adapter.selectParsed)
 
-    const currentTemplateDetail = useAppSelector(
-        (s) => s.templates.detail.data
-    )
+    const currentTemplateDetail = useAppSelector(adapter.selectDetail)
 
     const containerRef = useRef<HTMLDivElement>(null)
     const designerRef = useRef<Designer | null>(null)
@@ -55,22 +59,20 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
     }, [])
 
     const flushToCloud = useCallback(async () => {
-        const tpl = lastDraftTplRef.current ?? (await loadTemplateDraft(id))
+        const tpl = lastDraftTplRef.current ?? (await loadTemplateDraft(draftId))
         if (!tpl) return
 
         const tplHash = await hashTemplate(tpl)
         if (tplHash === lastUploadedHashRef.current || tplHash === currentTemplateDetail?.versions?.[0].version) return // unchanged → skip
 
         try {
-            const action = await dispatch(updateTemplate({ id, templateData: tpl }))
-            // unwrap if you use RTK  - optional:
-            // const payload = await (action as any).unwrap?.()
-            const hash = (action.payload as TemplateWithUser).versions?.[0]?.version 
+            const payload = await adapter.updateResource(dispatch, { id, templateData: tpl })
+            const hash = payload.versions?.[0]?.version 
             lastUploadedHashRef.current = hash ?? tplHash
         } catch (e) {
             console.warn('Checkpoint error:', e)
         }
-    }, [dispatch, id])
+    }, [dispatch, id, adapter, currentTemplateDetail, draftId])
 
     const scheduleIdleUpload = useCallback(() => {
         if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
@@ -78,9 +80,9 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
     }, [flushToCloud])
 
     const fetchFresh = useCallback(() => {
-        dispatch(resetParsedSchema())
-        dispatch(getParsedTemplateSchema(id))
-    }, [dispatch, id])
+        adapter.resetParsed(dispatch)
+        adapter.loadParsed(dispatch, id)
+    }, [dispatch, id, adapter])
 
     // Debounced push of template updates to the store/API
     const handleDesignerChange = useCallback(
@@ -89,10 +91,10 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
             latestTemplateRef.current = updated
             latestTemplateRef.current = updated
             lastDraftTplRef.current = updated
-            await saveTemplateDraft(id, updated) // fast local autosave
+            await saveTemplateDraft(draftId, updated) // fast local autosave
             scheduleIdleUpload()
         },
-        [dispatch, id]
+        [dispatch, draftId]
     )
 
     useEffect(() => {
@@ -100,11 +102,11 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
         return () => {
             if (debounceRef.current) clearTimeout(debounceRef.current)
             safeDestroy()
-            dispatch(resetParsedSchema())
+            adapter.resetParsed(dispatch)
             // Attempt a final flush on unmount
             void flushToCloud()
         }
-    }, [fetchFresh, dispatch, safeDestroy, pathname])
+    }, [fetchFresh, dispatch, safeDestroy, pathname, adapter])
 
     useEffect(() => {
         if (!templateData || status !== 'succeeded') return
@@ -117,7 +119,7 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
                     zoomLevel: 1,
                     theme: { token: { colorPrimary: '#7828c8' } },
                 },
-                plugins: { text, multiVariableText, image, svg, table, line, rectangle, ellipse, dateTime, date, time, select },
+                plugins: { text, multiVariableText, image, svg, table, line, rectangle, ellipse, dateTime, date, time, select, ComponentBlocks },
             })
             designerRef.current.onChangeTemplate(handleDesignerChange)
             return
@@ -125,18 +127,18 @@ const Editor: React.FC<EditorProps> = ({ type, id }) => {
 
         const updateTemplate = async () => {
             if (designerRef.current) {
-                const templateDraft = await loadTemplateDraft(id)
+                const templateDraft = await loadTemplateDraft(draftId)
                 designerRef.current.updateTemplate(templateData ?? templateDraft)
             }
         }
 
         updateTemplate()
-    }, [status, templateData, handleDesignerChange])
+    }, [status, templateData, handleDesignerChange, draftId])
 
     // -------- Navigation Guards (close/reload, link clicks, back/forward) --------
     useEffect(() => {
         const onPageHide = async () => {
-            const tpl = lastDraftTplRef.current ?? (await loadTemplateDraft(id))
+            const tpl = lastDraftTplRef.current ?? (await loadTemplateDraft(draftId))
             if (!tpl) return
             const tplHash = await hashTemplate(tpl)
             if (tplHash === lastUploadedHashRef.current) return
