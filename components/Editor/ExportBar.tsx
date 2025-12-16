@@ -318,7 +318,7 @@ const SubmitApprovalButton = () => {
                 </ScrollShadow>
 
                 {/* Footer */}
-                <div className="p-3 w-full bg-default-50 flex justify-center items-center border-t">
+                <div className="p-3 w-full bg-default-50 flex justify-center items-center border-t border-default-200">
                     <Button
                         size="sm"
                         color="secondary"
