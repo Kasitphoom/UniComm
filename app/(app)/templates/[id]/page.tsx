@@ -15,7 +15,7 @@ const page = async ({ params }: { params: Promise<{ id: string }> }) => {
 
     return (
         <div className='h-full flex flex-col'>
-            <TemplateExportBar />
+            <TemplateExportBar id={id} />
             <Editor id={id} resource='template' />
         </div>
     )
