@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, Key } from 'react'
 import {
     Button,
     ButtonGroup,
@@ -22,7 +22,7 @@ import {
     ChevronDown,
     Search
 } from 'lucide-react'
-import ExportButton from './ExportButton'
+import ExportButton, { ExportType } from './ExportButton'
 
 // --- 1. TYPES & MOCK API ---
 
@@ -113,7 +113,7 @@ const fetchUsers = async (page: number, query: string, perPage = 8): Promise<Api
 
 // --- 2. COMPONENT ---
 
-const SubmitApprovalButton = () => {
+const SubmitApprovalButton = ({ onSubmit }: { onSubmit?: () => void }) => {
     const [isOpen, setIsOpen] = useState(false)
     
     // Data State
@@ -325,7 +325,7 @@ const SubmitApprovalButton = () => {
                         variant='light'
                         className='rounded-medium'
                         startContent={<Send size={14} />}
-                        onPress={handleSubmit}
+                        onPress={onSubmit}
                         isLoading={isSubmitting}
                         isDisabled={selectedUsers.length === 0}
                     >
@@ -338,28 +338,81 @@ const SubmitApprovalButton = () => {
 }
 
 // --- 3. EXPORT BAR ---
+/**
+ * A toolbar component for document export and related actions.
+ * 
+ * @param onHistoryButtonClick a function to handle history button click
+ * @param onSettingsButtonClick a function to handle settings button click
+ * 
+ * @param previewable whether to show the preview button
+ * @param onPreviewButtonClick a function to handle preview button click
+ * 
+ * @param exportable whether to show the export button
+ * @param onExportButtonClick a function to handle export button click, receives the export format key
+ * 
+ * @param requireApproval whether to show the submit approval button
+ * @param onSubmitApprovalClick a function to handle submit approval button click
+ *  
+ * @returns 
+ */
+const ExportBar = ({
+    onHistoryButtonClick,
+    onSettingsButtonClick,
 
-const ExportBar = () => {
+    previewable = false,
+    onPreviewButtonClick,
+
+    exportable = false,
+    onExportButtonClick,
+
+    requireApproval = false,
+    onSubmitApprovalClick,
+}: {
+    onHistoryButtonClick?: () => void;
+    onSettingsButtonClick?: () => void;
+
+    previewable?: boolean;
+    onPreviewButtonClick?: () => void;
+
+    exportable?: boolean;
+    onExportButtonClick?: (key: Key) => void;
+
+    requireApproval?: boolean;
+    onSubmitApprovalClick?: () => void;
+}) => {
     return (
         <div className="w-full px-4 py-2 bg-white border-b border-default-200 flex justify-end items-center">
             <div className='flex items-center gap-4'> 
-                {/* GROUP 1: Utilities - Subtle, no background unless hovered */}
                 <div className="flex items-center gap-1">
-                    <Button isIconOnly variant="light" color="default" size="sm">
+                    <Button isIconOnly variant="light" color="default" size="sm" onPress={onHistoryButtonClick}>
                         <History size={20} />
                     </Button>
-                    <Button isIconOnly variant="light" color="default" size="sm">
+                    <Button isIconOnly variant="light" color="default" size="sm" onPress={onSettingsButtonClick}>
                         <Settings size={20} />
                     </Button>
                 </div>
 
+                { previewable || exportable ? (
                 <ButtonGroup variant="flat" className='overflow-hidden rounded-medium' color="secondary">
-                    <Button startContent={<EyeIcon size={18} />}>
-                        Preview
-                    </Button>
-                    <ExportButton />
+                    {
+                        previewable && (
+                            <Button startContent={<EyeIcon size={18} />} onPress={onPreviewButtonClick}>
+                                Preview
+                            </Button>
+                        )
+                    }
+                    {
+                        exportable && (
+                            <ExportButton types={[ExportType.PDF, ExportType.XML]} onPress={onExportButtonClick} />
+                        )
+                    }
                 </ButtonGroup>
-                <SubmitApprovalButton />
+                ) : null }
+                {
+                    requireApproval && (
+                        <SubmitApprovalButton onSubmit={onSubmitApprovalClick} />
+                    )
+                }
             </div>
         </div>
     )

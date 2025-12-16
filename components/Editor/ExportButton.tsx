@@ -14,13 +14,15 @@ import {
     ChevronDown
 } from 'lucide-react'
 
-const ExportButton = () => {
-    // Mock handler for export actions
-    const handleExport = (key: React.Key) => {
-        console.log(`Exporting to ${key}...`)
-        // Add your export logic here
-    }
+export enum ExportType {
+    PDF = 'pdf',
+    XML = 'xml'
+}
 
+const ExportButton = ({ onPress, types }: { 
+    types: ExportType[]
+    onPress?: (key: React.Key) => void;
+}) => {
     return (
         <Dropdown placement="bottom-end">
             <DropdownTrigger>
@@ -35,24 +37,28 @@ const ExportButton = () => {
             </DropdownTrigger>
             <DropdownMenu
                 aria-label="Export Options"
-                onAction={handleExport}
+                onAction={onPress}
                 variant="flat"
                 color="secondary"
             >
-                <DropdownItem
-                    key="pdf"
-                    startContent={<FileText size={18} />}
-                    description="Download a PDF preview of the document"
-                >
-                    PDF Preview
-                </DropdownItem>
-                <DropdownItem
-                    key="xml"
-                    startContent={<FileCode size={18} />}
-                    description="Export data structure to XML"
-                >
-                    XML Data
-                </DropdownItem>
+                {types.includes(ExportType.PDF) ? (
+                    <DropdownItem
+                        key="pdf"
+                        startContent={<FileText size={18} />}
+                        description="Download a PDF preview of the document"
+                    >
+                        PDF Preview
+                    </DropdownItem>
+                ) : null}
+                {types.includes(ExportType.XML) ? (
+                    <DropdownItem
+                        key="xml"
+                        startContent={<FileCode size={18} />}
+                        description="Export data structure to XML"
+                    >
+                        XML Data
+                    </DropdownItem>
+                ) : null}
             </DropdownMenu>
         </Dropdown>
     )

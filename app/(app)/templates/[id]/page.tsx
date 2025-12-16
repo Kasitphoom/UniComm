@@ -1,5 +1,5 @@
 import Editor from '@/components/Editor'
-import ExportBar from '@/components/Editor/ExportBar'
+import TemplateExportBar from '@/components/templates/TemplateExportBar'
 import { getTemplateData } from '@/query/templateQuery'
 import { redirect } from 'next/navigation'
 import React from 'react'
@@ -15,7 +15,7 @@ const page = async ({ params }: { params: Promise<{ id: string }> }) => {
 
     return (
         <div className='h-full flex flex-col'>
-            <ExportBar />
+            <TemplateExportBar />
             <Editor id={id} resource='template' />
         </div>
     )
