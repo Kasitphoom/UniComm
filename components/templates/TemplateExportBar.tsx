@@ -1,11 +1,20 @@
 'use client'
-import React from 'react'
+import React, { useState } from 'react'
 import ExportBar from '../Editor/ExportBar'
 import { getStorageService } from '@/utils/upload/modules'
 import { TemplateWithUser } from '@/types/template'
-import { addToast } from '@heroui/react'
+import { addToast, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, useDisclosure, Spinner } from '@heroui/react'
+import { useAppSelector } from '@/store/hooks'
+import { generate } from '@pdfme/generator'
+import { plugins } from '../Editor/plugins'
+import { Template, getInputFromTemplate } from '@pdfme/common'
+import { X } from 'lucide-react'
 
 const TemplateExportBar = ({ id }: { id: string }) => {
+    const { isOpen, onOpen, onOpenChange } = useDisclosure()
+    const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null)
+    const [isGeneratingPreview, setIsGeneratingPreview] = useState(false)
+    const parsedTemplate = useAppSelector(state => state.templates.parsedTemplate)
 
     // Export Handler
     const handleExport = async (key: React.Key) => {
@@ -90,13 +99,121 @@ const TemplateExportBar = ({ id }: { id: string }) => {
         }
     }
 
+    // Handle preview
+    const handlePreview = async () => {
+        setIsGeneratingPreview(true)
+        try {
+            if (!parsedTemplate?.data) {
+                addToast({
+                    title: 'Preview Error',
+                    description: 'Parsed template data is not available for preview',
+                    color: 'danger',
+                })
+                return
+            }
+
+            const template = parsedTemplate.data as Template
+            
+            // Generate mock inputs from template schema
+            // This creates empty strings for all fields in the template
+            const mockInputs = getInputFromTemplate(template).map(obj => {
+                const mockInput: Record<string, string> = {}
+                for (const key of Object.keys(obj)) {
+                    mockInput[key] = ''
+                }
+                return mockInput
+            })
+
+            // Generate PDF as Uint8Array
+            const pdfBytes = await generate({
+                template,
+                inputs: mockInputs.length > 0 ? mockInputs : [{}],
+                plugins
+            })
+            console.log(pdfBytes)
+
+            // Convert to blob and create object URL
+            // const blob = new Blob([pdfBytes.buffer], { type: 'application/pdf' })
+            // const url = URL.createObjectURL(blob)
+            // window.open(url, '_blank')
+            // setPreviewPdfUrl(url)
+            // onOpen()
+
+            addToast({
+                title: 'Preview Ready',
+                description: 'PDF preview generated successfully',
+                color: 'success',
+            })
+        } catch (error: any) {
+            addToast({
+                title: 'Preview Error',
+                description: `Failed to generate preview: ${error.message || error}`,
+                color: 'danger',
+            })
+            console.error('Preview generation error:', error)
+        } finally {
+            setIsGeneratingPreview(false)
+        }
+    }
+
     return (
-        <ExportBar
-            previewable
-            exportable
-            requireApproval
-            onExportButtonClick={handleExport} 
-        />
+        <>
+            <ExportBar
+                previewable
+                exportable
+                requireApproval
+                onExportButtonClick={handleExport}
+                onPreviewButtonClick={handlePreview}
+            />
+
+            {/* PDF Preview Modal */}
+            <Modal
+                isOpen={isOpen}
+                onOpenChange={onOpenChange}
+                size="5xl"
+                backdrop="blur"
+                classNames={{
+                    base: "max-h-[95vh]",
+                    closeButton: "hidden"
+                }}
+            >
+                <ModalContent className="flex flex-col h-full">
+                    {(onClose) => (
+                        <>
+                            <ModalHeader className="flex justify-between items-center">
+                                <span>PDF Preview</span>
+                                <Button
+                                    isIconOnly
+                                    variant="light"
+                                    size="sm"
+                                    onPress={onClose}
+                                >
+                                    <X size={20} />
+                                </Button>
+                            </ModalHeader>
+                            
+                            <ModalBody className="flex-1 overflow-hidden p-0">
+                                {isGeneratingPreview ? (
+                                    <div className="flex items-center justify-center h-96">
+                                        <Spinner label="Generating preview..." />
+                                    </div>
+                                ) : previewPdfUrl ? (
+                                    <iframe
+                                        src={previewPdfUrl}
+                                        className="w-full h-full border-0"
+                                        title="PDF Preview"
+                                    />
+                                ) : (
+                                    <div className="flex items-center justify-center h-96 text-default-400">
+                                        No PDF loaded
+                                    </div>
+                                )}
+                            </ModalBody>
+                        </>
+                    )}
+                </ModalContent>
+            </Modal>
+        </>
     )
 }
 

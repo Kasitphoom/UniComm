@@ -3,13 +3,12 @@
 import React, { useCallback, useEffect, useRef } from 'react'
 import { Designer } from '@pdfme/ui'
 import type { Template } from '@pdfme/common'
-import { text, multiVariableText, image, svg, table, line, rectangle, ellipse, dateTime, date, time, select } from '@pdfme/schemas'
+import { plugins } from './Editor/plugins'
 import { Spinner } from '@heroui/react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { saveTemplateDraft, loadTemplateDraft, hashTemplate } from '@/lib/draftStore'
 import { TemplateWithUser } from '@/types/template'
-import ComponentBlocks from '@/lib/template/plugins/componentBlocks/ComponentBlocks'
 import { componentBlockAdapter, EditorAdapter, templateAdapter } from '@/lib/editor/adapter'
 
 type EditorProps = {
@@ -119,7 +118,7 @@ const Editor: React.FC<EditorProps> = ({ id, resource = 'template', draftKeyPref
                     zoomLevel: 1,
                     theme: { token: { colorPrimary: '#7828c8' } },
                 },
-                plugins: { text, multiVariableText, image, svg, table, line, rectangle, ellipse, dateTime, date, time, select, ComponentBlocks },
+                plugins: plugins,
             })
             designerRef.current.onChangeTemplate(handleDesignerChange)
             return
