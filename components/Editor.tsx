@@ -199,22 +199,20 @@ const Editor: React.FC<EditorProps> = ({ id, resource = 'template', draftKeyPref
     const hasError = status === 'failed'
 
     return (
-        <div className="relative h-full w-full min-w-0 overflow-hidden">
-            <div
-                ref={containerRef}
-                className="relative h-full w-full min-w-0 overflow-hidden flex items-center justify-center"
-            >
-                {isLoading && (
-                    <Spinner size="lg" color="secondary">
-                        Initialising data...
-                    </Spinner>
-                )}
-                {hasError && (
-                    <div className="text-sm text-danger-500">
-                        Failed to load template: {String(error ?? 'Unknown error')}
-                    </div>
-                )}
-            </div>
+        <div
+            ref={containerRef}
+            className="relative flex-1 w-full min-w-0 overflow-hidden flex items-center justify-center"
+        >
+            {isLoading && (
+                <Spinner size="lg" color="secondary">
+                    Initialising data...
+                </Spinner>
+            )}
+            {hasError && (
+                <div className="text-sm text-danger-500">
+                    Failed to load template: {String(error ?? 'Unknown error')}
+                </div>
+            )}
         </div>
     )
 }
