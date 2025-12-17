@@ -147,14 +147,13 @@ const TemplateExportBar = ({ id }: { id: string }) => {
             // Convert to blob and create object URL
             const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' })
             const url = URL.createObjectURL(blob)
-            window.open(url, '_blank')
-            // setPreviewPdfUrl(url)
-            // onOpen()
+            // window.open(url, '_blank')
+            setPreviewPdfUrl(url)
+            onOpen()
 
             addToast({
                 title: 'Preview Ready',
-                description: 'PDF preview generated successfully',
-                color: 'success',
+                description: 'Press [Esc] or the close button to exit preview.',
             })
         } catch (error: any) {
             addToast({
@@ -182,11 +181,10 @@ const TemplateExportBar = ({ id }: { id: string }) => {
             <Modal
                 isOpen={isOpen}
                 onOpenChange={onOpenChange}
-                size="5xl"
+                size="full"
                 backdrop="blur"
                 classNames={{
-                    base: "max-h-[95vh]",
-                    closeButton: "hidden"
+                    // closeButton: "hidden"
                 }}
             >
                 <ModalContent className="flex flex-col h-full">
@@ -194,14 +192,6 @@ const TemplateExportBar = ({ id }: { id: string }) => {
                         <>
                             <ModalHeader className="flex justify-between items-center">
                                 <span>PDF Preview</span>
-                                <Button
-                                    isIconOnly
-                                    variant="light"
-                                    size="sm"
-                                    onPress={onClose}
-                                >
-                                    <X size={20} />
-                                </Button>
                             </ModalHeader>
                             
                             <ModalBody className="flex-1 overflow-hidden p-0">

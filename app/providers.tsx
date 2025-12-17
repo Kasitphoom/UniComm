@@ -9,7 +9,7 @@ import { UserProvider } from '@/components/providers/UserProvider'
 export function Providers({ children }: { children: React.ReactNode }) {
     return (
         <HeroUIProvider>
-            <ToastProvider placement='bottom-right' toastProps={{
+            <ToastProvider placement='top-right' toastProps={{
                 color: "secondary",
                 timeout: 2000,
                 variant: "flat",
