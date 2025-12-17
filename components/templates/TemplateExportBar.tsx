@@ -99,6 +99,16 @@ const TemplateExportBar = ({ id }: { id: string }) => {
         }
     }
 
+    // Extract actual content from schema
+    const getContentFromSchema = (schema: any): string => {
+        if (!schema) return '';
+        // If schema has content property, use it directly
+        if (schema.content !== undefined && schema.content !== null) {
+            return String(schema.content);
+        }
+        return '';
+    };
+
     // Handle preview
     const handlePreview = async () => {
         setIsGeneratingPreview(true)
@@ -114,12 +124,15 @@ const TemplateExportBar = ({ id }: { id: string }) => {
 
             const template = parsedTemplate.data as Template
             
-            // Generate mock inputs from template schema
-            // This creates empty strings for all fields in the template
-            const mockInputs = getInputFromTemplate(template).map(obj => {
+            // Generate inputs from template schema using actual content
+            const mockInputs = getInputFromTemplate(template).map((obj, pageIndex) => {
                 const mockInput: Record<string, string> = {}
+                const pageSchemas = template.schemas[pageIndex] || []
+                
                 for (const key of Object.keys(obj)) {
-                    mockInput[key] = ''
+                    // Find the matching schema for this key
+                    const schema = pageSchemas.find((s: any) => s.name === key)
+                    mockInput[key] = schema ? getContentFromSchema(schema) : ''
                 }
                 return mockInput
             })
@@ -127,15 +140,14 @@ const TemplateExportBar = ({ id }: { id: string }) => {
             // Generate PDF as Uint8Array
             const pdfBytes = await generate({
                 template,
-                inputs: mockInputs.length > 0 ? mockInputs : [{}],
+                inputs: mockInputs,
                 plugins
             })
-            console.log(pdfBytes)
 
             // Convert to blob and create object URL
-            // const blob = new Blob([pdfBytes.buffer], { type: 'application/pdf' })
-            // const url = URL.createObjectURL(blob)
-            // window.open(url, '_blank')
+            const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' })
+            const url = URL.createObjectURL(blob)
+            window.open(url, '_blank')
             // setPreviewPdfUrl(url)
             // onOpen()
 
