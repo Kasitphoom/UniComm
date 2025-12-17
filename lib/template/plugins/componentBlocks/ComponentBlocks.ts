@@ -72,51 +72,9 @@ const fetchLatestComponentSchemas = async (componentName?: string): Promise<Sche
 // Normalize schema content for PDF rendering, providing safe values per type
 const getSchemaContent = (schema: any): string => {
     if (!schema) return "";
-    
     const value = schema.content;
-    const type = schema.type;
-    console.log("Normalizing content for type:", type, "value:", value);
-
-    // 1. IMAGE: Return raw Data URI string. 
-    // Do NOT strip the "data:image..." prefix; the plugin needs it for mime-type detection.
-    if (type === 'image') {
-        return value ? String(value) : "";
-    }
-
-    // 2. TABLE: Ensure strict JSON string format.
-    if (type === 'table') {
-        // If content is already an object (Array), convert to JSON string
-        if (Array.isArray(value)) {
-            return JSON.stringify(value);
-        }
-        // If content is a string, validate it is parseable JSON
-        if (typeof value === 'string') {
-            try {
-                JSON.parse(value);
-                return value; // It's valid JSON, pass it through
-            } catch (e) {
-                // If parsing fails (e.g. "test 1"), fallback to empty table
-                console.warn("Invalid Table JSON, falling back to empty:", value);
-                return "[]"; 
-            }
-        }
-        return "[]";
-    }
-
-    // 3. TIME/DATE: Validate Date to prevent RangeError
-    if (type === 'time' || type === 'date') {
-        if (!value) return ""; // Let plugin handle empty (often defaults to now)
-
-        // Normalise simple HH:mm or HH:mm:ss into a valid ISO date so Date() does not throw
-        const normalisedTime = typeof value === "string" && /^\d{1,2}:\d{2}(:\d{2})?$/.test(value)
-            ? `1970-01-01T${value.length === 5 ? `${value}:00` : value}`
-            : value
-
-        const d = new Date(normalisedTime);
-        return isNaN(d.getTime()) ? "" : String(normalisedTime);
-    }
-
-    // 4. GENERAL FALLBACK (Text, barcodes, etc.)
+    
+    // fallback
     if (value === undefined || value === null) return "";
     return typeof value === 'string' ? value : String(value);
 }
