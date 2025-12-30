@@ -20,8 +20,7 @@ const TemplateExportBar = ({ id }: { id: string }) => {
     const handleExport = async (key: React.Key) => {
         switch (key) {
             case 'pdf':
-                console.log('Exporting template as PDF...')
-                // Add your PDF export logic here
+                await exportPDF()
                 break
             case 'xml':
                 await exportXML()
@@ -99,6 +98,44 @@ const TemplateExportBar = ({ id }: { id: string }) => {
         }
     }
 
+    const exportPDF = async () => {
+        try {
+            if (!parsedTemplate?.data) {
+                addToast({
+                    title: 'PDF Download Error',
+                    description: 'Parsed template data is not available for PDF export',
+                    color: 'danger',
+                })
+                return
+            }
+
+            const template = parsedTemplate.data as Template
+
+            // Generate PDF as Uint8Array
+            const pdfBytes = await generatePdfPreview(template)
+
+            // Convert to blob and create object URL
+            const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' })
+            const link = document.createElement('a')
+            link.href = URL.createObjectURL(blob)
+            link.download = `${template.title || 'document'}.pdf`
+            link.click()
+            link.remove()
+
+            addToast({
+                title: 'PDF Ready',
+                description: 'Your PDF download should begin shortly.',
+            })
+        } catch (error: any) {
+            addToast({
+                title: 'PDF Download Error',
+                description: `Failed to generate PDF: ${error.message || error}`,
+                color: 'danger',
+            })
+            console.error('Preview generation error:', error)
+        }
+    }
+
     // Extract actual content from schema
     const getContentFromSchema = (schema: any): string => {
         if (!schema) return '';
@@ -108,6 +145,29 @@ const TemplateExportBar = ({ id }: { id: string }) => {
         }
         return '';
     };
+
+    const generatePdfPreview = async (template: Template) => {
+        const mockInputs = getInputFromTemplate(template).map((obj, pageIndex) => {
+            const mockInput: Record<string, string> = {}
+            const pageSchemas = template.schemas[pageIndex] || []
+            
+            for (const key of Object.keys(obj)) {
+                // Find the matching schema for this key
+                const schema = pageSchemas.find((s: any) => s.name === key)
+                mockInput[key] = schema ? getContentFromSchema(schema) : ''
+            }
+            return mockInput
+        })
+
+        // Generate PDF as Uint8Array
+        const pdfBytes = await generate({
+            template,
+            inputs: mockInputs,
+            plugins
+        })
+
+        return pdfBytes
+    }
 
     // Handle preview
     const handlePreview = async () => {
@@ -123,31 +183,13 @@ const TemplateExportBar = ({ id }: { id: string }) => {
             }
 
             const template = parsedTemplate.data as Template
-            
-            // Generate inputs from template schema using actual content
-            const mockInputs = getInputFromTemplate(template).map((obj, pageIndex) => {
-                const mockInput: Record<string, string> = {}
-                const pageSchemas = template.schemas[pageIndex] || []
-                
-                for (const key of Object.keys(obj)) {
-                    // Find the matching schema for this key
-                    const schema = pageSchemas.find((s: any) => s.name === key)
-                    mockInput[key] = schema ? getContentFromSchema(schema) : ''
-                }
-                return mockInput
-            })
 
             // Generate PDF as Uint8Array
-            const pdfBytes = await generate({
-                template,
-                inputs: mockInputs,
-                plugins
-            })
+            const pdfBytes = await generatePdfPreview(template)
 
             // Convert to blob and create object URL
             const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' })
             const url = URL.createObjectURL(blob)
-            // window.open(url, '_blank')
             setPreviewPdfUrl(url)
             onOpen()
 
