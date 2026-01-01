@@ -9,6 +9,7 @@ import { generate } from '@pdfme/generator'
 import { plugins } from '../Editor/plugins'
 import { Template, getInputFromTemplate } from '@pdfme/common'
 import { X } from 'lucide-react'
+import { clientFetchParsedTemplate, clientFetchTemplate } from '@/utils/template/utils'
 
 const TemplateExportBar = ({ id }: { id: string }) => {
     const { isOpen, onOpen, onOpenChange } = useDisclosure()
@@ -41,20 +42,7 @@ const TemplateExportBar = ({ id }: { id: string }) => {
             return
         }
 
-        const result = await fetch(`/api/templates/${id}`, 
-            {
-                credentials: 'include'
-            }
-        )
-        if (!result.ok) {
-            addToast({
-                title: 'Export Error',
-                description: `Failed to fetch template data: ${result.statusText}`,
-                color: 'danger',
-            })
-            return
-        }
-        const template = (await result.json()) as TemplateWithUser
+        const template = await clientFetchTemplate(id)
         const filePath = template.filePath
         if (!filePath) {
             addToast({
@@ -100,16 +88,9 @@ const TemplateExportBar = ({ id }: { id: string }) => {
 
     const exportPDF = async () => {
         try {
-            if (!parsedTemplate?.data) {
-                addToast({
-                    title: 'PDF Download Error',
-                    description: 'Parsed template data is not available for PDF export',
-                    color: 'danger',
-                })
-                return
-            }
 
-            const template = parsedTemplate.data as Template
+            const templateData = await clientFetchTemplate(id)
+            const template = await clientFetchParsedTemplate(id)
 
             // Generate PDF as Uint8Array
             const pdfBytes = await generatePdfPreview(template)
@@ -118,7 +99,7 @@ const TemplateExportBar = ({ id }: { id: string }) => {
             const blob = new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' })
             const link = document.createElement('a')
             link.href = URL.createObjectURL(blob)
-            link.download = `${template.title || 'document'}.pdf`
+            link.download = `${templateData.title || 'document'}.pdf`
             link.click()
             link.remove()
 
@@ -224,10 +205,6 @@ const TemplateExportBar = ({ id }: { id: string }) => {
                 isOpen={isOpen}
                 onOpenChange={onOpenChange}
                 size="full"
-                backdrop="blur"
-                classNames={{
-                    // closeButton: "hidden"
-                }}
             >
                 <ModalContent className="flex flex-col h-full">
                     {(onClose) => (
