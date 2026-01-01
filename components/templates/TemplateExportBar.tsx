@@ -8,8 +8,38 @@ import { useAppSelector } from '@/store/hooks'
 import { generate } from '@pdfme/generator'
 import { plugins } from '../Editor/plugins'
 import { Template, getInputFromTemplate } from '@pdfme/common'
-import { X } from 'lucide-react'
 import { clientFetchParsedTemplate, clientFetchTemplate } from '@/utils/template/utils'
+
+// Extract actual content from a schema entry for mock input generation
+const getContentFromSchema = (schema: any): string => {
+    if (!schema) return ''
+    if (schema.content !== undefined && schema.content !== null) {
+        return String(schema.content)
+    }
+    return ''
+}
+
+// Shared PDF preview generator that produces a Uint8Array for a template
+export const generatePdfPreview = async (template: Template) => {
+    const mockInputs = getInputFromTemplate(template).map((obj, pageIndex) => {
+        const mockInput: Record<string, string> = {}
+        const pageSchemas = template.schemas[pageIndex] || []
+
+        for (const key of Object.keys(obj)) {
+            const schema = pageSchemas.find((s: any) => s.name === key)
+            mockInput[key] = schema ? getContentFromSchema(schema) : ''
+        }
+        return mockInput
+    })
+
+    const pdfBytes = await generate({
+        template,
+        inputs: mockInputs,
+        plugins,
+    })
+
+    return pdfBytes
+}
 
 const TemplateExportBar = ({ id }: { id: string }) => {
     const { isOpen, onOpen, onOpenChange } = useDisclosure()
@@ -115,39 +145,6 @@ const TemplateExportBar = ({ id }: { id: string }) => {
             })
             console.error('Preview generation error:', error)
         }
-    }
-
-    // Extract actual content from schema
-    const getContentFromSchema = (schema: any): string => {
-        if (!schema) return '';
-        // If schema has content property, use it directly
-        if (schema.content !== undefined && schema.content !== null) {
-            return String(schema.content);
-        }
-        return '';
-    };
-
-    const generatePdfPreview = async (template: Template) => {
-        const mockInputs = getInputFromTemplate(template).map((obj, pageIndex) => {
-            const mockInput: Record<string, string> = {}
-            const pageSchemas = template.schemas[pageIndex] || []
-            
-            for (const key of Object.keys(obj)) {
-                // Find the matching schema for this key
-                const schema = pageSchemas.find((s: any) => s.name === key)
-                mockInput[key] = schema ? getContentFromSchema(schema) : ''
-            }
-            return mockInput
-        })
-
-        // Generate PDF as Uint8Array
-        const pdfBytes = await generate({
-            template,
-            inputs: mockInputs,
-            plugins
-        })
-
-        return pdfBytes
     }
 
     // Handle preview

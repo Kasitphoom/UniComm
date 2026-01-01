@@ -9,7 +9,9 @@ import { Dot, EllipsisVertical, TrashIcon } from 'lucide-react'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import React, { Key } from 'react'
+import React, { Key, useEffect, useState } from 'react'
+import { clientFetchParsedTemplate } from '@/utils/template/utils'
+import { generatePdfPreview } from './TemplateExportBar'
 
 const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
     const dispatch = useAppDispatch()
@@ -17,6 +19,51 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
     const pathname = usePathname()
     const searchParams = useSearchParams()
     const viewMode = useAppSelector(state => state.ui.viewMode)
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+    const [isPreviewLoading, setIsPreviewLoading] = useState(false)
+    const [previewError, setPreviewError] = useState<string | null>(null)
+    const previewSrc = previewUrl ? `${previewUrl}#view=FitH` : null
+
+    useEffect(() => {
+        if (viewMode !== 'grid') return
+
+        let isCancelled = false
+        let objectUrl: string | null = null
+
+        const loadPreview = async () => {
+            setIsPreviewLoading(true)
+            setPreviewError(null)
+            setPreviewUrl(null)
+
+            try {
+                const parsedTemplate = await clientFetchParsedTemplate(template.id)
+                if (isCancelled) return
+
+                const pdfBytes = await generatePdfPreview(parsedTemplate)
+                if (isCancelled) return
+
+                objectUrl = URL.createObjectURL(new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' }))
+                setPreviewUrl(objectUrl)
+            } catch (error: any) {
+                if (isCancelled) return
+                console.error('Failed to load template preview:', error)
+                setPreviewError(error?.message || 'Failed to load preview')
+            } finally {
+                if (!isCancelled) {
+                    setIsPreviewLoading(false)
+                }
+            }
+        }
+
+        loadPreview()
+
+        return () => {
+            isCancelled = true
+            if (objectUrl) {
+                URL.revokeObjectURL(objectUrl)
+            }
+        }
+    }, [template.id, viewMode])
 
     const onCardClick = () => {
         router.push(`${pathname}/${template.id}`)
@@ -50,7 +97,25 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
             <CardBody>
                 {
                     viewMode === 'grid' ? (
-                        <Skeleton className='w-full h-full rounded-md'></Skeleton>
+                        <div className='relative w-full h-full overflow-hidden rounded-md bg-default-100'>
+                            {isPreviewLoading && !previewUrl && (
+                                <Skeleton className='absolute inset-0 w-full h-full rounded-md' />
+                            )}
+                            {previewSrc ? (
+                                <iframe
+                                    src={previewSrc}
+                                    title={`Preview of ${template.title}`}
+                                    seamless
+                                    scrolling="no"
+                                    className='absolute inset-0 w-full h-full border-0 pointer-events-none overflow-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+                                    style={{ overflow: 'hidden' }}
+                                />
+                            ) : (!isPreviewLoading && (
+                                <div className='absolute inset-0 flex items-center justify-center text-xs text-default-400'>
+                                    {previewError || 'Preview unavailable'}
+                                </div>
+                            ))}
+                        </div>
                     ) : (
                         <div className='flex items-center justify-between w-full'>
                             <p className='line-clamp-2 text-ellipsis overflow-hidden'>{ template.title }</p>
