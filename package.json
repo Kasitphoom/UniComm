@@ -33,6 +33,7 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-hook-form": "^7.65.0",
+    "react-pdf": "^10.3.0",
     "react-redux": "^9.2.0",
     "swagger-ui-react": "^5.29.5",
     "yup": "^1.7.1"
@@ -43,9 +44,13 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/swagger-ui-react": "^4.11.0",
+    "copy-webpack-plugin": "^13.0.1",
     "prisma": "^6.17.1",
     "tailwindcss": "^4",
     "tsx": "^4.20.6",
     "typescript": "^5"
+  },
+  "overrides": {
+    "pdfjs-dist": "5.3.93"
   }
 }

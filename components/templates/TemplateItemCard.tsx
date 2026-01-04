@@ -4,7 +4,7 @@ import { setSidebarOpen } from '@/features/ui/uiSlice'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { TemplateWithUser } from '@/types/template'
 import { timeDifferenceFormatter } from '@/utils/DateFormatter'
-import { Button, Card, CardBody, CardFooter, Dropdown, DropdownMenu, DropdownTrigger, DropdownItem, Skeleton, User, addToast } from '@heroui/react'
+import { Button, Card, CardBody, CardFooter, Dropdown, DropdownMenu, DropdownTrigger, DropdownItem, Skeleton, User, addToast, Spinner } from '@heroui/react'
 import { Dot, EllipsisVertical, TrashIcon } from 'lucide-react'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
@@ -12,6 +12,11 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import React, { Key, useEffect, useState } from 'react'
 import { clientFetchParsedTemplate } from '@/utils/template/utils'
 import { generatePdfPreview } from './TemplateExportBar'
+
+const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { 
+    ssr: false,
+    loading: () => <div className='w-full h-full flex justify-center items-center'><Spinner color='secondary'/></div>, 
+})
 
 const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
     const dispatch = useAppDispatch()
@@ -22,7 +27,7 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
     const [previewUrl, setPreviewUrl] = useState<string | null>(null)
     const [isPreviewLoading, setIsPreviewLoading] = useState(false)
     const [previewError, setPreviewError] = useState<string | null>(null)
-    const previewSrc = previewUrl ? `${previewUrl}#view=FitH` : null
+    const previewSrc = previewUrl ? `${previewUrl}#toolbar=0&navpanes=0&scrollbar=0` : null
 
     useEffect(() => {
         if (viewMode !== 'grid') return
@@ -97,21 +102,14 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
             <CardBody>
                 {
                     viewMode === 'grid' ? (
-                        <div className='relative w-full h-full overflow-hidden rounded-md bg-default-100'>
+                        <div className='w-full h-full overflow-hidden rounded-md bg-default-100'>
                             {isPreviewLoading && !previewUrl && (
-                                <Skeleton className='absolute inset-0 w-full h-full rounded-md' />
+                                <Skeleton className='w-full h-full rounded-md' />
                             )}
                             {previewSrc ? (
-                                <iframe
-                                    src={previewSrc}
-                                    title={`Preview of ${template.title}`}
-                                    seamless
-                                    scrolling="no"
-                                    className='absolute inset-0 w-full h-full border-0 pointer-events-none overflow-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
-                                    style={{ overflow: 'hidden' }}
-                                />
+                                <PdfViewer file={previewSrc} className={'overflow-hidden w-full h-full rounded-md'} />
                             ) : (!isPreviewLoading && (
-                                <div className='absolute inset-0 flex items-center justify-center text-xs text-default-400'>
+                                <div className='flex items-center justify-center text-xs text-default-400'>
                                     {previewError || 'Preview unavailable'}
                                 </div>
                             ))}
@@ -139,7 +137,7 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
             </CardBody>
             {
                 viewMode === 'grid' && (
-                    <CardFooter className='relative flex flex-col gap-2 items-start justify-between'>
+                    <CardFooter className='relative flex shrink-0 flex-col gap-2 items-start justify-between'>
                         <p className='line-clamp-2 text-ellipsis overflow-hidden'>{ template.title }</p>
                         <div className='flex gap-2 items-center flex-wrap'>
                             <User
