@@ -11,6 +11,34 @@ import Link from 'next/link';
 import SidebarNavItem from './SidebarNavItem';
 import { SidebarHierarchy } from '@/types/sidebar';
 
+export const Navigations: SidebarHierarchy = [
+    {
+        groupName: 'Overview',
+        items: [
+            { 
+                name: 'Dashboard', 
+                href: '/dashboard',
+                icon: <LayoutDashboard size={16} />,
+            },
+        ],
+    },
+    {
+        groupName: 'Content Management',
+        items: [
+            {
+                name: 'Templates',
+                href: '/templates',
+                icon: <NotepadTextDashed size={16} />,
+            },
+            {
+                name: 'Component Blocks',
+                href: '/components',
+                icon: <BlocksIcon size={16} />,
+            }
+        ]
+    },
+]
+
 const SideBar = () => {
     const pathname = usePathname();
     const dispatch = useAppDispatch();
@@ -21,37 +49,9 @@ const SideBar = () => {
         return null;
     }
 
-    const Navigations: SidebarHierarchy = [
-        {
-            groupName: 'Overview',
-            items: [
-                { 
-                    name: 'Dashboard', 
-                    href: '/dashboard',
-                    icon: <LayoutDashboard size={16} />,
-                },
-            ],
-        },
-        {
-            groupName: 'Content Management',
-            items: [
-                {
-                    name: 'Templates',
-                    href: '/templates',
-                    icon: <NotepadTextDashed size={16} />,
-                },
-                {
-                    name: 'Component Blocks',
-                    href: '/components',
-                    icon: <BlocksIcon size={16} />,
-                }
-            ]
-        },
-    ]
-
     return (
         <motion.div 
-            className={`sticky h-svh border-r border-default-200 ${sidebarOpen ? 'w-[300px]' : 'w-[70px]'} shrink-0 flex-none flex flex-col transition-[width] duration-300`}
+            className={`hidden md:flex sticky md:h-svh border-r border-default-200 ${sidebarOpen ? 'w-75' : 'w-17.5'} shrink-0 flex-none flex-col transition-[width] duration-300`}
             transition={{
                 ease: 'easeInOut',
                 duration: 1

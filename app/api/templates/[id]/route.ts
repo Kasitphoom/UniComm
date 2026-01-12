@@ -11,8 +11,12 @@ export async function GET(
     context: { params: Promise<{ id: string }> }
 ) {
     try {
+        const auth = await requireAuth(_req)
+        if (!auth.ok) return auth.response
+
         const { id } = await context.params
-        const prisma = await getBusinessPrismaByCookie()
+        
+        const prisma = await getBusinessPrisma(auth.businessId!)
         const tpl = await prisma.templates.findUnique({
             where: { id },
             include: { user: true },
