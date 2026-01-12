@@ -2,7 +2,7 @@
 import React from 'react'
 import { usePathname } from 'next/navigation'
 import { Divider } from '@heroui/react';
-import { BlocksIcon, ChevronsLeft, LayoutDashboard, NotepadTextDashed } from 'lucide-react';
+import { BlocksIcon, ChevronsLeft, LayoutDashboard, NotepadTextDashed, UserIcon } from 'lucide-react';
 import { motion } from 'motion/react';
 import Image from 'next/image';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -37,6 +37,16 @@ export const Navigations: SidebarHierarchy = [
             }
         ]
     },
+    {
+        groupName: 'System Settings',
+        items: [
+            {
+                name: 'Manage Users',
+                href: '/users',
+                icon: <UserIcon size={16} />,
+            }
+        ]
+    }
 ]
 
 const SideBar = () => {

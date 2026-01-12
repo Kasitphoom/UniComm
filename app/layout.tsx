@@ -12,8 +12,8 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-    title: "UniComm – AI-Powered Unified Communication Platform for Modern Enterprises",
-    description: "UniComm is a next-generation Customer Communication Management (CCM) and Unified Communication Platform that lets enterprises design, orchestrate, and deliver personalized, compliant messages across email, SMS, push, chat, and print. Built for scalability, AI-driven personalization, and cloud-native security.",
+    title: "UniComm - Unified Communication Platform for Modern Enterprises",
+    description: "UniComm is a next-generation Customer Communication Management (CCM) and Unified Communication Platform that lets enterprises design, orchestrate, and deliver personalized, compliant messages across email, SMS, push, chat, and print. Built for scalability, and cloud-native security.",
 };
 
 export default function RootLayout({

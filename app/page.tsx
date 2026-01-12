@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import Link from "next/link";
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
 
@@ -36,13 +37,15 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
             <div className="flex-1 flex justify-center items-center">
                 <div className="flex flex-col max-w-[37.5rem] py-8 md:p-12 gap-8">
                     <div className="flex flex-col gap-4">
-                        <Image
-                            src="/images/logos/Big Logo.svg"
-                            width={254}
-                            height={52}
-                            className="aspect-[127/26]"
-                            alt="UniComm Logo"
-                        />
+                        <Link href="/">
+                            <Image
+                                src="/images/logos/Big Logo.svg"
+                                width={254}
+                                height={52}
+                                className="aspect-[127/26]"
+                                alt="UniComm Logo"
+                            />
+                        </Link>
                         <p className="text-default-400">
                             Log in to your account to access the UniComm platform
                         </p>
