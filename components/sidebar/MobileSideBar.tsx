@@ -22,7 +22,7 @@ export default function MobileSidebar() {
     return (
         <Navbar
             onMenuOpenChange={setIsMenuOpen}
-            className="md:hidden border-b border-divider" // Only show on mobile/tablet
+            className="md:hidden border-b border-divider w-auto" // Only show on mobile/tablet
             isBordered
         >
             <NavbarContent>

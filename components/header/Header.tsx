@@ -9,7 +9,7 @@ const Header = async () => {
     return (
         <div className='flex justify-between'>
             <MobileSidebar />
-            <div className='flex gap-4 justify-end h-16 border-b border-default-200 items-center px-4 w-full sticky'>
+            <div className='flex flex-1 shrink-0 gap-4 justify-end h-16 border-b border-default-200 items-center px-4 w-full sticky'>
                 {business.name}
                 <HeaderUser />
             </div>
