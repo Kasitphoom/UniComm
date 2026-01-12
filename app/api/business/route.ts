@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
                 data: {
                     email: body.ownerEmail,
                     role: 'OWNER',
+                    displayName: body.displayName,
                 },
             })
 

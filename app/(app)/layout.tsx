@@ -1,0 +1,22 @@
+import SideBar from "@/components/sidebar/SideBar";
+import Header from "@/components/header/Header";
+
+export default function AppLayout({
+    children,
+}: Readonly<{
+    children: React.ReactNode;
+}>) {
+    // Note: Only the root layout (`app/layout.tsx`) should render <html> and <body>.
+    // This segment layout wraps page content with the app shell.
+    return (
+        <div className="flex h-svh">
+            <SideBar />
+            <div className="flex flex-col w-full min-w-0">
+                <Header />
+                <div className="flex-1 min-w-0 min-h-0 bg-default-100 overflow-auto">
+                    {children}
+                </div>
+            </div>
+        </div>
+    );
+}

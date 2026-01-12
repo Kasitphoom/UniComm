@@ -29,9 +29,55 @@ enum UserRole {
 }
 
 model BusinessUser {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  email     String   @unique
-  role      UserRole @default(MEMBER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  email       String   @unique
+  displayName String   @default("")
+  role        UserRole @default(MEMBER)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  templates      Templates[]
+  ComponentBlock ComponentBlock[]
+}
+
+// ========= TEMPLATE MODELS =========
+model Templates {
+  id        String            @id @default(auto()) @map("_id") @db.ObjectId
+  title     String            @unique
+  filePath  String
+  userId    String
+  user      BusinessUser      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  versions  TemplateVersion[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+}
+
+model TemplateVersion {
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  templateId String
+  template   Templates @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  version    String
+  filePath   String
+  createdAt  DateTime  @default(now())
+}
+
+// ========= COMPONENT BLOCK MODELS =========
+model ComponentBlock {
+  id          String                  @id @default(auto()) @map("_id") @db.ObjectId
+  name        String                  @unique
+  filePath    String
+  userId      String
+  user        BusinessUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  versions    ComponentBlockVersion[]
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+}
+
+model ComponentBlockVersion {
+  id               String         @id @default(auto()) @map("_id") @db.ObjectId
+  componentBlockId String
+  componentBlock   ComponentBlock @relation(fields: [componentBlockId], references: [id], onDelete: Cascade)
+  version          String
+  filePath         String
+  createdAt        DateTime       @default(now())
 }

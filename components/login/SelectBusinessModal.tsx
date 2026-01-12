@@ -30,7 +30,6 @@ const SelectBusinessModal = (props: SelectBusinessModalProps) => {
         setLoading(true);
         const businessResponse: BusinessListResponse = await APICallHandler('/api/business', 'GET')
         setBusinesses(businessResponse.businesses);
-        console.log(businessResponse)
         setLoading(false);
     }
 
@@ -60,9 +59,10 @@ const SelectBusinessModal = (props: SelectBusinessModalProps) => {
                                             // Persist cookie for server-side redirects, update session token, then soft-navigate
                                             const id = business.id as string
                                             document.cookie = `uc_default_business=${encodeURIComponent(id)}; Path=/; Max-Age=${60 * 60 * 24 * 365}`
+                                            props.onOpenChange(false)
                                             update({ activeBusinessId: id })
                                                 .then(() => {
-                                                    router.replace(`/dashboard`)
+                                                    router.refresh()
                                                 })
                                                 .catch(() => {})
                                         }}
