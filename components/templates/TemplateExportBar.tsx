@@ -1,5 +1,5 @@
 'use client'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import ExportBar from '../Editor/ExportBar'
 import { getStorageService } from '@/utils/upload/modules'
 import { TemplateWithUser } from '@/types/template'
@@ -53,7 +53,19 @@ const TemplateExportBar = ({ id }: { id: string }) => {
     const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null)
     const [isGeneratingPreview, setIsGeneratingPreview] = useState(false)
     const [selectedMode, setSelectedMode] = useState<string | number>('browser')
+    const [isMobile, setIsMobile] = useState(false)
     const parsedTemplate = useAppSelector(state => state.templates.parsedTemplate)
+
+    useEffect(() => {
+        // Detect mobile screen size
+        const checkMobile = () => {
+            setIsMobile(window.innerWidth < 768) // md breakpoint
+        }
+
+        checkMobile()
+        window.addEventListener('resize', checkMobile)
+        return () => window.removeEventListener('resize', checkMobile)
+    }, [])
 
     // Export Handler
     const handleExport = async (key: React.Key) => {
@@ -220,21 +232,24 @@ const TemplateExportBar = ({ id }: { id: string }) => {
                             </ModalHeader>
                             
                             <ModalBody className="flex-1 overflow-hidden p-0 gap-0">
-                                <div className="w-full border-b px-4 py-2 flex justify-center">
-                                    <Tabs selectedKey={selectedMode} onSelectionChange={setSelectedMode}>
-                                        <Tab key="browser" title="Browser Viewer"></Tab>
-                                        <Tab key="system" title="System Viewer"></Tab>
-                                    </Tabs>
-                                </div>
+                                {!isMobile && (
+                                    <div className="w-full border-b px-4 py-2 flex justify-center">
+                                        <Tabs selectedKey={selectedMode} onSelectionChange={setSelectedMode}>
+                                            <Tab key="browser" title="Browser Viewer"></Tab>
+                                            <Tab key="system" title="System Viewer"></Tab>
+                                        </Tabs>
+                                    </div>
+                                )}
                                 {isGeneratingPreview ? (
                                     <div className="flex items-center justify-center h-96">
                                         <Spinner label="Generating preview..." />
                                     </div>
                                 ) : previewTemplate ? (
-                                    selectedMode === 'system' ? (
+                                    isMobile || selectedMode === 'system' ? (
                                         <PdfViewer 
                                             template={previewTemplate} 
-                                            className="w-full h-full" 
+                                            className="w-full h-full"
+                                            options={{ zoomLevel: 1.0 }}
                                         />
                                     ) : (
                                         <iframe

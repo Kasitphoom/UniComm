@@ -3,6 +3,7 @@ import React, { useEffect, useRef } from 'react';
 import { Viewer } from '@pdfme/ui';
 import { Template, getInputFromTemplate } from '@pdfme/common';
 import { plugins } from './Editor/plugins';
+import type { PreviewProps } from '@pdfme/common';
 
 // Extract actual content from a schema entry for mock input generation
 const getContentFromSchema = (schema: any): string => {
@@ -21,7 +22,7 @@ interface CustomViewerOptions {
 interface PdfViewerProps {
     template: Template;
     className?: string;
-    options?: Pick<PdfViewerProps, "options">;
+    options?: PreviewProps['options'];
     customViewerOptions?: CustomViewerOptions;
 }
 
@@ -57,7 +58,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
             plugins,
             options: {
                 ...options,
-                zoomLevel: 1.5,
+                zoomLevel: options.zoomLevel ? options.zoomLevel : 1.5,
             }
         });
 
