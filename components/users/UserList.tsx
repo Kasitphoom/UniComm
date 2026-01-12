@@ -148,6 +148,23 @@ export default function UserList() {
                 }}
                 sortDescriptor={{ column: "name", direction: sort === "asc" ? "ascending" : "descending" }}
                 onSortChange={onSortChange}
+                bottomContent={
+                    (
+                        totalPages > 0 ?
+                        <div className="flex justify-center">
+                            <Pagination
+                                color="secondary"
+                                page={currentPage}
+                                total={totalPages}
+                                onChange={onPageChange}
+                                classNames={{
+                                    item: 'bg-white',
+                                }}
+                            />
+                        </div>
+                        : null
+                    )
+                }
             >
                 <TableHeader columns={columns}>
                     {(column) => (
@@ -170,20 +187,6 @@ export default function UserList() {
                     )}
                 </TableBody>
             </Table>
-            {/* Pagination Section */}
-            {totalPages > 0 && (
-                <div className="flex justify-center">
-                    <Pagination
-                        color="secondary"
-                        page={currentPage}
-                        total={totalPages}
-                        onChange={onPageChange}
-                        classNames={{
-                            item: 'bg-white',
-                        }}
-                    />
-                </div>
-            )}
         </div>
     );
 }
