@@ -3,12 +3,18 @@ import React, { useState } from 'react'
 import ExportBar from '../Editor/ExportBar'
 import { getStorageService } from '@/utils/upload/modules'
 import { TemplateWithUser } from '@/types/template'
-import { addToast, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, useDisclosure, Spinner } from '@heroui/react'
+import { addToast, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, useDisclosure, Spinner, Tabs, Tab } from '@heroui/react'
 import { useAppSelector } from '@/store/hooks'
 import { generate } from '@pdfme/generator'
 import { plugins } from '../Editor/plugins'
 import { Template, getInputFromTemplate } from '@pdfme/common'
 import { clientFetchParsedTemplate, clientFetchTemplate } from '@/utils/template/utils'
+import dynamic from 'next/dynamic'
+
+const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { 
+    ssr: false,
+    loading: () => <div className='w-full h-full flex justify-center items-center'><Spinner color='secondary'/></div>, 
+})
 
 // Extract actual content from a schema entry for mock input generation
 const getContentFromSchema = (schema: any): string => {
@@ -43,8 +49,10 @@ export const generatePdfPreview = async (template: Template) => {
 
 const TemplateExportBar = ({ id }: { id: string }) => {
     const { isOpen, onOpen, onOpenChange } = useDisclosure()
+    const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null)
     const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null)
     const [isGeneratingPreview, setIsGeneratingPreview] = useState(false)
+    const [selectedMode, setSelectedMode] = useState<string | number>('browser')
     const parsedTemplate = useAppSelector(state => state.templates.parsedTemplate)
 
     // Export Handler
@@ -161,6 +169,7 @@ const TemplateExportBar = ({ id }: { id: string }) => {
             }
 
             const template = parsedTemplate.data as Template
+            setPreviewTemplate(template)
 
             // Generate PDF as Uint8Array
             const pdfBytes = await generatePdfPreview(template)
@@ -210,17 +219,30 @@ const TemplateExportBar = ({ id }: { id: string }) => {
                                 <span>PDF Preview</span>
                             </ModalHeader>
                             
-                            <ModalBody className="flex-1 overflow-hidden p-0">
+                            <ModalBody className="flex-1 overflow-hidden p-0 gap-0">
+                                <div className="w-full border-b px-4 py-2 flex justify-center">
+                                    <Tabs selectedKey={selectedMode} onSelectionChange={setSelectedMode}>
+                                        <Tab key="browser" title="Browser Viewer"></Tab>
+                                        <Tab key="system" title="System Viewer"></Tab>
+                                    </Tabs>
+                                </div>
                                 {isGeneratingPreview ? (
                                     <div className="flex items-center justify-center h-96">
                                         <Spinner label="Generating preview..." />
                                     </div>
-                                ) : previewPdfUrl ? (
-                                    <iframe
-                                        src={previewPdfUrl}
-                                        className="w-full h-full border-0"
-                                        title="PDF Preview"
-                                    />
+                                ) : previewTemplate ? (
+                                    selectedMode === 'system' ? (
+                                        <PdfViewer 
+                                            template={previewTemplate} 
+                                            className="w-full h-full" 
+                                        />
+                                    ) : (
+                                        <iframe
+                                            src={previewPdfUrl || ""}
+                                            className="w-full h-full border-0"
+                                            title="PDF Preview"
+                                        />
+                                    )
                                 ) : (
                                     <div className="flex items-center justify-center h-96 text-default-400">
                                         No PDF loaded

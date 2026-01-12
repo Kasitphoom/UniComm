@@ -12,6 +12,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import React, { Key, useEffect, useState } from 'react'
 import { clientFetchParsedTemplate } from '@/utils/template/utils'
 import { generatePdfPreview } from './TemplateExportBar'
+import { Template } from '@pdfme/common'
 
 const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { 
     ssr: false,
@@ -25,6 +26,7 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
     const searchParams = useSearchParams()
     const viewMode = useAppSelector(state => state.ui.viewMode)
     const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+    const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null)
     const [isPreviewLoading, setIsPreviewLoading] = useState(false)
     const [previewError, setPreviewError] = useState<string | null>(null)
     const previewSrc = previewUrl ? `${previewUrl}#toolbar=0&navpanes=0&scrollbar=0` : null
@@ -39,9 +41,14 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
             setIsPreviewLoading(true)
             setPreviewError(null)
             setPreviewUrl(null)
+            setPreviewTemplate(null)
 
             try {
                 const parsedTemplate = await clientFetchParsedTemplate(template.id)
+                setPreviewTemplate({
+                    ...parsedTemplate,
+                    schemas: [parsedTemplate.schemas[0]],
+                })
                 if (isCancelled) return
 
                 const pdfBytes = await generatePdfPreview(parsedTemplate)
@@ -106,8 +113,8 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
                             {isPreviewLoading && !previewUrl && (
                                 <Skeleton className='w-full h-full rounded-md' />
                             )}
-                            {previewSrc ? (
-                                <PdfViewer file={previewSrc} className={'overflow-hidden w-full h-full rounded-md'} />
+                            {previewTemplate ? (
+                                <PdfViewer template={previewTemplate} className={'overflow-hidden w-full h-full rounded-md'} customViewerOptions={{ showToolbar: false, scroll: false }} />
                             ) : (!isPreviewLoading && (
                                 <div className='flex items-center justify-center text-xs text-default-400'>
                                     {previewError || 'Preview unavailable'}
