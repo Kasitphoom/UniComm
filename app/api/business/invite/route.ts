@@ -6,6 +6,7 @@ import { ReferencePurpose } from "@/app/generated/main/prisma";
 import bcrypt from "bcryptjs";
 import { sentMailService } from "@/utils/mail";
 import { toAbsoluteUrl } from "@/utils/serverUrlHandler";
+import { UserRole } from "@/app/generated/business/prisma";
 
 // Generate a random password
 const generateRandomPassword = (length: number = 16): string => {
@@ -22,12 +23,19 @@ export const POST = async (request: NextRequest) => {
         const auth = await requireAuth(request);
         if (!auth.ok) return auth.response;
 
-        const { email, displayName } = await request.json();
+        const { email, displayName, role } = await request.json();
 
         // Validate input
-        if (!email || !displayName ) {
+        if (!email || !displayName || !role) {
             return NextResponse.json(
-                { error: "Missing required fields: email, displayName" },
+                { error: "Missing required fields: email, displayName, role" },
+                { status: 400 }
+            );
+        }
+
+        if  (UserRole[(role as UserRole)] === undefined) {
+            return NextResponse.json(
+                { error: "Invalid role specified" },
                 { status: 400 }
             );
         }
