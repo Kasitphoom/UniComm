@@ -13,8 +13,11 @@ import {
     Tooltip,
     Spinner,
     Pagination,
+    Card,
+    CardBody,
+    Button,
 } from "@heroui/react";
-import { EditIcon, DeleteIcon } from "lucide-react";
+import { EditIcon, DeleteIcon, CalendarIcon } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { fetchUsers } from "@/features/users/usersSlice";
@@ -136,57 +139,106 @@ export default function UserList() {
         );
     }
 
+    // Shared sub-components for Mobile Cards
+    const MobileUserCard = ({ user }: { user: BusinessUser }) => (
+        <Card className="mb-3 shadow-sm border-none bg-white lg:hidden">
+            <CardBody className="p-4">
+                <div className="flex justify-between items-start mb-3">
+                    <User
+                        avatarProps={{
+                            radius: "lg",
+                            name: user.displayName?.toUpperCase() || user.email?.charAt(0).toUpperCase()
+                        }}
+                        description={user.email}
+                        name={user.displayName || user.email}
+                    />
+                    <Chip
+                        className="capitalize"
+                        color={getRoleColor(user.role)}
+                        size="sm"
+                        variant="flat"
+                    >
+                        {user.role}
+                    </Chip>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-divider">
+                    <div className="flex items-center gap-1 text-tiny text-default-400">
+                        <CalendarIcon size={12} />
+                        {new Date(user.createdAt).toLocaleDateString()}
+                    </div>
+                    <div className="flex gap-3">
+                        <Button isIconOnly size="sm" variant="light" aria-label="Edit">
+                            <EditIcon size={18} className="text-default-400" />
+                        </Button>
+                        <Button isIconOnly size="sm" variant="light" color="danger" aria-label="Delete">
+                            <DeleteIcon size={18} />
+                        </Button>
+                    </div>
+                </div>
+            </CardBody>
+        </Card>
+    );
+
     return (
         <div className="space-y-4">
-            {/* Table Section */}
-            <Table
-                aria-label="User Management Table"
-                isHeaderSticky
-                classNames={{
-                    base: "max-h-[520px]",
-                    table: "min-w-[600px]",
-                }}
-                sortDescriptor={{ column: "name", direction: sort === "asc" ? "ascending" : "descending" }}
-                onSortChange={onSortChange}
-                bottomContent={
-                    (
-                        totalPages > 0 ?
-                        <div className="flex justify-center">
-                            <Pagination
-                                color="secondary"
-                                page={currentPage}
-                                total={totalPages}
-                                onChange={onPageChange}
-                                classNames={{
-                                    item: 'bg-white',
-                                }}
-                            />
-                        </div>
-                        : null
-                    )
-                }
-            >
-                <TableHeader columns={columns}>
-                    {(column) => (
-                        <TableColumn
-                            key={column.uid}
-                            align={column.uid === "actions" ? "center" : "start"}
-                            allowsSorting={column.uid === "name"}
-                        >
-                            {column.name}
-                        </TableColumn>
-                    )}
-                </TableHeader>
-                <TableBody items={users}>
-                    {(item) => (
-                        <TableRow key={item.id}>
-                            {(columnKey) => (
-                                <TableCell>{renderCell(item, columnKey)}</TableCell>
-                            )}
-                        </TableRow>
-                    )}
-                </TableBody>
-            </Table>
+            {/* Desktop View: Only visible on large screens */}
+            <div className="hidden lg:block">
+                <Table
+                    aria-label="User Management Table"
+                    isHeaderSticky
+                    classNames={{
+                        base: "max-h-[600px]",
+                        table: "min-w-[600px]",
+                    }}
+                    sortDescriptor={{ column: "name", direction: sort === "asc" ? "ascending" : "descending" }}
+                    onSortChange={onSortChange}
+                >
+                    <TableHeader columns={columns}>
+                        {(column) => (
+                            <TableColumn
+                                key={column.uid}
+                                align={column.uid === "actions" ? "center" : "start"}
+                                allowsSorting={column.uid === "name"}
+                            >
+                                {column.name}
+                            </TableColumn>
+                        )}
+                    </TableHeader>
+                    <TableBody items={users}>
+                        {(item) => (
+                            <TableRow key={item.id}>
+                                {(columnKey) => (
+                                    <TableCell>{renderCell(item, columnKey)}</TableCell>
+                                )}
+                            </TableRow>
+                        )}
+                    </TableBody>
+                </Table>
+            </div>
+
+            {/* Mobile View: Only visible on small/medium screens */}
+            <div className="lg:hidden">
+                {users.map((user) => (
+                    <MobileUserCard key={user.id} user={user} />
+                ))}
+            </div>
+
+            {/* Shared Pagination */}
+            {totalPages > 1 && (
+                <div className="flex justify-center mt-6">
+                    <Pagination
+                        color="secondary"
+                        page={currentPage}
+                        total={totalPages}
+                        onChange={onPageChange}
+                        // Adjust size for mobile
+                        size={typeof window !== 'undefined' && window.innerWidth < 640 ? "sm" : "md"}
+                        classNames={{
+                            item: 'bg-white',
+                        }}
+                    />
+                </div>
+            )}
         </div>
     );
 }

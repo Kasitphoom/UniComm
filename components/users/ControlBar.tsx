@@ -8,7 +8,11 @@ const ControlBar = () => {
     return (
         <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-end'>
             <div className='flex items-center gap-4'>
-                <SearchBar />
+                <SearchBar props={{
+                    classNames: {
+                        base: 'max-w-none! md:max-w-[300px]',
+                    }
+                }} />
             </div>
             <Button
                     color="secondary"
