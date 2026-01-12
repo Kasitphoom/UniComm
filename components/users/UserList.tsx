@@ -15,6 +15,7 @@ import {
     Pagination,
 } from "@heroui/react";
 import { EditIcon, DeleteIcon } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { fetchUsers } from "@/features/users/usersSlice";
 import type { BusinessUser } from "@/features/users/types";
@@ -42,15 +43,30 @@ const getRoleColor = (role: BusinessUser['role']) => {
 };
 
 export default function UserList() {
+    const router = useRouter();
+    const searchParams = useSearchParams();
     const dispatch = useAppDispatch();
     const { items: users, status, error, currentPage, totalPages } = useAppSelector((state) => state.users.list);
 
-    useEffect(() => {
-        dispatch(fetchUsers({ page: 1, perPage: 10 }));
-    }, [dispatch]);
+    const query = searchParams.get("query") || "";
+    const sort = (searchParams.get("sort") || "desc") as "asc" | "desc";
+    const page = parseInt(searchParams.get("page") || "1", 10);
 
-    const onPageChange = (page: number) => {
-        dispatch(fetchUsers({ page, perPage: 10 }));
+    useEffect(() => {
+        dispatch(fetchUsers({ query: query || undefined, page, perPage: 10, sort }));
+    }, [dispatch, query, page, sort]);
+
+    const onPageChange = (newPage: number) => {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set("page", newPage.toString());
+        router.push(`?${params.toString()}`);
+    };
+
+    const onSortChange = (descriptor: { column?: string | number; direction: "ascending" | "descending" }) => {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set("sort", descriptor.direction === "ascending" ? "asc" : "desc");
+        params.set("page", "1");
+        router.push(`?${params.toString()}`);
     };
 
     const renderCell = React.useCallback((user: BusinessUser, columnKey: React.Key) => {
@@ -130,13 +146,15 @@ export default function UserList() {
                     base: "max-h-[520px]",
                     table: "min-w-[600px]",
                 }}
+                sortDescriptor={{ column: "name", direction: sort === "asc" ? "ascending" : "descending" }}
+                onSortChange={onSortChange}
             >
                 <TableHeader columns={columns}>
                     {(column) => (
                         <TableColumn
                             key={column.uid}
                             align={column.uid === "actions" ? "center" : "start"}
-                            allowsSorting
+                            allowsSorting={column.uid === "name"}
                         >
                             {column.name}
                         </TableColumn>

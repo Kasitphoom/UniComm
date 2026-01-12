@@ -6,13 +6,14 @@ import type { UsersState, BusinessUser } from "./types"
 export const fetchUsers = createAsyncThunk(
     "users/fetchUsers",
     async (
-        params: { query?: string; page?: number; perPage?: number } = {}
+        params: { query?: string; page?: number; perPage?: number; sort?: "asc" | "desc" } = {}
     ) => {
         const search = new URLSearchParams()
         if (params.query) search.set("query", params.query)
         if (params.page && params.page > 1)
             search.set("page", String(params.page))
         if (params.perPage) search.set("perPage", String(params.perPage))
+        if (params.sort) search.set("sort", params.sort)
         const qs = search.toString()
         const res = await fetch(`/api/business/users${qs ? `?${qs}` : ""}`, {
             credentials: "include",

@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
             50,
             Math.max(1, parseInt(searchParams.get("perPage") || "10", 10) || 10)
         );
+        const sort = (searchParams.get("sort") || "desc") as "asc" | "desc";
 
         const q = sanitizeQuery(rawQuery);
         const prisma = await getBusinessPrisma(auth.businessId!);
@@ -47,7 +48,7 @@ export async function GET(req: NextRequest) {
         const [users, totalCount] = await Promise.all([
             prisma.businessUser.findMany({
                 where: whereOrUndefined,
-                orderBy: { createdAt: "desc" },
+                orderBy: { displayName: sort },
                 take: perPage,
                 skip: (page - 1) * perPage,
                 select: {
