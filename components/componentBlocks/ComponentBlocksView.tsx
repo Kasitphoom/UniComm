@@ -73,25 +73,27 @@ const ComponentBlocksView = ({ label = 'Component Blocks' }: ComponentBlocksView
                         ) : items.length === 0 ? (
                             <div className='text-center text-default-500 py-8'>No component blocks to display.</div>
                         ) : (
-                            <div className={`grid grid-cols-1 ${viewMode === 'grid' ? " md:grid-cols-2 lg:grid-cols-4" : ""}  py-4 gap-4`}>
-                                {
-                                    items.map(block => (
-                                        <ComponentBlockCard key={block.id} block={block} />
-                                    ))
-                                }
+                            <div className='flex flex-col gap-4'>
+                                <div className={`grid grid-cols-1 ${viewMode === 'grid' ? " md:grid-cols-2 lg:grid-cols-4" : ""}  py-4 gap-4`}>
+                                    {
+                                        items.map(block => (
+                                            <ComponentBlockCard key={block.id} block={block} />
+                                        ))
+                                    }
+                                </div>
+                                <div className='flex justify-center'>
+                                    <Pagination
+                                        color="secondary"
+                                        page={currentPage}
+                                        total={totalPages}
+                                        onChange={onPageChange}
+                                        classNames={{
+                                            item: 'bg-white',
+                                        }}
+                                    />
+                                </div>
                             </div>
                         )}
-                        <div className='flex justify-center'>
-                            <Pagination
-                                color="secondary"
-                                page={currentPage}
-                                total={totalPages}
-                                onChange={onPageChange}
-                                classNames={{
-                                    item: 'bg-white',
-                                }}
-                            />
-                        </div>
                     </motion.div>
                 )}
             </AnimatePresence>

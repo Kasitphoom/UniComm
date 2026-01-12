@@ -1,7 +1,7 @@
 'use client'
-import React from 'react'
-import { Card, CardBody, CardFooter, Dropdown, DropdownMenu, DropdownTrigger, DropdownItem, Skeleton, User } from '@heroui/react'
-import { ChevronDown, Dot, EllipsisVertical, TrashIcon } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { Card, CardBody, CardFooter, Dropdown, DropdownMenu, DropdownTrigger, DropdownItem, Skeleton, User, Spinner, addToast } from '@heroui/react'
+import { Dot, EllipsisVertical, TrashIcon } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
@@ -9,6 +9,13 @@ import { timeDifferenceFormatter } from '@/utils/DateFormatter'
 import type { ComponentBlockWithUser } from '@/types/componentBlock'
 import { deleteComponentBlock, fetchComponentBlocks } from '@/features/componentBlocks/componentBlocksSlice'
 import { setSidebarOpen } from '@/features/ui/uiSlice'
+import { Template } from '@pdfme/common'
+import { clientFetchParsedComponentBlock } from '@/utils/template/utils'
+
+const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { 
+    ssr: false,
+    loading: () => <div className='w-full h-full flex justify-center items-center'><Spinner color='secondary'/></div>, 
+})
 
 const ComponentBlockCard = ({ block }: { block: ComponentBlockWithUser }) => {
 	const dispatch = useAppDispatch()
@@ -16,15 +23,78 @@ const ComponentBlockCard = ({ block }: { block: ComponentBlockWithUser }) => {
 	const pathname = usePathname()
 	const searchParams = useSearchParams()
 	const viewMode = useAppSelector(state => state.ui.viewMode)
+	const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+	const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null)
+	const [isPreviewLoading, setIsPreviewLoading] = useState(false)
+	const [previewError, setPreviewError] = useState<string | null>(null)
+	const previewSrc = previewUrl ? `${previewUrl}#toolbar=0&navpanes=0&scrollbar=0` : null
+
+	useEffect(() => {
+		if (viewMode !== 'grid') return
+
+		let isCancelled = false
+		let objectUrl: string | null = null
+
+		const loadPreview = async () => {
+			setIsPreviewLoading(true)
+			setPreviewError(null)
+			setPreviewUrl(null)
+			setPreviewTemplate(null)
+
+			try {
+				// Parse component block data as template
+				const parsedTemplate = await clientFetchParsedComponentBlock(block.id)
+				setPreviewTemplate({
+					...parsedTemplate,
+					schemas: [parsedTemplate.schemas[0]],
+				})
+				if (isCancelled) return
+
+				// Generate PDF preview
+				const { generatePdfPreview } = await import('@/components/templates/TemplateExportBar')
+				const pdfBytes = await generatePdfPreview(parsedTemplate)
+				if (isCancelled) return
+
+				objectUrl = URL.createObjectURL(new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' }))
+				setPreviewUrl(objectUrl)
+			} catch (error: any) {
+				if (isCancelled) return
+				console.error('Failed to load component block preview:', error)
+				setPreviewError(error?.message || 'Failed to load preview')
+			} finally {
+				if (!isCancelled) {
+					setIsPreviewLoading(false)
+				}
+			}
+		}
+
+		loadPreview()
+
+		return () => {
+			isCancelled = true
+			if (objectUrl) {
+				URL.revokeObjectURL(objectUrl)
+			}
+		}
+	}, [block.id, viewMode])
 
 	const onCardClick = () => {
 		router.push(`${pathname}/${block.id}`)
 		dispatch(setSidebarOpen(false))
 	}
 
+	const onBlockDelete = async () => {
+		await dispatch(deleteComponentBlock(block.id))
+		addToast({
+			title: 'Component block deleted',
+			color: 'secondary',
+			timeout: 3000,
+		})
+	}
+
 	const onAction = async (key: any) => {
 		if (key === 'Delete') {
-			await dispatch(deleteComponentBlock(block.id))
+			await onBlockDelete()
 			dispatch(fetchComponentBlocks({
 				query: searchParams.get('query') || '',
 				page: searchParams.get('page') ? parseInt(searchParams.get('page') as string, 10) : 1,
@@ -37,7 +107,18 @@ const ComponentBlockCard = ({ block }: { block: ComponentBlockWithUser }) => {
 			<CardBody>
 				{
 					viewMode === 'grid' ? (
-						<Skeleton className='w-full h-full rounded-md'></Skeleton>
+						<div className='w-full h-full overflow-hidden rounded-md bg-default-100'>
+							{isPreviewLoading && !previewUrl && (
+								<Skeleton className='w-full h-full rounded-md' />
+							)}
+							{previewTemplate ? (
+								<PdfViewer template={previewTemplate} className={'overflow-hidden w-full h-full rounded-md'} customViewerOptions={{ showToolbar: false, scroll: false }} />
+							) : (!isPreviewLoading && (
+								<div className='flex items-center justify-center text-xs text-default-400'>
+									{previewError || 'Preview unavailable'}
+								</div>
+							))}
+						</div>
 					) : (
 						<div className='flex items-center justify-between w-full'>
 							<p className='line-clamp-2 text-ellipsis overflow-hidden'>{block.name}</p>
@@ -61,7 +142,7 @@ const ComponentBlockCard = ({ block }: { block: ComponentBlockWithUser }) => {
 			</CardBody>
 			{
 				viewMode === 'grid' && (
-					<CardFooter className='relative flex flex-col gap-2 items-start justify-between'>
+					<CardFooter className='relative flex shrink-0 flex-col gap-2 items-start justify-between'>
 						<p className='line-clamp-2 text-ellipsis overflow-hidden'>{block.name}</p>
 						<div className='flex gap-2 items-center flex-wrap'>
 							<User
