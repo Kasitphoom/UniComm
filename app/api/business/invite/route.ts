@@ -138,7 +138,7 @@ export const POST = async (request: NextRequest) => {
 
         await sentMailService(
             [email],
-            `You're Invited to Join ${businessName}`,
+            `${inviter?.displayName} invited you to the ${businessName} workspace`,
             emailHTML
         );
 
