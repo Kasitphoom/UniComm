@@ -124,7 +124,7 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
                     ) : (
                         <div className='flex items-center justify-between w-full'>
                             <p className='line-clamp-2 text-ellipsis overflow-hidden'>{ template.title }</p>
-                            <div className='flex gap-2 items-center flex-wrap'>
+                            <div className='flex md:gap-2 items-center flex-wrap'>
                                 <User
                                     name={ template.user.displayName }
                                     avatarProps={{ 
@@ -132,8 +132,11 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
                                         size: 'sm',
                                         className: "h-6 w-6 text-[10px]"
                                     }}
+                                    classNames={{
+                                        name: "hidden md:inline-block",
+                                    }}
                                 />
-                                <Dot size={12} className='text-default-400' />
+                                <Dot size={12} className='hidden md:block text-default-400' />
                                 <p className='text-xs text-default-400' suppressHydrationWarning>
                                     { timeDifferenceFormatter(new Date(template.updatedAt)) }
                                 </p>
