@@ -180,7 +180,7 @@ const InviteUserModal: React.FC<InviteUserModalProps> = ({
                                     }}
                                 >
                                     {roleOptions.map((role) => (
-                                        <SelectItem key={role.value} value={role.value}>
+                                        <SelectItem key={role.value}>
                                             {role.label}
                                         </SelectItem>
                                     ))}
