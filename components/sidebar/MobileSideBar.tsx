@@ -40,7 +40,7 @@ export default function MobileSidebar() {
                     <NavbarMenuItem key={`${item.name}-${index}`}>
                         <Link
                             color={
-                                pathname.split('/')[1] === item.href.replace('/','') ? "secondary" : "default"
+                                pathname.split('/')[1] === item.href.replace('/','') ? "secondary" : "foreground"
                             }
                             className="w-full text-lg py-2"
                             href={item.href}
