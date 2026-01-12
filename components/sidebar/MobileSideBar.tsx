@@ -3,13 +3,11 @@
 import React from "react";
 import {
     Navbar,
-    NavbarBrand,
     NavbarContent,
     NavbarMenuToggle,
     NavbarMenu,
     NavbarMenuItem,
     Link,
-    Button,
 } from "@heroui/react";
 import { Navigations } from "./SideBar"
 import { usePathname } from "next/navigation";

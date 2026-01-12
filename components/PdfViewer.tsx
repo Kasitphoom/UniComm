@@ -1,5 +1,5 @@
 'use client'
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Viewer } from '@pdfme/ui';
 import { Template, getInputFromTemplate } from '@pdfme/common';
 import { plugins } from './Editor/plugins';
@@ -34,9 +34,38 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
 }) => {
     const viewerRef = useRef<HTMLDivElement>(null);
     const viewerInstanceRef = useRef<Viewer | null>(null);
+    const [isVisible, setIsVisible] = useState(false);
+
+    // Delay initialization until the container is in (nearly) full view.
+    // If the container is taller than the viewport, allow partial visibility to trigger.
+    useEffect(() => {
+        const el = viewerRef.current;
+        if (!el) return;
+
+        const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+        const { height, width } = el.getBoundingClientRect();
+
+        const requiresFullView = height <= viewportHeight && width <= viewportWidth;
+        const threshold = requiresFullView ? 1.0 : 0.25;
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+                const ratio = entry.intersectionRatio;
+                const visibleEnough = requiresFullView ? ratio >= 0.99 : ratio >= threshold;
+                if (entry.isIntersecting && visibleEnough) {
+                    setIsVisible(true);
+                    observer.disconnect();
+                }
+            });
+        }, { threshold: [threshold, 1.0] });
+
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, []);
 
     useEffect(() => {
-        if (!viewerRef.current || !template) return;
+        if (!viewerRef.current || !template || !isVisible) return;
 
         // Generate mockInputs using the same method as TemplateExportBar
         const mockInputs = getInputFromTemplate(template).map((obj, pageIndex) => {
@@ -71,7 +100,7 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
                 viewerInstanceRef.current = null;
             }
         };
-    }, [template]);
+    }, [template, isVisible]);
 
     return (
         <div 
