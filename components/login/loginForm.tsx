@@ -48,7 +48,13 @@ const LoginForm = () => {
         if (res?.ok) {
             // Ask Google Password Manager to store the credential (works on https or localhost)
             await maybeStoreCredential(data.email, data.password)
-            onOpen();
+            // Only show business select modal if not on invitation flow
+            const isInviteFlow = callbackUrl.includes('/business/invite')
+            if (isInviteFlow) {
+                router.push(callbackUrl);
+            } else {
+                onOpen();
+            }
         } else if (res?.error) {
             const message = res.error === 'CredentialsSignin'
                 ? 'Invalid email or password'

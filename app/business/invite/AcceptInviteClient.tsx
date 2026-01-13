@@ -11,8 +11,9 @@ import {
     Divider, 
     Link 
 } from "@heroui/react";
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { CheckCircle2, AlertCircle, ArrowRight, Home, ShieldCheck } from "lucide-react";
 
 type Props = {
@@ -28,9 +29,18 @@ export default function AcceptInviteClient({ referenceId, inviteEmail, businessN
     const [message, setMessage] = useState<string | null>(null);
     const [attempt, setAttempt] = useState(0);
     const { update } = useSession();
+    const router = useRouter();
     const isAcceptingRef = useRef(false);
 
     const targetName = useMemo(() => businessName || "this workspace", [businessName]);
+
+    const handleSwitchAccount = async () => {
+        await signOut({ 
+            redirect: false,
+            callbackUrl: `/`
+        });
+        router.push(`/?callbackUrl=${encodeURIComponent(`/business/invite?ref=${new URLSearchParams(window.location.search).get('ref') || ''}`)}`);
+    };
 
     const accept = useCallback(async () => {
         if (isAcceptingRef.current) return;
@@ -67,7 +77,8 @@ export default function AcceptInviteClient({ referenceId, inviteEmail, businessN
 
     useEffect(() => {
         accept();
-    }, [attempt, accept]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [attempt]);
 
     return (
         <div className="relative min-h-screen w-full flex flex-col items-center justify-center p-4 overflow-hidden bg-default-100">
@@ -194,9 +205,12 @@ export default function AcceptInviteClient({ referenceId, inviteEmail, businessN
                         <ShieldCheck size={14} className="text-secondary" />
                         <span>Signed in as <b className="text-default-700">{inviteEmail}</b></span>
                     </div>
-                    <Link href="/auth/login" className="text-xs text-secondary-500 hover:text-secondary-600 font-medium transition-colors">
+                    <button 
+                        onClick={handleSwitchAccount}
+                        className="text-xs text-secondary-500 hover:text-secondary-600 font-medium transition-colors"
+                    >
                         Not your account? Switch now
-                    </Link>
+                    </button>
                 </div>
             </div>
         </div>
