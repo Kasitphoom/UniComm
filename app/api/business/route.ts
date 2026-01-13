@@ -138,7 +138,11 @@ export const GET = async (request: NextRequest) => {
                 },
             },
             include: {
-                memberships: true,
+                memberships: {
+                    where: {
+                        userId: userId,
+                    },
+                },
             },
         })
 
