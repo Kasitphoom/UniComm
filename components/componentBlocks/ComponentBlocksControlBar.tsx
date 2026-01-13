@@ -14,7 +14,7 @@ const ComponentBlocksControlBar = () => {
                 <ViewMode />
                 <SearchBar />
             </div>
-            <ButtonGroup className='w-full md:w-auto flex-1 md:flex-auto shrink-0 md:shrink rounded-xl overflow-hidden'>
+            <ButtonGroup className='rounded-xl overflow-hidden'>
                 <Button color='secondary' className='w-full' startContent={<Layers size={16} />} onPress={() => setIsModalOpen(true)}>New Component Block</Button>
                 <Dropdown placement='bottom-end'>
                     <DropdownTrigger className='min-w-0'>
