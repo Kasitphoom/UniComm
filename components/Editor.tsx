@@ -200,7 +200,7 @@ const Editor: React.FC<EditorProps> = ({ id, resource = 'template', draftKeyPref
     return (
         <div
             ref={containerRef}
-            className="relative flex-1 w-full min-w-0 overflow-hidden flex items-center justify-center"
+            className="relative flex-1 w-full h-full min-w-0 overflow-hidden flex items-center justify-center"
         >
             {isLoading && (
                 <Spinner size="lg" color="secondary">
