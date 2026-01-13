@@ -205,7 +205,7 @@ export default function UserList() {
                         )}
                     </TableHeader>
                     <TableBody items={users}>
-                        {(item) => (
+                        {(item: BusinessUser) => (
                             <TableRow key={item.id}>
                                 {(columnKey) => (
                                     <TableCell>{renderCell(item, columnKey)}</TableCell>
@@ -218,7 +218,7 @@ export default function UserList() {
 
             {/* Mobile View: Only visible on small/medium screens */}
             <div className="lg:hidden">
-                {users.map((user) => (
+                {users.map((user: BusinessUser) => (
                     <MobileUserCard key={user.id} user={user} />
                 ))}
             </div>
