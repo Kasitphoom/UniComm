@@ -2,7 +2,7 @@
 import { Button, Input, Link, Image, addToast, useDisclosure } from "@heroui/react";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { signIn, signOut, useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import * as yup from "yup";
@@ -17,6 +17,9 @@ const LoginForm = () => {
     const { isOpen, onOpenChange, onOpen } = useDisclosure();
     const router = useRouter();
     const { status, data: session } = useSession();
+    const searchParams = useSearchParams();
+
+    const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
 
     const { handleSubmit, control } = useForm({
         resolver: yupResolver(schema),
@@ -38,7 +41,7 @@ const LoginForm = () => {
         const res = await signIn('credentials', {
             email: data.email,
             password: data.password,
-            callbackUrl: '/dashboard',
+            callbackUrl,
             redirect: false,
         });
 
@@ -58,24 +61,24 @@ const LoginForm = () => {
 
     const googleSignIn = async () => {
         await signOut({ redirect: false });
-        const res = await signIn('google', { callbackUrl: '/', redirect: false });
-        if (res?.url) router.push(res.url);
+        await signIn('google', { callbackUrl, redirect: true });
     };
 
     const salesforceSignIn = async () => {
         await signOut({ redirect: false });
-        const res = await signIn('salesforce', { callbackUrl: '/', redirect: false });
-        if (res?.url) router.push(res.url);
+        await signIn('salesforce', { callbackUrl, redirect: true });
     };
 
     // After OAuth returns to '/', open the business select if authenticated and no active business set
+    // But skip if this is for an invitation acceptance
     useEffect(() => {
         if (status === 'authenticated') {
             const active = (session?.user as any)?.activeBusinessId
-            if (!active) onOpen()
+            const isInviteFlow = callbackUrl.includes('/business/invite')
+            if (!active && !isInviteFlow) onOpen()
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [status, session])
+    }, [status, session, callbackUrl])
 
     return (
         <>
