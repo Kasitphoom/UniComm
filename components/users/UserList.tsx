@@ -123,14 +123,6 @@ export default function UserList() {
         }
     }, []);
 
-    if (status === 'loading') {
-        return (
-            <div className="flex justify-center items-center min-h-100">
-                <Spinner color="secondary" size="lg" />
-            </div>
-        );
-    }
-
     if (status === 'failed') {
         return (
             <div className="flex justify-center items-center min-h-100 text-danger">
@@ -204,7 +196,7 @@ export default function UserList() {
                             </TableColumn>
                         )}
                     </TableHeader>
-                    <TableBody items={users}>
+                    <TableBody items={users} isLoading={status === 'loading'}>
                         {(item: BusinessUser) => (
                             <TableRow key={item.id}>
                                 {(columnKey) => (
