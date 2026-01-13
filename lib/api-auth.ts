@@ -11,6 +11,7 @@ export type ApiAuth = {
     session: Session | null
     token: JWT | null
     userId: string | null
+    mainUserId: string | null
     businessId: string | null
 }
 
@@ -32,8 +33,15 @@ export async function authenticateApi(req: Request): Promise<ApiAuth> {
     }).catch(() => null)
 
     const userId =
-        ((session?.user as any)?.currentBusinessProfile.id as string | undefined) ??
-        ((token as any)?.currentBusinessProfile.id as string | undefined) ??
+        ((session?.user as any)?.currentBusinessProfile?.id as string | undefined) ??
+        ((token as any)?.currentBusinessProfile?.id as string | undefined) ??
+        ((session?.user as any)?.id as string | undefined) ??
+        ((token as any)?.id as string | undefined) ??
+        null
+
+    const mainUserId =
+        ((session?.user as any)?.id as string | undefined) ??
+        ((token as any)?.id as string | undefined) ??
         null
 
     let businessId: string | null =
@@ -58,7 +66,7 @@ export async function authenticateApi(req: Request): Promise<ApiAuth> {
         }
     }
 
-    return { session, token: token as JWT | null, userId, businessId }
+    return { session, token: token as JWT | null, userId, mainUserId, businessId }
 }
 
 export type RequireAuthResult =

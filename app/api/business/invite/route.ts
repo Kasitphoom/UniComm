@@ -76,6 +76,7 @@ export const POST = async (request: NextRequest) => {
             data: {
                 purpose: ReferencePurpose.BUSINESS_INVITE,
                 refEmails: [email],
+                displayName: displayName,
                 businessId: auth.businessId!,
                 expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24), // 24 hours from now
             },
