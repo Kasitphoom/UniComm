@@ -102,7 +102,7 @@ export default function AcceptInviteClient({ referenceId, inviteEmail, businessN
                     </div>
                 </div>
 
-                <Card className="border-none bg-white/80 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.1)]" radius="2xl">
+                <Card className="border-none bg-white/80 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.1)]" radius="lg">
                     <CardHeader className="flex flex-col gap-2 px-8 pt-10 pb-4 text-center">
                         <h1 className="text-2xl font-bold text-default-900 tracking-tight">Accept Invitation</h1>
                         <p className="text-default-500 text-sm">
@@ -115,10 +115,10 @@ export default function AcceptInviteClient({ referenceId, inviteEmail, businessN
                             <div className="flex flex-col items-center gap-6 py-4">
                                 <div className="relative flex items-center justify-center">
                                     {/* Ping animation adjusted to match the 84px size */}
-                                    <div className="absolute w-[84px] h-[84px] rounded-full bg-secondary/10 animate-ping" />
+                                    <div className="absolute w-21 h-21 rounded-full bg-secondary/10 animate-ping" />
                                     
                                     {/* The Square/Circular Container - using flex to center the spinner */}
-                                    <div className="relative w-[84px] h-[84px] flex items-center justify-center bg-secondary-50 rounded-full">
+                                    <div className="relative w-21 h-21 flex items-center justify-center bg-secondary-50 rounded-full">
                                         <Spinner color="secondary" size="lg" />
                                     </div>
                                 </div>

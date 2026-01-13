@@ -53,7 +53,7 @@ export default function ValidationUI({
                     </div>
                 </div>
 
-                <Card className="border-none bg-white/80 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.1)]" radius="2xl">
+                <Card className="border-none bg-white/80 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.1)]" radius="lg">
                     <CardHeader className="flex flex-col gap-2 px-8 pt-10 pb-4 text-center">
                         <h1 className="text-2xl font-bold text-default-900 tracking-tight">{title}</h1>
                     </CardHeader>

@@ -12,17 +12,17 @@ export default async function InvitePage({ searchParams }: { searchParams: Promi
     const { ref: refId } = await searchParams;
 
     if (!refId) {
-        return <ValidationUI title="Invalid Link" description="Missing reference code." icon="search" />;
+        return <ValidationUI title="Invalid Link" description="Missing reference code." iconName="search" />;
     }
 
     const reference = await prisma.references.findUnique({ where: { id: refId } });
     
     if (!reference || reference.purpose !== ReferencePurpose.BUSINESS_INVITE) {
-        return <ValidationUI title="Not Found" description="This invitation does not exist." icon="search" />;
+        return <ValidationUI title="Not Found" description="This invitation does not exist." iconName="search" />;
     }
 
     if (reference.expiresAt && new Date(reference.expiresAt).getTime() < Date.now()) {
-        return <ValidationUI title="Expired" description="This link is no longer valid." icon="clock" iconColor="text-warning" />;
+        return <ValidationUI title="Expired" description="This link is no longer valid." iconName="clock" iconColor="text-warning" />;
     }
 
     const inviteEmail = reference.refEmails?.[0];
@@ -37,7 +37,7 @@ export default async function InvitePage({ searchParams }: { searchParams: Promi
         return (
             <ValidationUI 
                 title="Wrong Account" 
-                icon="user"
+                iconName="user"
                 iconColor="text-danger"
                 description={`Invite is for ${inviteEmail}, but you are ${sessionEmail}.`}
                 action={<SignOutSwitchButton callbackUrl={`/business/invite?ref=${refId}`} />}
