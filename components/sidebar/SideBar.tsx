@@ -67,7 +67,7 @@ const SideBar = () => {
                 duration: 1
             }}
         >
-            <div className={`flex ${sidebarOpen ? 'justify-between' : 'justify-center'} p-4 border-b border-default-200`}>
+            <div className={`flex ${sidebarOpen ? 'justify-between' : 'justify-center'} p-4 border-b border-default-200 h-16 items-center`}>
                 {
                     sidebarOpen && <Link href={"/"}>
                         <Image
