@@ -16,4 +16,9 @@ export interface UsersState {
         totalPages: number
         totalCount: number
     }
+    mutation: {
+        updateStatus: 'idle' | 'loading' | 'succeeded' | 'failed'
+        updateError: string | null
+        updatingId: string | null
+    }
 }

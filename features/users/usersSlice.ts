@@ -32,6 +32,29 @@ export const fetchUsers = createAsyncThunk(
     }
 )
 
+// Thunk: update display name and role for a business user
+export const updateUser = createAsyncThunk(
+    "users/updateUser",
+    async ({ id, displayName, role }: { id: string; displayName: string; role: BusinessUser["role"] }) => {
+        const res = await fetch(`/api/business/users/${id}`, {
+            method: "PATCH",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify({ displayName, role }),
+        })
+
+        if (!res.ok) {
+            const text = await res.text()
+            throw new Error(text || "Failed to update user")
+        }
+
+        const data = (await res.json()) as { user: BusinessUser }
+        return data.user
+    }
+)
+
 const initialState: UsersState = {
     list: {
         items: [],
@@ -40,6 +63,11 @@ const initialState: UsersState = {
         currentPage: 1,
         totalPages: 0,
         totalCount: 0,
+    },
+    mutation: {
+        updateStatus: 'idle',
+        updateError: null,
+        updatingId: null,
     },
 }
 
@@ -68,6 +96,27 @@ const usersSlice = createSlice({
             .addCase(fetchUsers.rejected, (state, action) => {
                 state.list.status = 'failed'
                 state.list.error = action.error.message || 'Failed to fetch users'
+            })
+            // updateUser
+            .addCase(updateUser.pending, (state, action) => {
+                state.mutation.updateStatus = 'loading'
+                state.mutation.updateError = null
+                state.mutation.updatingId = action.meta.arg.id
+            })
+            .addCase(updateUser.fulfilled, (state, action) => {
+                state.mutation.updateStatus = 'succeeded'
+                state.mutation.updatingId = null
+
+                const updated = action.payload
+                const index = state.list.items.findIndex((user) => user.id === updated.id)
+                if (index !== -1) {
+                    state.list.items[index] = updated
+                }
+            })
+            .addCase(updateUser.rejected, (state, action) => {
+                state.mutation.updateStatus = 'failed'
+                state.mutation.updateError = action.error.message || 'Failed to update user'
+                state.mutation.updatingId = null
             })
     },
 })
