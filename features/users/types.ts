@@ -20,5 +20,8 @@ export interface UsersState {
         updateStatus: 'idle' | 'loading' | 'succeeded' | 'failed'
         updateError: string | null
         updatingId: string | null
+        deleteStatus: 'idle' | 'loading' | 'succeeded' | 'failed'
+        deleteError: string | null
+        deletingId: string | null
     }
 }

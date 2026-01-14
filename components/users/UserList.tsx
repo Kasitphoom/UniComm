@@ -16,13 +16,15 @@ import {
     Card,
     CardBody,
     Button,
+    addToast,
 } from "@heroui/react";
 import { EditIcon, DeleteIcon, CalendarIcon } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import { fetchUsers } from "@/features/users/usersSlice";
+import { deleteUser, fetchUsers } from "@/features/users/usersSlice";
 import type { BusinessUser } from "@/features/users/types";
 import EditUserModal from "./EditUserModal";
+import ConfirmDialog from "@/components/common/ConfirmDialog";
 
 const columns = [
     { name: "NAME", uid: "name" },
@@ -51,7 +53,9 @@ export default function UserList() {
     const searchParams = useSearchParams();
     const dispatch = useAppDispatch();
     const { items: users, status, error, currentPage, totalPages } = useAppSelector((state) => state.users.list);
+    const { deletingId, deleteStatus } = useAppSelector((state) => state.users.mutation);
     const [selectedUser, setSelectedUser] = useState<BusinessUser | null>(null);
+    const [userToDelete, setUserToDelete] = useState<BusinessUser | null>(null);
 
     const query = searchParams.get("query") || "";
     const sort = (searchParams.get("sort") || "desc") as "asc" | "desc";
@@ -63,6 +67,10 @@ export default function UserList() {
 
     const handleEditUser = React.useCallback((user: BusinessUser) => {
         setSelectedUser(user);
+    }, []);
+
+    const handleDeleteUser = React.useCallback((user: BusinessUser) => {
+        setUserToDelete(user);
     }, []);
 
     const onPageChange = (newPage: number) => {
@@ -124,16 +132,24 @@ export default function UserList() {
                             </Button>
                         </Tooltip>
                         <Tooltip color="danger" content="Delete user">
-                            <span className="text-lg text-danger cursor-pointer active:opacity-50">
-                                <DeleteIcon size={20} />
-                            </span>
+                            <Button
+                                isIconOnly
+                                size="sm"
+                                variant="light"
+                                color="danger"
+                                onPress={() => handleDeleteUser(user)}
+                                aria-label="Delete user"
+                                isLoading={deletingId === user.id && deleteStatus === 'loading'}
+                            >
+                                <DeleteIcon size={18} />
+                            </Button>
                         </Tooltip>
                     </div>
                 );
             default:
                 return null;
         }
-    }, [handleEditUser]);
+    }, [handleDeleteUser, handleEditUser, deleteStatus, deletingId]);
 
     if (status === 'failed') {
         return (
@@ -144,7 +160,7 @@ export default function UserList() {
     }
 
     // Shared sub-components for Mobile Cards
-    const MobileUserCard = ({ user, onEdit }: { user: BusinessUser; onEdit: (user: BusinessUser) => void }) => (
+    const MobileUserCard = ({ user, onEdit, onDelete }: { user: BusinessUser; onEdit: (user: BusinessUser) => void; onDelete: (user: BusinessUser) => void }) => (
         <Card className="mb-3 shadow-sm border-none bg-white lg:hidden">
             <CardBody className="p-4">
                 <div className="flex justify-between items-start mb-3">
@@ -174,7 +190,15 @@ export default function UserList() {
                         <Button isIconOnly size="sm" variant="light" aria-label="Edit" onPress={() => onEdit(user)}>
                             <EditIcon size={18} className="text-default-400" />
                         </Button>
-                        <Button isIconOnly size="sm" variant="light" color="danger" aria-label="Delete">
+                        <Button
+                            isIconOnly
+                            size="sm"
+                            variant="light"
+                            color="danger"
+                            aria-label="Delete"
+                            onPress={() => onDelete(user)}
+                            isLoading={deletingId === user.id && deleteStatus === 'loading'}
+                        >
                             <DeleteIcon size={18} />
                         </Button>
                     </div>
@@ -224,7 +248,7 @@ export default function UserList() {
                 {/* Mobile View: Only visible on small/medium screens */}
                 <div className="lg:hidden">
                     {users.map((user: BusinessUser) => (
-                        <MobileUserCard key={user.id} user={user} onEdit={handleEditUser} />
+                        <MobileUserCard key={user.id} user={user} onEdit={handleEditUser} onDelete={handleDeleteUser} />
                     ))}
                 </div>
 
@@ -249,6 +273,47 @@ export default function UserList() {
                 isOpen={!!selectedUser}
                 user={selectedUser}
                 onClose={() => setSelectedUser(null)}
+            />
+            <ConfirmDialog
+                isOpen={!!userToDelete}
+                title={
+                    <>
+                        <h2 className="font-bold text-foreground">Delete user</h2>
+                        <p className="text-xs text-default-400">This action cannot be undone.</p>
+                    </>
+                }
+                content={userToDelete ? (
+                    <div className="space-y-4">
+                        <p className="text-foreground/90 leading-6">
+                            Are you sure you want to remove this user from the workspace? <span className="font-semibold text-foreground wrap-break-word">
+                            {userToDelete.displayName || userToDelete.email}
+                        </span>
+                        </p>
+                    </div>
+                ) : null}
+                onCancel={() => setUserToDelete(null)}
+                onConfirm={async () => {
+                    if (!userToDelete) return;
+                    try {
+                        await dispatch(deleteUser(userToDelete.id)).unwrap();
+                        addToast({
+                            title: "User removed",
+                            description: `${userToDelete.displayName || userToDelete.email} has been removed.`,
+                            color: "secondary",
+                        });
+                    } catch (err: any) {
+                        addToast({
+                            title: "Failed to delete user",
+                            description: err?.message || "Unexpected error",
+                            color: "danger",
+                        });
+                    } finally {
+                        setUserToDelete(null);
+                    }
+                }}
+                confirmText="Delete"
+                confirmButtonProps={{ color: "danger" }}
+                isConfirmLoading={deleteStatus === 'loading' && !!userToDelete && deletingId === userToDelete.id}
             />
         </>
     );

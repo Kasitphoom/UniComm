@@ -55,6 +55,25 @@ export const updateUser = createAsyncThunk(
     }
 )
 
+// Thunk: delete a business user
+export const deleteUser = createAsyncThunk(
+    "users/deleteUser",
+    async (id: string) => {
+        const res = await fetch(`/api/business/users/${id}`, {
+            method: "DELETE",
+            credentials: "include",
+        })
+
+        if (!res.ok) {
+            const text = await res.text()
+            throw new Error(text || "Failed to delete user")
+        }
+
+        const data = (await res.json()) as { deleted: boolean; id: string }
+        return data.id
+    }
+)
+
 const initialState: UsersState = {
     list: {
         items: [],
@@ -68,6 +87,9 @@ const initialState: UsersState = {
         updateStatus: 'idle',
         updateError: null,
         updatingId: null,
+        deleteStatus: 'idle',
+        deleteError: null,
+        deletingId: null,
     },
 }
 
@@ -117,6 +139,24 @@ const usersSlice = createSlice({
                 state.mutation.updateStatus = 'failed'
                 state.mutation.updateError = action.error.message || 'Failed to update user'
                 state.mutation.updatingId = null
+            })
+            // deleteUser
+            .addCase(deleteUser.pending, (state, action) => {
+                state.mutation.deleteStatus = 'loading'
+                state.mutation.deleteError = null
+                state.mutation.deletingId = action.meta.arg
+            })
+            .addCase(deleteUser.fulfilled, (state, action) => {
+                state.mutation.deleteStatus = 'succeeded'
+                const id = action.payload
+                state.list.items = state.list.items.filter((user) => user.id !== id)
+                state.list.totalCount = Math.max(0, state.list.totalCount - 1)
+                state.mutation.deletingId = null
+            })
+            .addCase(deleteUser.rejected, (state, action) => {
+                state.mutation.deleteStatus = 'failed'
+                state.mutation.deleteError = action.error.message || 'Failed to delete user'
+                state.mutation.deletingId = null
             })
     },
 })

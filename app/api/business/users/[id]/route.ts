@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/api-auth"
 import { getBusinessPrisma } from "@/lib/prisma-business"
+import prismaMain from "@/lib/prisma-main"
 import { UserRole } from "@/app/generated/business/prisma"
 
 export const PATCH = async (
@@ -119,6 +120,85 @@ export const PATCH = async (
         console.error("Error updating user:", err)
         return NextResponse.json(
             { error: err?.message || "Failed to update user" },
+            { status: 500 }
+        )
+    }
+}
+
+export const DELETE = async (
+    req: NextRequest,
+    context: { params: Promise<{ id: string }> }
+) => {
+    try {
+        const auth = await requireAuth(req)
+        if (!auth.ok) return auth.response
+
+        const { id } = await context.params
+        const prisma = await getBusinessPrisma(auth.businessId!)
+
+        const actor = await prisma.businessUser.findUnique({ where: { id: auth.userId! } })
+        if (!actor) {
+            return NextResponse.json({ error: "Authenticated user not found" }, { status: 401 })
+        }
+
+        const target = await prisma.businessUser.findUnique({ where: { id } })
+        if (!target) {
+            return NextResponse.json({ error: "User not found" }, { status: 404 })
+        }
+
+        if (actor.id === target.id) {
+            return NextResponse.json(
+                { error: "You cannot delete your own account" },
+                { status: 400 }
+            )
+        }
+
+        const actorRole = actor.role
+        const targetRole = target.role
+        const actorIsOwner = actorRole === UserRole.OWNER
+        const actorIsAdmin = actorRole === UserRole.ADMIN
+
+        if (!(actorIsOwner || actorIsAdmin)) {
+            return NextResponse.json(
+                { error: "You do not have permission to delete users" },
+                { status: 403 }
+            )
+        }
+
+        if (actorIsAdmin) {
+            if (targetRole === UserRole.OWNER || targetRole === UserRole.ADMIN) {
+                return NextResponse.json(
+                    { error: "Admins cannot delete owners or other admins" },
+                    { status: 403 }
+                )
+            }
+        }
+
+        if (targetRole === UserRole.OWNER) {
+            const ownerCount = await prisma.businessUser.count({ where: { role: UserRole.OWNER } })
+            if (ownerCount <= 1) {
+                return NextResponse.json(
+                    { error: "Cannot delete the last owner" },
+                    { status: 400 }
+                )
+            }
+        }
+
+        // Remove membership from main database if present
+        const mainUser = await prismaMain.user.findUnique({ where: { email: target.email } })
+        if (mainUser) {
+            await prismaMain.usersOnBusinesses.deleteMany({
+                where: { userId: mainUser.id, businessId: auth.businessId! },
+            })
+        }
+
+        await prisma.businessUser.delete({ where: { id } })
+
+        return NextResponse.json({ deleted: true, id })
+    } catch (err: any) {
+        console.error("Error deleting user:", err)
+        return NextResponse.json(
+            { error: err?.message || "Failed to delete user" },
             { status: 500 }
         )
     }
