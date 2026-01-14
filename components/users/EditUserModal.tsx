@@ -41,16 +41,22 @@ const roleOptions = Object.values(UserRole).map((role) => ({
 interface EditUserModalProps {
     isOpen: boolean;
     user: BusinessUser | null;
+    currentUserId: string | null;
+    currentUserRole: string | null;
     onClose: () => void;
     onSuccess?: (user: BusinessUser) => void;
 }
 
 type EditUserFormData = yup.InferType<typeof editUserSchema>;
 
-const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, user, onClose, onSuccess }) => {
+const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, user, currentUserId, currentUserRole, onClose, onSuccess }) => {
     const dispatch = useAppDispatch();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+    const isSelf = user?.id === currentUserId;
+    const canChangeRole = currentUserRole === 'OWNER' || currentUserRole === 'ADMIN';
+    const isRoleDisabled = isSelf && !canChangeRole;
 
     const {
         control,
@@ -155,24 +161,31 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, user, onClose, on
                             name="role"
                             control={control}
                             render={({ field }) => (
-                                <Select
-                                    {...field}
-                                    label="Role"
-                                    placeholder="Select a role"
-                                    variant="bordered"
-                                    isInvalid={!!errors.role}
-                                    errorMessage={errors.role?.message}
-                                    isDisabled={isSubmitting}
-                                    selectedKeys={field.value ? [field.value] : []}
-                                    onSelectionChange={(keys) => {
-                                        const selectedKey = Array.from(keys)[0];
-                                        field.onChange(selectedKey as string);
-                                    }}
-                                >
-                                    {roleOptions.map((role) => (
-                                        <SelectItem key={role.value}>{role.label}</SelectItem>
-                                    ))}
-                                </Select>
+                                <div className="space-y-1">
+                                    <Select
+                                        {...field}
+                                        label="Role"
+                                        placeholder="Select a role"
+                                        variant="bordered"
+                                        isInvalid={!!errors.role}
+                                        errorMessage={errors.role?.message}
+                                        isDisabled={isSubmitting || isRoleDisabled}
+                                        selectedKeys={field.value ? [field.value] : []}
+                                        onSelectionChange={(keys) => {
+                                            const selectedKey = Array.from(keys)[0];
+                                            field.onChange(selectedKey as string);
+                                        }}
+                                    >
+                                        {roleOptions.map((role) => (
+                                            <SelectItem key={role.value}>{role.label}</SelectItem>
+                                        ))}
+                                    </Select>
+                                    {isRoleDisabled && (
+                                        <p className="text-xs text-default-400 px-1">
+                                            You cannot change your own role
+                                        </p>
+                                    )}
+                                </div>
                             )}
                         />
                     </ModalBody>

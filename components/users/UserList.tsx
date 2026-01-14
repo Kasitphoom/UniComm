@@ -22,6 +22,7 @@ import { EditIcon, DeleteIcon, CalendarIcon } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { deleteUser, fetchUsers } from "@/features/users/usersSlice";
+import { useUser } from "@/components/providers/UserProvider";
 import type { BusinessUser } from "@/features/users/types";
 import EditUserModal from "./EditUserModal";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
@@ -56,6 +57,11 @@ export default function UserList() {
     const { deletingId, deleteStatus } = useAppSelector((state) => state.users.mutation);
     const [selectedUser, setSelectedUser] = useState<BusinessUser | null>(null);
     const [userToDelete, setUserToDelete] = useState<BusinessUser | null>(null);
+    
+    const currentUser = useUser();
+    const currentUserId = currentUser.currentBusinessProfile?.id || null;
+    const currentUserRole = currentUser.currentBusinessProfile?.role || null;
+    const canManageUsers = currentUserRole === 'OWNER' || currentUserRole === 'ADMIN';
 
     const query = searchParams.get("query") || "";
     const sort = (searchParams.get("sort") || "desc") as "asc" | "desc";
@@ -118,20 +124,24 @@ export default function UserList() {
                     <p className="text-foreground-400">{date}</p>
                 );
             case "actions":
+                const isSelf = user.id === currentUserId;
+                const canEdit = isSelf || canManageUsers;
+                const canDelete = !isSelf && canManageUsers;
                 return (
                     <div className="relative flex items-center justify-center gap-2">
-                        <Tooltip content="Edit user">
+                        <Tooltip content={canEdit ? "Edit user" : "No permission"}>
                             <Button
                                 isIconOnly
                                 size="sm"
                                 variant="light"
                                 onPress={() => handleEditUser(user)}
                                 aria-label="Edit user"
+                                isDisabled={!canEdit}
                             >
                                 <EditIcon size={18} />
                             </Button>
                         </Tooltip>
-                        <Tooltip color="danger" content="Delete user">
+                        <Tooltip color="danger" content={canDelete ? "Delete user" : (isSelf ? "Cannot delete yourself" : "No permission")}>
                             <Button
                                 isIconOnly
                                 size="sm"
@@ -140,6 +150,7 @@ export default function UserList() {
                                 onPress={() => handleDeleteUser(user)}
                                 aria-label="Delete user"
                                 isLoading={deletingId === user.id && deleteStatus === 'loading'}
+                                isDisabled={!canDelete}
                             >
                                 <DeleteIcon size={18} />
                             </Button>
@@ -149,7 +160,7 @@ export default function UserList() {
             default:
                 return null;
         }
-    }, [handleDeleteUser, handleEditUser, deleteStatus, deletingId]);
+    }, [handleDeleteUser, handleEditUser, deleteStatus, deletingId, currentUserId, canManageUsers]);
 
     if (status === 'failed') {
         return (
@@ -160,7 +171,11 @@ export default function UserList() {
     }
 
     // Shared sub-components for Mobile Cards
-    const MobileUserCard = ({ user, onEdit, onDelete }: { user: BusinessUser; onEdit: (user: BusinessUser) => void; onDelete: (user: BusinessUser) => void }) => (
+    const MobileUserCard = ({ user, onEdit, onDelete }: { user: BusinessUser; onEdit: (user: BusinessUser) => void; onDelete: (user: BusinessUser) => void }) => {
+        const isSelf = user.id === currentUserId;
+        const canEdit = isSelf || canManageUsers;
+        const canDelete = !isSelf && canManageUsers;
+        return (
         <Card className="mb-3 shadow-sm border-none bg-white lg:hidden">
             <CardBody className="p-4">
                 <div className="flex justify-between items-start mb-3">
@@ -187,7 +202,14 @@ export default function UserList() {
                         {new Date(user.createdAt).toLocaleDateString()}
                     </div>
                     <div className="flex gap-3">
-                        <Button isIconOnly size="sm" variant="light" aria-label="Edit" onPress={() => onEdit(user)}>
+                        <Button 
+                            isIconOnly 
+                            size="sm" 
+                            variant="light" 
+                            aria-label="Edit" 
+                            onPress={() => onEdit(user)}
+                            isDisabled={!canEdit}
+                        >
                             <EditIcon size={18} className="text-default-400" />
                         </Button>
                         <Button
@@ -198,6 +220,7 @@ export default function UserList() {
                             aria-label="Delete"
                             onPress={() => onDelete(user)}
                             isLoading={deletingId === user.id && deleteStatus === 'loading'}
+                            isDisabled={!canDelete}
                         >
                             <DeleteIcon size={18} />
                         </Button>
@@ -205,7 +228,8 @@ export default function UserList() {
                 </div>
             </CardBody>
         </Card>
-    );
+        );
+    };
 
     return (
         <>
@@ -272,6 +296,8 @@ export default function UserList() {
             <EditUserModal
                 isOpen={!!selectedUser}
                 user={selectedUser}
+                currentUserId={currentUserId}
+                currentUserRole={currentUserRole}
                 onClose={() => setSelectedUser(null)}
             />
             <ConfirmDialog

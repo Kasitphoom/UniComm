@@ -3,6 +3,15 @@ import { requireAuth } from "@/lib/api-auth"
 import { getBusinessPrisma } from "@/lib/prisma-business"
 import prismaMain from "@/lib/prisma-main"
 import { UserRole } from "@/app/generated/business/prisma"
+import { hasRolePermission, RolePermissions } from "@/lib/role-permissions"
+
+// Define role permissions for different operations
+const PERMISSIONS = {
+    UPDATE_OWN_DISPLAY_NAME: RolePermissions.ALL_USERS, // Any user can update their own name
+    UPDATE_OTHER_USERS: RolePermissions.ADMIN_AND_OWNER, // Only admin/owner can update others
+    CHANGE_ROLES: RolePermissions.ADMIN_AND_OWNER, // Only admin/owner can change roles
+    DELETE_USERS: RolePermissions.ADMIN_AND_OWNER, // Only admin/owner can delete users
+} as const
 
 export const PATCH = async (
     req: NextRequest,
@@ -62,34 +71,47 @@ export const PATCH = async (
 
         const actorRole = actor.role
         const targetRole = target.role
-        const actorIsOwner = actorRole === UserRole.OWNER
-        const actorIsAdmin = actorRole === UserRole.ADMIN
         const isSelf = target.id === actor.id
 
-        if (!isSelf && !(actorIsOwner || actorIsAdmin)) {
+        // Permission check: Anyone can update their own display name
+        if (displayName !== undefined && isSelf) {
+            // Self update of display name - check if user has permission
+            if (!hasRolePermission(actorRole, PERMISSIONS.UPDATE_OWN_DISPLAY_NAME)) {
+                return NextResponse.json(
+                    { error: "You do not have permission to update your display name" },
+                    { status: 401 }
+                )
+            }
+        }
+
+        // Permission check: Only admins/owners can update other users
+        if (!isSelf && !hasRolePermission(actorRole, PERMISSIONS.UPDATE_OTHER_USERS)) {
             return NextResponse.json(
                 { error: "You do not have permission to update other users" },
-                { status: 403 }
+                { status: 401 }
             )
         }
 
-        if (nextRole !== undefined) {
-            if (!actorIsOwner && !actorIsAdmin) {
+        // Permission check: Role changes require admin/owner privileges (even for self)
+        if (nextRole !== undefined && nextRole !== targetRole) {
+            if (!hasRolePermission(actorRole, PERMISSIONS.CHANGE_ROLES)) {
                 return NextResponse.json(
                     { error: "You do not have permission to change roles" },
-                    { status: 403 }
+                    { status: 401 }
                 )
             }
 
-            if (actorIsAdmin) {
+            // Additional validation: Admins cannot promote to or demote owners
+            if (hasRolePermission(actorRole, [UserRole.ADMIN])) {
                 if (targetRole === UserRole.OWNER || nextRole === UserRole.OWNER) {
                     return NextResponse.json(
                         { error: "Only owners can change owner roles" },
-                        { status: 403 }
+                        { status: 401 }
                     )
                 }
             }
 
+            // Prevent owners from demoting themselves
             if (isSelf && actorRole === UserRole.OWNER && nextRole !== UserRole.OWNER) {
                 return NextResponse.json(
                     { error: "Owners cannot remove their own owner role" },
@@ -158,10 +180,11 @@ export const DELETE = async (
         const actorIsOwner = actorRole === UserRole.OWNER
         const actorIsAdmin = actorRole === UserRole.ADMIN
 
-        if (!(actorIsOwner || actorIsAdmin)) {
+        // Permission check: Only admins/owners can delete users
+        if (!hasRolePermission(actorRole, PERMISSIONS.DELETE_USERS)) {
             return NextResponse.json(
                 { error: "You do not have permission to delete users" },
-                { status: 403 }
+                { status: 401 }
             )
         }
 
@@ -169,7 +192,7 @@ export const DELETE = async (
             if (targetRole === UserRole.OWNER || targetRole === UserRole.ADMIN) {
                 return NextResponse.json(
                     { error: "Admins cannot delete owners or other admins" },
-                    { status: 403 }
+                    { status: 401 }
                 )
             }
         }
