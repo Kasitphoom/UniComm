@@ -84,6 +84,7 @@ const ResetPasswordRequestForm = (params: { refId?: string, email?: string }) =>
                     render={({ field }) => (
                         <Input
                             {...field}
+                            defaultValue={field.value}
                             label="Email"
                             type="email"
                             validationBehavior="aria"
@@ -102,7 +103,7 @@ const ResetPasswordRequestForm = (params: { refId?: string, email?: string }) =>
                         return (
                             <Input
                                 {...field}
-                                label="Password"
+                                label="New Password"
                                 type="password"
                                 isRequired
                                 validationBehavior="aria"
@@ -115,7 +116,7 @@ const ResetPasswordRequestForm = (params: { refId?: string, email?: string }) =>
                                     </div>
                                 ) : undefined}
                                 labelPlacement="outside"
-                                placeholder="Enter your password"
+                                placeholder="Enter your new password"
                             />
                         )
                     }}
@@ -130,7 +131,7 @@ const ResetPasswordRequestForm = (params: { refId?: string, email?: string }) =>
                         return (
                             <Input
                                 {...field}
-                                label="Confirm Password"
+                                label="Confirm New Password"
                                 type="password"
                                 isRequired
                                 validationBehavior="aria"
@@ -143,7 +144,7 @@ const ResetPasswordRequestForm = (params: { refId?: string, email?: string }) =>
                                     </div>
                                 ) : undefined}
                                 labelPlacement="outside"
-                                placeholder="Re-enter your password"
+                                placeholder="Re-enter your new password"
                             />
                         )
                     }}

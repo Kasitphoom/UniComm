@@ -9,7 +9,7 @@
     "prisma-generate": "npx prisma generate --schema=prisma/main.schema.prisma && npx prisma generate "
   },
   "dependencies": {
-    "@heroui/react": "^2.8.5",
+    "@heroui/react": "^2.8.6",
     "@heroui/use-infinite-scroll": "^2.2.12",
     "@hookform/resolvers": "^5.2.2",
     "@pdfme/common": "^5.4.6",
@@ -27,7 +27,7 @@
     "lucide-react": "^0.552.0",
     "mailgun.js": "^12.1.1",
     "motion": "^12.23.24",
-    "next": "15.5.7",
+    "next": "^16.1.1",
     "next-auth": "^4.24.11",
     "next-swagger-doc": "^0.4.1",
     "react": "19.1.0",
@@ -43,6 +43,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/swagger-ui-react": "^4.11.0",
+    "copy-webpack-plugin": "^13.0.1",
     "prisma": "^6.17.1",
     "tailwindcss": "^4",
     "tsx": "^4.20.6",

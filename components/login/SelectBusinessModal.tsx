@@ -51,7 +51,7 @@ const SelectBusinessModal = (props: SelectBusinessModalProps) => {
                             <Spinner color='secondary' />
                         ) : (
                             <div className="flex flex-col gap-4">
-                                {businesses && businesses.map((business) => (
+                                {businesses && businesses.length > 0 ? businesses.map((business) => (
                                     <div 
                                         key={business.id} 
                                         className="py-2 px-4 border border-default-200 rounded-lg hover:bg-default-100 cursor-pointer"
@@ -59,9 +59,10 @@ const SelectBusinessModal = (props: SelectBusinessModalProps) => {
                                             // Persist cookie for server-side redirects, update session token, then soft-navigate
                                             const id = business.id as string
                                             document.cookie = `uc_default_business=${encodeURIComponent(id)}; Path=/; Max-Age=${60 * 60 * 24 * 365}`
+                                            props.onOpenChange(false)
                                             update({ activeBusinessId: id })
                                                 .then(() => {
-                                                    router.replace(`/dashboard`)
+                                                    router.refresh()
                                                 })
                                                 .catch(() => {})
                                         }}
@@ -69,7 +70,9 @@ const SelectBusinessModal = (props: SelectBusinessModalProps) => {
                                         <h3 className="font-medium">{business.name}</h3>
                                         <p className="text-sm text-default-400">{business.memberships?.find((b) => b.businessId === business.id)?.role}</p>
                                     </div>
-                                ))}
+                                )) : (
+                                    <p className="py-2 px-4 text-default-400">You are not a member of any businesses yet.</p>
+                                )}
                             </div>
                         )
                     }

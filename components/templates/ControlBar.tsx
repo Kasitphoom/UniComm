@@ -9,11 +9,13 @@ import CreateTemplateModal from './CreateTemplateModal'
 const ControlBar = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     return (
-        <div className='flex gap-4 justify-end'>
-            <ViewMode />
-            <SearchBar />
+        <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-end'>
+            <div className='flex items-center gap-4'>
+                <ViewMode />
+                <SearchBar />
+            </div>
             <ButtonGroup className='rounded-xl overflow-hidden'>
-                <Button color='secondary' startContent={<FilePlusCorner size={16} />} onPress={() => setIsModalOpen(true)}>New Template</Button>
+                <Button className='w-full' color='secondary' startContent={<FilePlusCorner size={16} />} onPress={() => setIsModalOpen(true)}>New Template</Button>
                 <Dropdown placement='bottom-end'>
                     <DropdownTrigger className='min-w-0'>
                         <Button color='secondary'><ChevronDown size={16}/></Button>

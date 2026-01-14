@@ -59,8 +59,9 @@ const SearchBar = ({ props }: { props?: InputProps }) => {
             onClear={() => handleValueChange('')}
             placeholder="Search"
             classNames={{
-                base: 'max-w-[300px]',
-                inputWrapper: 'bg-white border-0',
+                ...props?.classNames,
+                base: `${props?.classNames?.base} max-w-[300px]`,
+                inputWrapper: `${props?.classNames?.inputWrapper} bg-white border-0`,
             }}
             isClearable
             startContent={<Search size={16} className="text-default-500" />}

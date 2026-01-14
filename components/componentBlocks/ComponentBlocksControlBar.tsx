@@ -9,11 +9,13 @@ import CreateComponentBlockModal from './CreateComponentBlockModal'
 const ComponentBlocksControlBar = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     return (
-        <div className='flex gap-4 justify-end'>
-            <ViewMode />
-            <SearchBar />
+        <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-end'>
+            <div className='flex items-center gap-2'>
+                <ViewMode />
+                <SearchBar />
+            </div>
             <ButtonGroup className='rounded-xl overflow-hidden'>
-                <Button color='secondary' startContent={<Layers size={16} />} onPress={() => setIsModalOpen(true)}>New Component Block</Button>
+                <Button color='secondary' className='w-full' startContent={<Layers size={16} />} onPress={() => setIsModalOpen(true)}>New Component Block</Button>
                 <Dropdown placement='bottom-end'>
                     <DropdownTrigger className='min-w-0'>
                         <Button color='secondary'><ChevronDown size={16}/></Button>

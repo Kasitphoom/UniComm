@@ -9,7 +9,7 @@ export const sentMailService = async (recipients: string[], subject: string, htm
     });
 
     if (!from) {
-        from = "UniComm <postmaster@" + (process.env.MAILGUN_DOMAIN || "") + ">";
+        from = "UniComm <no-reply@" + (process.env.MAILGUN_DOMAIN || "") + ">";
     }
 
     const data = await mg.messages.create(process.env.MAILGUN_DOMAIN || "", {
