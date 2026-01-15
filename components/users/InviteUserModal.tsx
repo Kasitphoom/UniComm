@@ -37,10 +37,12 @@ const inviteUserSchema = yup.object().shape({
 type InviteUserFormData = yup.InferType<typeof inviteUserSchema>;
 
 // Get role options from Prisma enum
-const roleOptions = Object.values(UserRole).map((role) => ({
-    value: role,
-    label: role.charAt(0) + role.slice(1).toLowerCase(),
-}));
+const roleOptions = Object.values(UserRole).map((role) => {
+    if (role !== UserRole.OWNER) return {
+        value: role,
+        label: role.charAt(0) + role.slice(1).toLowerCase(),
+    }
+}).filter((role) => {return role !== undefined});
 
 interface InviteUserModalProps {
     isOpen: boolean;

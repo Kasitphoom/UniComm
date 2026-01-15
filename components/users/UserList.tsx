@@ -119,7 +119,7 @@ export default function UserList() {
                     </Chip>
                 );
             case "joinedAt":
-                const date = new Date(user.createdAt).toLocaleDateString()
+                const date = new Date(user.createdAt).toLocaleDateString("en-GB", { month: "short", day: "numeric", year: "numeric" });
                 return (
                     <p className="text-foreground-400">{date}</p>
                 );
