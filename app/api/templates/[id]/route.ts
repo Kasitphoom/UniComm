@@ -44,6 +44,8 @@ export async function PATCH(
         const prisma = await getBusinessPrisma(auth.businessId!)
         const body: Template = await req.json()
 
+        const hasRole = hasRolePermission(auth.token.currentBusinessProfile.role)
+
         const existingTemplate = await prisma.templates.findUnique({
             where: { id },
         })

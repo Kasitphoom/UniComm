@@ -6,10 +6,48 @@ import type { JWT } from "next-auth/jwt"
 import authOptions from "@/lib/auth"
 import { cookies as nextCookies } from "next/headers"
 import { DEFAULT_BUSINESS_COOKIE } from "@/types/business"
+import { UserRole } from "@/app/generated/business/prisma"
+
+export type BusinessMembership = {
+    businessId: string
+    role: UserRole
+}
+
+export type CurrentBusinessProfile = {
+    id: string
+    businessId: string
+    email: string
+    displayName: string
+    role: UserRole
+}
+
+export type AuthToken = JWT & {
+    email?: string
+    sub?: string
+    id?: string
+    businessIds?: string[]
+    memberships?: BusinessMembership[]
+    currentBusinessProfile?: CurrentBusinessProfile
+    activeBusinessId?: string
+}
+
+export type AuthSession = Session & {
+    user?: {
+        id?: string
+        email?: string | null
+        name?: string | null
+        image?: string | null
+        businessIds?: string[]
+        memberships?: BusinessMembership[]
+        activeBusinessId?: string
+        currentBusinessProfile?: CurrentBusinessProfile
+    }
+    activeBusinessId?: string
+}
 
 export type ApiAuth = {
-    session: Session | null
-    token: JWT | null
+    session: AuthSession | null
+    token: AuthToken | null
     userId: string | null
     mainUserId: string | null
     businessId: string | null
@@ -65,7 +103,7 @@ export async function authenticateApi(req: Request): Promise<ApiAuth> {
         }
     }
 
-    return { session, token: token as JWT | null, userId, mainUserId, businessId }
+    return { session: session as AuthSession | null, token: token as AuthToken | null, userId, mainUserId, businessId }
 }
 
 export type RequireAuthResult =
