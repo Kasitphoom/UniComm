@@ -6,6 +6,7 @@ import { requireAuth } from '@/lib/api-auth'
 import { getStorageService } from "@/utils/upload/modules"
 import { hashTemplate } from "@/lib/draftStore"
 import { hasRolePermission, RolePermissions } from "@/lib/role-permissions"
+import { UserRole } from "@/app/generated/business/prisma"
 
 export async function GET(
     _req: Request,
@@ -44,8 +45,6 @@ export async function PATCH(
         const prisma = await getBusinessPrisma(auth.businessId!)
         const body: Template = await req.json()
 
-        const hasRole = hasRolePermission(auth.token.currentBusinessProfile.role)
-
         const existingTemplate = await prisma.templates.findUnique({
             where: { id },
         })
@@ -53,6 +52,14 @@ export async function PATCH(
             return NextResponse.json(
                 { error: "Template not found" },
                 { status: 404 }
+            )
+        }
+
+        const isTemplateOwner = existingTemplate.userId === auth.userId
+        if (!isTemplateOwner) {
+            return NextResponse.json(
+                { error: "You do not have permission to update this template" },
+                { status: 403 }
             )
         }
 
