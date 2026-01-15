@@ -10,12 +10,16 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { saveTemplateDraft, loadTemplateDraft, hashTemplate } from '@/lib/draftStore'
 import { TemplateWithUser } from '@/types/template'
 import { componentBlockAdapter, EditorAdapter, templateAdapter } from '@/lib/editor/adapter'
+import dynamic from 'next/dynamic'
+
+const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { ssr: false })
 
 type EditorProps = {
     contentType?: 'pdf' | 'email'
     id: string
     resource?: 'template' | 'component'
     draftKeyPrefix?: string // namespace for local draft storage (defaults to 'template')
+    hasPermission?: boolean // if false, show read-only preview instead of editor
 }
 
 /**
@@ -23,9 +27,10 @@ type EditorProps = {
  * @param id Template ID to load and edit
  * @param resource Resource type: 'template' or 'component'
  * @param draftKeyPrefix Prefix for draft storage keys
+ * @param hasPermission If false, shows read-only preview instead of editor
  * @returns JSX Element
  */
-const Editor: React.FC<EditorProps> = ({ id, resource = 'template', draftKeyPrefix = 'template' }) => {
+const Editor: React.FC<EditorProps> = ({ id, resource = 'template', draftKeyPrefix = 'template', hasPermission = true }) => {
     const dispatch = useAppDispatch()
     const pathname = usePathname()
     const router = useRouter()
@@ -196,6 +201,20 @@ const Editor: React.FC<EditorProps> = ({ id, resource = 'template', draftKeyPref
 
     const isLoading = status === 'idle' || status === 'loading'
     const hasError = status === 'failed'
+
+    // If user doesn't have permission, show read-only preview
+    if (!hasPermission && templateData) {
+        return (
+            <div className="relative flex-1 w-full h-full min-w-0 overflow-hidden">
+                <PdfViewer 
+                    template={templateData} 
+                    className="w-full h-full"
+                    options={{ zoomLevel: 1.5 }}
+                    customViewerOptions={{ showToolbar: true, scroll: true }}
+                />
+            </div>
+        )
+    }
 
     return (
         <div

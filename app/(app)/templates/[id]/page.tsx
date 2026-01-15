@@ -3,6 +3,8 @@ import TemplateExportBar from '@/components/templates/TemplateExportBar'
 import { getTemplateData } from '@/query/templateQuery'
 import { redirect } from 'next/navigation'
 import React from 'react'
+import { getServerSession } from 'next-auth'
+import authOptions from '@/lib/auth'
 
 const page = async ({ params }: { params: Promise<{ id: string }> }) => {
     
@@ -13,10 +15,20 @@ const page = async ({ params }: { params: Promise<{ id: string }> }) => {
         redirect('/templates')
     }
 
+    // Get current session
+    const session = await getServerSession(authOptions)
+    const currentUserId = (session?.user as any)?.currentBusinessProfile?.id
+
+    // Get template data to check ownership
+    const templateData = await getTemplateData(id)
+    
+    // Check if user is the owner
+    const isOwner = templateData?.userId === currentUserId
+
     return (
         <div className='h-full flex flex-col'>
-            <TemplateExportBar id={id} />
-            <Editor id={id} resource='template' />
+            {isOwner && <TemplateExportBar id={id} />}
+            <Editor id={id} resource='template' hasPermission={isOwner} />
         </div>
     )
 }
