@@ -15,6 +15,7 @@ import { generatePdfPreview } from './TemplateExportBar'
 import { Template } from '@pdfme/common'
 import { useUser } from '@/components/providers/UserProvider'
 import { UserRole } from '@/app/generated/business/prisma'
+import { canDeleteResource } from '@/utils/permissions'
 
 const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { 
     ssr: false,
@@ -32,13 +33,10 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
     const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null)
     const [isPreviewLoading, setIsPreviewLoading] = useState(false)
     const [previewError, setPreviewError] = useState<string | null>(null)
-    const previewSrc = previewUrl ? `${previewUrl}#toolbar=0&navpanes=0&scrollbar=0` : null
 
     // Check if user has permission to delete (owner of template OR system admin/owner)
     const isTemplateOwner = template.userId === currentUser.currentBusinessProfile?.id
-    const adminRoles: UserRole[] = [UserRole.OWNER, UserRole.ADMIN]
-    const hasAdminRole = currentUser.role ? adminRoles.includes(currentUser.role as UserRole) : false
-    const canDelete = isTemplateOwner || hasAdminRole
+    const canDelete = canDeleteResource(isTemplateOwner, currentUser.role)
 
     useEffect(() => {
         if (viewMode !== 'grid') return
