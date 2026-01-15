@@ -58,9 +58,8 @@ export async function authenticateApi(req: Request): Promise<ApiAuth> {
 
     if (!businessId) {
         try {
-            const store = nextCookies() // in Next.js 13/14 headers variant this is synchronous
-            // @ts-expect-error: runtime type may differ in edge/server contexts
-            businessId = store.get?.(DEFAULT_BUSINESS_COOKIE)?.value ?? null
+            const store = await nextCookies()
+            businessId = (await store).get(DEFAULT_BUSINESS_COOKIE)?.value ?? null
         } catch {
             // ignore
         }
