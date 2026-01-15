@@ -11,6 +11,8 @@ import { deleteComponentBlock, fetchComponentBlocks } from '@/features/component
 import { setSidebarOpen } from '@/features/ui/uiSlice'
 import { Template } from '@pdfme/common'
 import { clientFetchParsedComponentBlock } from '@/utils/template/utils'
+import { useUser } from '@/components/providers/UserProvider'
+import { UserRole } from '@/app/generated/business/prisma'
 
 const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { 
     ssr: false,
@@ -23,11 +25,18 @@ const ComponentBlockCard = ({ block }: { block: ComponentBlockWithUser }) => {
 	const pathname = usePathname()
 	const searchParams = useSearchParams()
 	const viewMode = useAppSelector(state => state.ui.viewMode)
+	const currentUser = useUser()
 	const [previewUrl, setPreviewUrl] = useState<string | null>(null)
 	const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null)
 	const [isPreviewLoading, setIsPreviewLoading] = useState(false)
 	const [previewError, setPreviewError] = useState<string | null>(null)
 	const previewSrc = previewUrl ? `${previewUrl}#toolbar=0&navpanes=0&scrollbar=0` : null
+
+	// Check if user has permission to delete (owner of component OR system admin/owner)
+	const isComponentOwner = block.userId === currentUser.currentBusinessProfile?.id
+	const adminRoles: UserRole[] = [UserRole.OWNER, UserRole.ADMIN]
+	const hasAdminRole = currentUser.role ? adminRoles.includes(currentUser.role as UserRole) : false
+	const canDelete = isComponentOwner || hasAdminRole
 
 	useEffect(() => {
 		if (viewMode !== 'grid') return
@@ -157,6 +166,7 @@ const ComponentBlockCard = ({ block }: { block: ComponentBlockWithUser }) => {
 								{timeDifferenceFormatter(new Date(block.updatedAt))}
 							</p>
 						</div>
+					{canDelete && (
 						<Dropdown>
 							<DropdownTrigger>
 								<div className='absolute top-2 right-2 w-fit hover:cursor-pointer hover:bg-default-200 p-2 rounded-full transition-background'>
@@ -165,10 +175,11 @@ const ComponentBlockCard = ({ block }: { block: ComponentBlockWithUser }) => {
 							</DropdownTrigger>
 							<DropdownMenu onAction={onAction}>
 								<DropdownItem key="Delete" color="danger" className='text-danger' startContent={<TrashIcon size={16} />}>
-                                    Delete
-                                </DropdownItem>
+                                        Delete
+                                    </DropdownItem>
 							</DropdownMenu>
 						</Dropdown>
+					)}
 					</CardFooter>
 				)
 			}

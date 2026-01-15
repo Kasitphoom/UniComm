@@ -13,6 +13,8 @@ import React, { Key, useEffect, useState } from 'react'
 import { clientFetchParsedTemplate } from '@/utils/template/utils'
 import { generatePdfPreview } from './TemplateExportBar'
 import { Template } from '@pdfme/common'
+import { useUser } from '@/components/providers/UserProvider'
+import { UserRole } from '@/app/generated/business/prisma'
 
 const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { 
     ssr: false,
@@ -25,11 +27,18 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
     const pathname = usePathname()
     const searchParams = useSearchParams()
     const viewMode = useAppSelector(state => state.ui.viewMode)
+    const currentUser = useUser()
     const [previewUrl, setPreviewUrl] = useState<string | null>(null)
     const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null)
     const [isPreviewLoading, setIsPreviewLoading] = useState(false)
     const [previewError, setPreviewError] = useState<string | null>(null)
     const previewSrc = previewUrl ? `${previewUrl}#toolbar=0&navpanes=0&scrollbar=0` : null
+
+    // Check if user has permission to delete (owner of template OR system admin/owner)
+    const isTemplateOwner = template.userId === currentUser.currentBusinessProfile?.id
+    const adminRoles: UserRole[] = [UserRole.OWNER, UserRole.ADMIN]
+    const hasAdminRole = currentUser.role ? adminRoles.includes(currentUser.role as UserRole) : false
+    const canDelete = isTemplateOwner || hasAdminRole
 
     useEffect(() => {
         if (viewMode !== 'grid') return
@@ -162,18 +171,20 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
                                 { timeDifferenceFormatter(new Date(template.updatedAt)) }
                             </p>
                         </div>
-                        <Dropdown>
-                            <DropdownTrigger>
-                                <div className='absolute top-2 right-2 w-fit hover:cursor-pointer hover:bg-default-200 p-2 rounded-full transition-background'>
-                                    <EllipsisVertical size={16} />
-                                </div>
-                            </DropdownTrigger>
-                            <DropdownMenu onAction={onAction}>
-                                <DropdownItem key="Delete" color="danger" className='text-danger' startContent={<TrashIcon size={16} />}>
-                                    Delete
-                                </DropdownItem>
-                            </DropdownMenu>
-                        </Dropdown>
+                        {canDelete && (
+                            <Dropdown>
+                                <DropdownTrigger>
+                                    <div className='absolute top-2 right-2 w-fit hover:cursor-pointer hover:bg-default-200 p-2 rounded-full transition-background'>
+                                        <EllipsisVertical size={16} />
+                                    </div>
+                                </DropdownTrigger>
+                                <DropdownMenu onAction={onAction}>
+                                    <DropdownItem key="Delete" color="danger" className='text-danger' startContent={<TrashIcon size={16} />}>
+                                        Delete
+                                    </DropdownItem>
+                                </DropdownMenu>
+                            </Dropdown>
+                        )}
                     </CardFooter>
                 )
             }

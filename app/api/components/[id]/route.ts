@@ -5,6 +5,7 @@ import { Template } from "@pdfme/common"
 import { hashTemplate } from "@/lib/draftStore"
 import { transformTemplateToXml } from "@/utils/template/xml-pdf-transformer"
 import { getStorageService } from "@/utils/upload/modules"
+import { hasRolePermission, RolePermissions } from "@/lib/role-permissions"
 
 // GET /api/components/:id
 export async function GET(
@@ -56,6 +57,28 @@ export const DELETE = async (
             return NextResponse.json(
                 { error: "Template not found" },
                 { status: 404 }
+            )
+        }
+
+        // Permission check: Get current user's role
+        const currentUser = await prisma.businessUser.findUnique({ 
+            where: { id: auth.userId! } 
+        })
+        if (!currentUser) {
+            return NextResponse.json(
+                { error: "User not found" },
+                { status: 401 }
+            )
+        }
+
+        // Check if user is owner of the component block OR has ADMIN/OWNER role
+        const isComponentOwner = existingComponentBlock.userId === auth.userId
+        const hasAdminAccess = hasRolePermission(currentUser.role, RolePermissions.ADMIN_AND_OWNER)
+
+        if (!isComponentOwner && !hasAdminAccess) {
+            return NextResponse.json(
+                { error: "You do not have permission to delete this component block" },
+                { status: 403 }
             )
         }
 
