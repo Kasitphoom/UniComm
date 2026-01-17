@@ -199,7 +199,7 @@ export default function UserList() {
                 <div className="flex items-center justify-between pt-2 border-t border-divider">
                     <div className="flex items-center gap-1 text-tiny text-default-400">
                         <CalendarIcon size={12} />
-                        {new Date(user.createdAt).toLocaleDateString()}
+                        {new Date(user.createdAt).toLocaleDateString("en-GB", { month: "short", day: "numeric", year: "numeric" })}
                     </div>
                     <div className="flex gap-3">
                         <Button 

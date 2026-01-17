@@ -2,7 +2,7 @@
 import React from 'react'
 import { usePathname } from 'next/navigation'
 import { Divider } from '@heroui/react';
-import { BlocksIcon, ChevronsLeft, LayoutDashboard, NotepadTextDashed, UserIcon } from 'lucide-react';
+import { BlocksIcon, ChevronsLeft, LayoutDashboard, NotepadTextDashed, UserIcon, UsersIcon } from 'lucide-react';
 import { motion } from 'motion/react';
 import Image from 'next/image';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -34,6 +34,16 @@ export const Navigations: SidebarHierarchy = [
                 name: 'Component Blocks',
                 href: '/components',
                 icon: <BlocksIcon size={16} />,
+            }
+        ]
+    },
+    {
+        groupName: 'Data and Integration',
+        items: [
+            {
+                name: 'Customers',
+                href: '/customers',
+                icon: <UsersIcon size={16} />,
             }
         ]
     },
