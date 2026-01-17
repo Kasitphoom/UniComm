@@ -1,7 +1,7 @@
 "use client";
 
 import { Chip, Button, Divider } from "@heroui/react";
-import { DatabaseIcon, CalendarIcon, ClockIcon, Eye, EditIcon } from "lucide-react";
+import { DatabaseIcon, CalendarIcon, ClockIcon, Eye, EditIcon, UsersIcon } from "lucide-react";
 import { timeDifferenceFormatter } from "@/utils/DateFormatter";
 import { ContactListDTO } from "@/features/customers/types";
 
@@ -48,7 +48,17 @@ export const ContactListCard = ({ list, onEdit, onView }: ContactListCardProps) 
                 </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-8 md:gap-12 mb-5 md:mb-0 w-full md:w-auto">
+            <div className="grid grid-cols-3 gap-8 md:gap-12 mb-5 md:mb-0 w-full md:w-auto">
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-1.5 opacity-50">
+                        <UsersIcon size={12} className="shrink-0" />
+                        <span className="text-[10px] uppercase font-bold tracking-wider">Customers</span>
+                    </div>
+                    <span className="text-tiny whitespace-nowrap text-default-600">
+                        {list._count?.customers || 0}
+                    </span>
+                </div>
+
                 <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-1.5 opacity-50">
                         <CalendarIcon size={12} className="shrink-0" />

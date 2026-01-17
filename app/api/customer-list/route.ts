@@ -15,7 +15,13 @@ export const GET = async ( request: NextRequest ) => {
             return NextResponse.json({ error: "Business database not found." }, { status: 404 });
         }
 
-        const contactLists = await prisma.contactList.findMany({})
+        const contactLists = await prisma.contactList.findMany({
+            include: {
+                _count: {
+                    select: { customers: true }
+                }
+            }
+        })
 
         return NextResponse.json({ contactLists }, { status: 200 });
 

@@ -5,6 +5,9 @@ export interface ContactListDTO {
     name: string
     source?: ContactSource | null
     remarks?: string | null
+    _count?: {
+        customers: number
+    }
     createdAt: string
     updatedAt: string
 }
