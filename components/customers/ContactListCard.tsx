@@ -33,14 +33,12 @@ export const ContactListCard = ({ list, onEdit, onView }: ContactListCardProps) 
     return (
         <div className="group relative flex flex-col md:flex-row items-start md:items-center justify-between p-4 bg-white border-b border-gray-100 hover:bg-gray-50 transition-all first:rounded-t-xl last:rounded-b-xl last:border-b-0 shadow-sm">
             
-            {/* 1. Identity Section */}
             <div className="flex flex-col gap-1 min-w-full md:min-w-75 lg:min-w-100 mb-4 md:mb-0">
                 <div className="flex items-center justify-between md:justify-start gap-3">
                     <h3 className="font-bold text-foreground truncate pr-20 md:pr-0">
                         {list.name}
                     </h3>
                     
-                    {/* Chip: Absolute on mobile top-right, relative on desktop */}
                     <Chip
                         size="sm"
                         variant="flat"
@@ -56,7 +54,6 @@ export const ContactListCard = ({ list, onEdit, onView }: ContactListCardProps) 
                 </p>
             </div>
 
-            {/* 2. Metadata Section */}
             <div className="grid grid-cols-2 gap-8 md:gap-12 mb-5 md:mb-0 w-full md:w-auto">
                 <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-1.5 opacity-50">
@@ -79,7 +76,6 @@ export const ContactListCard = ({ list, onEdit, onView }: ContactListCardProps) 
                 </div>
             </div>
 
-            {/* 3. Action Buttons - Mobile visual separation added */}
             <div className="flex items-center gap-3 w-full md:w-auto justify-end pt-4 md:pt-0 border-t md:border-t-0 border-gray-50 shrink-0">
                 <Button
                     isIconOnly
