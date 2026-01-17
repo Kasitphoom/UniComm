@@ -84,12 +84,19 @@ model ComponentBlockVersion {
 
 // ========= CUSTOMER MODELS =========
 
+enum CONTACT_SOURCE {
+  MANUAL
+  CSV_UPLOAD
+  SALESFORCE
+}
+
 model ContactList {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
   name      String
-  fields    String[]
+  fields    Json[]
   customers Customer[]
+  source    CONTACT_SOURCE?
   remarks   String?
 
   createdAt DateTime @default(now())
