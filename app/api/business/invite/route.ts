@@ -7,6 +7,7 @@ import bcrypt from "bcryptjs";
 import { sentMailService } from "@/utils/mail";
 import { toAbsoluteUrl } from "@/utils/serverUrlHandler";
 import { UserRole } from "@/app/generated/business/prisma";
+import { hasPermission, userHasPermissionAPI } from "@/utils/permissions";
 
 // Generate a random password
 const generateRandomPassword = (length: number = 16): string => {
@@ -24,6 +25,18 @@ export const POST = async (request: NextRequest) => {
         if (!auth.ok) return auth.response;
 
         const { email, displayName, role } = await request.json();
+
+        const isHasPermission = userHasPermissionAPI(
+            request,
+            [UserRole.ADMIN, UserRole.OWNER]
+        );
+
+        if (!isHasPermission) {
+            return NextResponse.json(
+                { error: "You do not have permission to invite users." },
+                { status: 403 }
+            );
+        }
 
         // Validate input
         if (!email || !displayName || !role) {

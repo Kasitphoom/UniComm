@@ -5,6 +5,8 @@ import { transformTemplateToXml } from "@/utils/template/xml-pdf-transformer"
 import { requireAuth } from '@/lib/api-auth'
 import { getStorageService } from "@/utils/upload/modules"
 import { hashTemplate } from "@/lib/draftStore"
+import { hasRolePermission, RolePermissions } from "@/lib/role-permissions"
+import { UserRole } from "@/app/generated/business/prisma"
 
 export async function GET(
     _req: Request,
@@ -50,6 +52,14 @@ export async function PATCH(
             return NextResponse.json(
                 { error: "Template not found" },
                 { status: 404 }
+            )
+        }
+
+        const isTemplateOwner = existingTemplate.userId === auth.userId
+        if (!isTemplateOwner) {
+            return NextResponse.json(
+                { error: "You do not have permission to update this template" },
+                { status: 403 }
             )
         }
 
@@ -142,6 +152,28 @@ export const DELETE = async (
             return NextResponse.json(
                 { error: "Template not found" },
                 { status: 404 }
+            )
+        }
+
+        // Permission check: Get current user's role
+        const currentUser = await prisma.businessUser.findUnique({ 
+            where: { id: auth.userId! } 
+        })
+        if (!currentUser) {
+            return NextResponse.json(
+                { error: "User not found" },
+                { status: 401 }
+            )
+        }
+
+        // Check if user is owner of the template OR has ADMIN/OWNER role
+        const isTemplateOwner = existingTemplate.userId === auth.userId
+        const hasAdminAccess = hasRolePermission(currentUser.role, RolePermissions.ADMIN_AND_OWNER)
+
+        if (!isTemplateOwner && !hasAdminAccess) {
+            return NextResponse.json(
+                { error: "You do not have permission to delete this template" },
+                { status: 403 }
             )
         }
 
