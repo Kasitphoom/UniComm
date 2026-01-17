@@ -3,6 +3,7 @@
 import { Chip, Button, Divider } from "@heroui/react";
 import { DatabaseIcon, CalendarIcon, ClockIcon, Eye, EditIcon } from "lucide-react";
 import { timeDifferenceFormatter } from "@/utils/DateFormatter";
+import { ContactListDTO } from "@/features/customers/types";
 
 export enum CONTACT_SOURCE {
     MANUAL = "MANUAL",
@@ -11,14 +12,7 @@ export enum CONTACT_SOURCE {
 }
 
 interface ContactListCardProps {
-    list: {
-        id: string;
-        name: string;
-        source: CONTACT_SOURCE;
-        createdAt: Date;
-        updatedAt: Date;
-        remarks?: string;
-    };
+    list: ContactListDTO;
     onEdit: (id: string) => void;
     onView: (id: string) => void;
 }
@@ -42,11 +36,11 @@ export const ContactListCard = ({ list, onEdit, onView }: ContactListCardProps) 
                     <Chip
                         size="sm"
                         variant="flat"
-                        color={sourceColorMap[list.source]}
+                        color={sourceColorMap[list.source as CONTACT_SOURCE] || "default"}
                         className="h-5 text-[10px] shrink-0 absolute top-4 right-4 md:static"
                         startContent={<DatabaseIcon size={10} className="ml-1" />}
                     >
-                        {list.source.replace("_", " ")}
+                        {list.source?.replace("_", " ")}
                     </Chip>
                 </div>
                 <p className="text-tiny text-default-400 max-w-full md:max-w-87.5 truncate mt-1">
@@ -71,7 +65,7 @@ export const ContactListCard = ({ list, onEdit, onView }: ContactListCardProps) 
                         <span className="text-[10px] uppercase font-bold tracking-wider">Updated</span>
                     </div>
                     <span className="text-tiny text-secondary whitespace-nowrap font-medium">
-                        {timeDifferenceFormatter(list.updatedAt)}
+                        {timeDifferenceFormatter(new Date(list.updatedAt))}
                     </span>
                 </div>
             </div>

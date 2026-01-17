@@ -1,7 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { ContactListCard, CONTACT_SOURCE } from "./ContactListCard";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { fetchCustomerLists } from "@/features/customers/customerListsSlice";
+import { Spinner } from "@heroui/react";
 
 // Mocking one customer list as requested
 const MOCK_LISTS = [
@@ -24,6 +27,10 @@ const MOCK_LISTS = [
 ];
 
 export default function ContactListCollection() {
+
+    const dispatch = useAppDispatch();
+    const { items: customerList, status, error } = useAppSelector((state) => state.customerLists.list)
+
     const handleEdit = (id: string) => {
         console.log("Navigating to edit list:", id);
         // router.push(`/dashboard/lists/${id}/edit`);
@@ -34,9 +41,28 @@ export default function ContactListCollection() {
         // router.push(`/dashboard/lists/${id}`);
     }
 
+    useEffect(() => {
+        // Dispatch fetch action if needed
+        if (status === "idle") {
+            dispatch(fetchCustomerLists());
+        }
+    }, [status, dispatch]);
+
     return (
-        <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-            {MOCK_LISTS.map((list) => (
+        <div className="border border-gray-200 bg-white rounded-xl overflow-hidden shadow-sm">
+            {status === "idle" ? 
+                <div className="p-6 flex justify-center items-center w-full">
+                    <Spinner color="default" >Preparing</Spinner>
+                </div> 
+            : status === "loading" ? 
+                <div className="p-6 flex justify-center items-center w-full">
+                    <Spinner color="secondary" >Loading</Spinner>
+                </div>
+            : customerList.length === 0 ? 
+                <div className="p-6 text-center text-default-400">
+                    No customer lists found.
+                </div>
+            : customerList.map((list) => (
                 <ContactListCard
                     key={list.id}
                     list={list}
