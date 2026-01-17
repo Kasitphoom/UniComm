@@ -3,20 +3,23 @@
 import React, { useCallback, useEffect, useRef } from 'react'
 import { Designer } from '@pdfme/ui'
 import type { Template } from '@pdfme/common'
-import { text, multiVariableText, image, svg, table, line, rectangle, ellipse, dateTime, date, time, select } from '@pdfme/schemas'
+import { plugins } from './Editor/plugins'
 import { Spinner } from '@heroui/react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { saveTemplateDraft, loadTemplateDraft, hashTemplate } from '@/lib/draftStore'
 import { TemplateWithUser } from '@/types/template'
-import ComponentBlocks from '@/lib/template/plugins/componentBlocks/ComponentBlocks'
 import { componentBlockAdapter, EditorAdapter, templateAdapter } from '@/lib/editor/adapter'
+import dynamic from 'next/dynamic'
+
+const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { ssr: false })
 
 type EditorProps = {
     contentType?: 'pdf' | 'email'
     id: string
     resource?: 'template' | 'component'
     draftKeyPrefix?: string // namespace for local draft storage (defaults to 'template')
+    hasPermission?: boolean // if false, show read-only preview instead of editor
 }
 
 /**
@@ -24,9 +27,10 @@ type EditorProps = {
  * @param id Template ID to load and edit
  * @param resource Resource type: 'template' or 'component'
  * @param draftKeyPrefix Prefix for draft storage keys
+ * @param hasPermission If false, shows read-only preview instead of editor
  * @returns JSX Element
  */
-const Editor: React.FC<EditorProps> = ({ id, resource = 'template', draftKeyPrefix = 'template' }) => {
+const Editor: React.FC<EditorProps> = ({ id, resource = 'template', draftKeyPrefix = 'template', hasPermission = true }) => {
     const dispatch = useAppDispatch()
     const pathname = usePathname()
     const router = useRouter()
@@ -119,7 +123,7 @@ const Editor: React.FC<EditorProps> = ({ id, resource = 'template', draftKeyPref
                     zoomLevel: 1,
                     theme: { token: { colorPrimary: '#7828c8' } },
                 },
-                plugins: { text, multiVariableText, image, svg, table, line, rectangle, ellipse, dateTime, date, time, select, ComponentBlocks },
+                plugins: plugins,
             })
             designerRef.current.onChangeTemplate(handleDesignerChange)
             return
@@ -198,23 +202,35 @@ const Editor: React.FC<EditorProps> = ({ id, resource = 'template', draftKeyPref
     const isLoading = status === 'idle' || status === 'loading'
     const hasError = status === 'failed'
 
-    return (
-        <div className="relative h-full w-full min-w-0 overflow-hidden">
-            <div
-                ref={containerRef}
-                className="relative h-full w-full min-w-0 overflow-hidden flex items-center justify-center"
-            >
-                {isLoading && (
-                    <Spinner size="lg" color="secondary">
-                        Initialising data...
-                    </Spinner>
-                )}
-                {hasError && (
-                    <div className="text-sm text-danger-500">
-                        Failed to load template: {String(error ?? 'Unknown error')}
-                    </div>
-                )}
+    // If user doesn't have permission, show read-only preview
+    if (!hasPermission && templateData) {
+        return (
+            <div className="relative flex-1 w-full h-full min-w-0 overflow-hidden">
+                <PdfViewer 
+                    template={templateData} 
+                    className="w-full h-full"
+                    options={{ zoomLevel: 1.5 }}
+                    customViewerOptions={{ showToolbar: true, scroll: true }}
+                />
             </div>
+        )
+    }
+
+    return (
+        <div
+            ref={containerRef}
+            className="relative flex-1 w-full h-full min-w-0 overflow-hidden flex items-center justify-center"
+        >
+            {isLoading && (
+                <Spinner size="lg" color="secondary">
+                    Initialising data...
+                </Spinner>
+            )}
+            {hasError && (
+                <div className="text-sm text-danger-500">
+                    Failed to load template: {String(error ?? 'Unknown error')}
+                </div>
+            )}
         </div>
     )
 }
