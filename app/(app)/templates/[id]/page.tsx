@@ -27,7 +27,7 @@ const page = async ({ params }: { params: Promise<{ id: string }> }) => {
 
     return (
         <div className='h-full flex flex-col'>
-            {isOwner && <TemplateExportBar id={id} />}
+            <TemplateExportBar id={id} isOwner={isOwner} />
             <Editor id={id} resource='template' hasPermission={isOwner} />
         </div>
     )

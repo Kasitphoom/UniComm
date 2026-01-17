@@ -47,6 +47,10 @@ const DB_USERS: Approver[] = Array.from({ length: 50 }).map((_, i) => ({
     avatar: `https://i.pravatar.cc/150?u=${i + 1}`
 }))
 
+type submitApprovalButtonConfig = {
+    disabled?: boolean;
+}
+
 // =========================================================================
 // 🚀 TODO: REPLACE THIS FUNCTION WITH YOUR REAL API CALL
 // =========================================================================
@@ -113,7 +117,7 @@ const fetchUsers = async (page: number, query: string, perPage = 8): Promise<Api
 
 // --- 2. COMPONENT ---
 
-const SubmitApprovalButton = ({ onSubmit }: { onSubmit?: () => void }) => {
+const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: () => void, config: submitApprovalButtonConfig }) => {
     const [isOpen, setIsOpen] = useState(false)
     
     // Data State
@@ -217,11 +221,12 @@ const SubmitApprovalButton = ({ onSubmit }: { onSubmit?: () => void }) => {
                     variant="solid"
                     endContent={<ChevronDown size={16} />}
                     className="font-medium"
+                    isDisabled={config?.disabled}
                 >
                     Submit Approval
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[340px] p-0 overflow-hidden">
+            <PopoverContent className="w-85 p-0 overflow-hidden">
                 {/* Header */}
                 <div className="p-4 w-full bg-white">
                     <div className="mb-2 font-semibold text-small text-default-600">
@@ -264,7 +269,7 @@ const SubmitApprovalButton = ({ onSubmit }: { onSubmit?: () => void }) => {
 
                 {/* SCROLLABLE LIST */}
                 <ScrollShadow 
-                    className="max-h-[240px] w-full overflow-y-auto"
+                    className="max-h-60 w-full overflow-y-auto"
                     ref={scrollerRef} // Attach Ref for infinite scroll detection
                 >
                     {visibleItems.length > 0 ? (
@@ -367,6 +372,7 @@ const ExportBar = ({
 
     requireApproval = false,
     onSubmitApprovalClick,
+    approvalButtonConfig,
 }: {
     onHistoryButtonClick?: () => void;
     onSettingsButtonClick?: () => void;
@@ -379,6 +385,7 @@ const ExportBar = ({
 
     requireApproval?: boolean;
     onSubmitApprovalClick?: () => void;
+    approvalButtonConfig?: submitApprovalButtonConfig;
 }) => {
     return (
         <div className="w-full px-4 py-2 bg-white border-b border-default-200 flex justify-end items-center">
@@ -410,7 +417,7 @@ const ExportBar = ({
                 ) : null }
                 {
                     requireApproval && (
-                        <SubmitApprovalButton onSubmit={onSubmitApprovalClick} />
+                        <SubmitApprovalButton onSubmit={onSubmitApprovalClick} config={approvalButtonConfig as submitApprovalButtonConfig} />
                     )
                 }
             </div>
