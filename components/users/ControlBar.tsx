@@ -5,6 +5,8 @@ import { addToast, Button } from "@heroui/react"
 import { UserPlusIcon } from "lucide-react"
 import SearchBar from "../SearchBar"
 import InviteUserModal from "./InviteUserModal"
+import { userHasPermissionClient } from "@/utils/permissions"
+import { UserRole } from "@/app/generated/business/prisma"
 
 const ControlBar = () => {
     const [isModalOpen, setIsModalOpen] = useState(false)
@@ -31,6 +33,7 @@ const ControlBar = () => {
                     color="secondary"
                     startContent={<UserPlusIcon size={18} />}
                     onPress={() => setIsModalOpen(true)}
+                    isDisabled={!userHasPermissionClient([UserRole.OWNER, UserRole.ADMIN])}
                 >
                     Invite User
                 </Button>

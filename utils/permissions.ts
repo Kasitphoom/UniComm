@@ -1,4 +1,9 @@
 import { UserRole } from "@/app/generated/business/prisma"
+import { AuthToken } from "@/lib/api-auth"
+import { getToken } from "next-auth/jwt"
+import { getSession } from "next-auth/react"
+import { NextRequest } from "next/server"
+import { useUser } from "@/components/providers/UserProvider"
 
 /**
  * Check if a user has permission based on allowed roles
@@ -30,4 +35,22 @@ export const canDeleteResource = (isOwner: boolean, userRole: string | null | un
 export const canCreateResource = (userRole: string | null | undefined): boolean => {
     const createRoles: UserRole[] = [UserRole.OWNER, UserRole.ADMIN, UserRole.MEMBER]
     return hasPermission(userRole, createRoles)
+}
+
+export const userHasPermissionAPI = async (req: NextRequest, allowRoles: UserRole[]): Promise<boolean> => {
+    // get user role from session
+    const token = (await getToken({ req })) as AuthToken
+    const userRole = token.currentBusinessProfile?.role
+
+    return hasPermission(userRole, allowRoles)
+}
+
+/**
+ * Check if user has permission on the client side
+ * @param allowRoles - Array of roles that have permission
+ * @returns true if user's role is in the allowed roles, false otherwise
+ */
+export const userHasPermissionClient = (allowRoles: UserRole[]): boolean => {
+    const { role } = useUser()
+    return hasPermission(role, allowRoles)
 }
