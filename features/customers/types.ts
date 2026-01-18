@@ -1,4 +1,5 @@
 export type ContactSource = "MANUAL" | "CSV_UPLOAD" | "SALESFORCE"
+type Status = "idle" | "loading" | "succeeded" | "failed"
 
 export interface ContactListDTO {
     id: string
@@ -15,11 +16,19 @@ export interface ContactListDTO {
 export interface CustomerListsState {
     list: {
         items: ContactListDTO[]
-        status: "idle" | "loading" | "succeeded" | "failed"
+        status: Status
         error: string | null
     }
     create: {
-        status: "idle" | "loading" | "succeeded" | "failed"
+        status: Status
+        error: string | null
+    }
+    update: {
+        status: Status
+        error: string | null
+    }
+    delete: {
+        status: Status
         error: string | null
     }
 }

@@ -70,6 +70,50 @@ export const createCustomerListWithCSV = createAsyncThunk(
     }
 )
 
+// Thunk: patch customer list
+export const patchCustomerList = createAsyncThunk(
+    "customerLists/patch",
+    async (payload: { id: string; name?: string; remarks?: string }) => {
+        const res = await fetch(`/api/customer-list/${payload.id}`, {
+            method: "PATCH",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify({
+                name: payload.name,
+                remarks: payload.remarks,
+            }),
+        })
+
+        if (!res.ok) {
+            const errorData = await res.json()
+            throw new Error(errorData.error || "Failed to update customer list")
+        }
+
+        const data = (await res.json()) as { contactList: ContactListDTO }
+        return data.contactList
+    }
+)
+
+// Thunk: delete customer list
+export const deleteCustomerList = createAsyncThunk(
+    "customerLists/delete",
+    async (id: string) => {
+        const res = await fetch(`/api/customer-list/${id}`, {
+            method: "DELETE",
+            credentials: "include",
+        })
+
+        if (!res.ok) {
+            const errorData = await res.json()
+            throw new Error(errorData.error || "Failed to delete customer list")
+        }
+
+        return id
+    }
+)
+
 const initialState: CustomerListsState = {
     list: {
         items: [],
@@ -77,6 +121,14 @@ const initialState: CustomerListsState = {
         error: null,
     },
     create: {
+        status: "idle",
+        error: null,
+    },
+    update: {
+        status: "idle",
+        error: null,
+    },
+    delete: {
         status: "idle",
         error: null,
     },
@@ -91,6 +143,12 @@ const customerListsSlice = createSlice({
         },
         resetCreateStatus(state) {
             state.create = initialState.create
+        },
+        resetUpdateStatus(state) {
+            state.update = initialState.update
+        },
+        resetDeleteStatus(state) {
+            state.delete = initialState.delete
         },
     },
     extraReducers: (builder) => {
@@ -134,8 +192,38 @@ const customerListsSlice = createSlice({
                 state.create.status = "failed"
                 state.create.error = action.error.message || "Failed to create customer list"
             })
+            // patchCustomerList
+            .addCase(patchCustomerList.pending, (state) => {
+                state.update.status = "loading"
+                state.update.error = null
+            })
+            .addCase(patchCustomerList.fulfilled, (state, action) => {
+                state.update.status = "succeeded"
+                const index = state.list.items.findIndex((item) => item.id === action.payload.id)
+                if (index !== -1) {
+                    state.list.items[index] = action.payload
+                }
+            })
+            .addCase(patchCustomerList.rejected, (state, action) => {
+                state.update.status = "failed"
+                state.update.error = action.error.message || "Failed to update customer list"
+            })
+            // deleteCustomerList
+            .addCase(deleteCustomerList.pending, (state) => {
+                state.delete.status = "loading"
+                state.delete.error = null
+            })
+            .addCase(deleteCustomerList.fulfilled, (state, action) => {
+                state.delete.status = "succeeded"
+                state.list.items = state.list.items.filter((item) => item.id !== action.payload)
+            })
+            .addCase(deleteCustomerList.rejected, (state, action) => {
+                state.delete.status = "failed"
+                state.delete.error = action.error.message || "Failed to delete customer list"
+            })
     },
 })
 
-export const { resetCustomerLists, resetCreateStatus } = customerListsSlice.actions
+export const { resetCustomerLists, resetCreateStatus, resetUpdateStatus, resetDeleteStatus } =
+    customerListsSlice.actions
 export default customerListsSlice.reducer

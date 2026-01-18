@@ -27,8 +27,11 @@ import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { 
     createCustomerListManual, 
     createCustomerListWithCSV,
-    resetCreateStatus 
+    patchCustomerList,
+    resetCreateStatus,
+    resetUpdateStatus 
 } from "@/features/customers/customerListsSlice";
+import { ContactListDTO } from "@/features/customers/types";
 
 // Create validation schema
 const createCustomerListSchema = yup.object().shape({
@@ -88,16 +91,23 @@ interface CreateCustomerListModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess?: () => void;
+    listToEdit?: ContactListDTO;
 }
 
 const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
     isOpen,
     onClose,
     onSuccess,
+    listToEdit,
 }) => {
     const dispatch = useAppDispatch();
-    const { status, error } = useAppSelector((state) => state.customerLists.create);
+    const { status: createStatus, error: createError } = useAppSelector((state) => state.customerLists.create);
+    const { status: updateStatus, error: updateError } = useAppSelector((state) => state.customerLists.update);
     const [csvFile, setCsvFile] = useState<File | null>(null);
+
+    const isEditing = !!listToEdit;
+    const status = isEditing ? updateStatus : createStatus;
+    const error = isEditing ? updateError : createError;
 
     const {
         control,
@@ -109,20 +119,20 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
         mode: "onChange",
         resolver: yupResolver(createCustomerListSchema),
         defaultValues: {
-            name: "",
-            remarks: "",
+            name: listToEdit?.name || "",
+            remarks: listToEdit?.remarks || "",
             source: "MANUAL",
         },
     });
 
     const sourceValue = watch("source");
 
-    // Reset create status when modal closes
+    // Reset status when modal closes
     useEffect(() => {
         if (!isOpen) {
-            dispatch(resetCreateStatus());
+            dispatch(isEditing ? resetUpdateStatus() : resetCreateStatus());
         }
-    }, [isOpen, dispatch]);
+    }, [isOpen, dispatch, isEditing]);
 
     // Handle successful creation
     useEffect(() => {
@@ -161,8 +171,15 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
 
     const onSubmit = async (data: CreateCustomerListFormData) => {
         try {
-            if (data.source === "CSV_UPLOAD") {
-                // Validate CSV file is uploaded
+            if (isEditing && listToEdit) {
+                // Handle edit
+                await dispatch(patchCustomerList({
+                    id: listToEdit.id,
+                    name: data.name,
+                    remarks: data.remarks || undefined,
+                })).unwrap();
+            } else if (data.source === "CSV_UPLOAD") {
+                // Handle CSV upload creation
                 if (!csvFile) {
                     return;
                 }
@@ -173,6 +190,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                     remarks: data.remarks || undefined,
                 })).unwrap();
             } else {
+                // Handle manual creation
                 await dispatch(createCustomerListManual({
                     name: data.name,
                     source: data.source as "MANUAL" | "SALESFORCE",
@@ -181,14 +199,14 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
             }
         } catch (error) {
             // Error is handled by Redux state
-            console.error("Failed to create customer list:", error);
+            console.error("Failed to create/update customer list:", error);
         }
     };
 
     const handleClose = () => {
         reset();
         setCsvFile(null);
-        dispatch(resetCreateStatus());
+        dispatch(isEditing ? resetUpdateStatus() : resetCreateStatus());
         onClose();
     };
 
@@ -210,9 +228,14 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
             <ModalContent>
                 <form onSubmit={handleSubmit(onSubmit)}>
                     <ModalHeader className="flex flex-col gap-1">
-                        <h2 className="text-lg font-bold tracking-tight">Create Customer List</h2>
+                        <h2 className="text-lg font-bold tracking-tight">
+                            {isEditing ? "Edit Customer List" : "Create Customer List"}
+                        </h2>
                         <p className="text-small text-default-500 font-normal">
-                            Define your customer segment and choose how to populate the data.
+                            {isEditing 
+                                ? "Update the list name and description."
+                                : "Define your customer segment and choose how to populate the data."
+                            }
                         </p>
                     </ModalHeader>
                     <ModalBody className="flex flex-col gap-8">
@@ -264,32 +287,34 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                             />
                         </div>
 
-                        {/* --- Section 2: Source Selection --- */}
-                        <div className="flex flex-col gap-3">
-                            <label className="text-sm font-medium text-default-700">Creation Method</label>
-                            <Controller
-                                name="source"
-                                control={control}
-                                render={({ field }) => (
-                                    <RadioGroup
-                                        {...field}
-                                        orientation="horizontal"
-                                        isDisabled={isLoading}
-                                        classNames={{ wrapper: "grid grid-cols-1 sm:grid-cols-2 gap-4" }}
-                                    >
-                                        <CustomRadio value="MANUAL" description="Add customers one by one manually">
-                                            Manual Entry
-                                        </CustomRadio>
-                                        <CustomRadio value="CSV_UPLOAD" description="Import bulk data from a file">
-                                            CSV Upload
-                                        </CustomRadio>
-                                    </RadioGroup>
-                                )}
-                            />
-                        </div>
+                        {/* --- Section 2: Source Selection (only for creation) --- */}
+                        {!isEditing && (
+                            <div className="flex flex-col gap-3">
+                                <label className="text-sm font-medium text-default-700">Creation Method</label>
+                                <Controller
+                                    name="source"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <RadioGroup
+                                            {...field}
+                                            orientation="horizontal"
+                                            isDisabled={isLoading}
+                                            classNames={{ wrapper: "grid grid-cols-1 sm:grid-cols-2 gap-4" }}
+                                        >
+                                            <CustomRadio value="MANUAL" description="Add customers one by one manually">
+                                                Manual Entry
+                                            </CustomRadio>
+                                            <CustomRadio value="CSV_UPLOAD" description="Import bulk data from a file">
+                                                CSV Upload
+                                            </CustomRadio>
+                                        </RadioGroup>
+                                    )}
+                                />
+                            </div>
+                        )}
 
                         {/* --- Section 3: Conditional File Upload --- */}
-                        {sourceValue === "CSV_UPLOAD" && (
+                        {!isEditing && sourceValue === "CSV_UPLOAD" && (
                             <div className="animate-in fade-in slide-in-from-top-2 duration-300">
                                 <input
                                     type="file"
@@ -346,10 +371,10 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                             type="submit"
                             color="secondary"
                             isLoading={isLoading}
-                            isDisabled={!isValid || isLoading || (sourceValue === "CSV_UPLOAD" && !csvFile)}
-                            startContent={!isLoading && <Plus size={18} />}
+                            isDisabled={!isValid || isLoading || (!isEditing && sourceValue === "CSV_UPLOAD" && !csvFile)}
+                            startContent={!isLoading && (isEditing ? <Plus size={18} /> : <Plus size={18} />)}
                         >
-                            Create List
+                            {isEditing ? "Save Changes" : "Create List"}
                         </Button>
                     </ModalFooter>
                 </form>
