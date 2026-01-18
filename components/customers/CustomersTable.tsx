@@ -9,6 +9,7 @@ import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import { fetchListCustomers } from "@/features/customers/listCustomersSlice"
 import { useSearchParams, useRouter } from "next/navigation"
 import CustomersControlBar from "./CustomersControlBar"
+import { ListCustomersState } from "@/features/customers/types"
 
 type Props = { id: string }
 
@@ -23,7 +24,7 @@ const CustomersTable: React.FC<Props> = ({ id }) => {
     const page = parseInt(searchParams.get("page") || "1", 10) || 1
     const pageSize = parseInt(searchParams.get("pageSize") || "20", 10) || 20
 
-    const { contactList, items, status, totalPages } = useAppSelector((s) => s.listCustomers)
+    const { contactList, items, status, totalPages } = useAppSelector((s) => s.listCustomers) as ListCustomersState
 
     useEffect(() => {
         if (!id) return
