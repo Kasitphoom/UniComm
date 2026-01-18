@@ -52,6 +52,30 @@ export const deleteCustomers = createAsyncThunk(
   }
 )
 
+export const updateCustomer = createAsyncThunk(
+  "listCustomers/update",
+  async (payload: { listId: string; customerId: string; data: Record<string, any> }) => {
+    const { listId, customerId, data } = payload
+
+    const res = await fetch(`/api/customer-list/${listId}/customer/${customerId}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ data }),
+    })
+
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(text || "Failed to update customer")
+    }
+
+    const result = await res.json()
+    return result.customer as CustomerRecord
+  }
+)
+
 const initialState: ListCustomersState = {
   listId: null,
   contactList: null,
@@ -104,6 +128,21 @@ const listCustomersSlice = createSlice({
       .addCase(deleteCustomers.rejected, (state, action) => {
         state.status = "failed"
         state.error = action.error.message || "Failed to delete customers"
+      })
+      .addCase(updateCustomer.pending, (state) => {
+        state.status = "loading"
+        state.error = null
+      })
+      .addCase(updateCustomer.fulfilled, (state, action) => {
+        state.status = "succeeded"
+        const index = state.items.findIndex((item) => item.id === action.payload.id)
+        if (index !== -1) {
+          state.items[index] = action.payload
+        }
+      })
+      .addCase(updateCustomer.rejected, (state, action) => {
+        state.status = "failed"
+        state.error = action.error.message || "Failed to update customer"
       })
   },
 })

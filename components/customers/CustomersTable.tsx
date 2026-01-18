@@ -6,7 +6,7 @@ import {
 } from "@heroui/react"
 import { EditIcon, Trash2, Plus, Search } from "lucide-react"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import { fetchListCustomers, deleteCustomers } from "@/features/customers/listCustomersSlice"
+import { fetchListCustomers, deleteCustomers, updateCustomer } from "@/features/customers/listCustomersSlice"
 import { useSearchParams, useRouter } from "next/navigation"
 import CustomersControlBar from "./CustomersControlBar"
 import { ListCustomersState } from "@/features/customers/types"
@@ -74,6 +74,15 @@ const CustomersTable: React.FC<Props> = ({ id }) => {
         
         await dispatch(deleteCustomers({ listId: id, ids: idsToDelete }));
         setIsDeleteDialogOpen(false);
+        setSelectedKeys(new Set([]));
+    }
+
+    const handleSaveCustomer = async (data: Record<string, any>) => {
+        const customerId = Array.from(selectedKeys as Set<string>)[0];
+        if (!customerId) return;
+        
+        await dispatch(updateCustomer({ listId: id, customerId, data }));
+        setIsEditDrawerOpen(false);
         setSelectedKeys(new Set([]));
     }
 
@@ -182,10 +191,10 @@ const CustomersTable: React.FC<Props> = ({ id }) => {
             <EditCustomerDrawer
                 isOpen={isEditDrawerOpen}
                 onOpenChange={(open) => setIsEditDrawerOpen(open)}
-                onClose={() => { }}
+                onClose={() => setIsEditDrawerOpen(false)}
                 customerId={Array.from(selectedKeys as Set<string>)[0]}
                 fields={columns}
-                onSave={() => { }}
+                onSave={handleSaveCustomer}
             />
 
             <ConfirmDialog

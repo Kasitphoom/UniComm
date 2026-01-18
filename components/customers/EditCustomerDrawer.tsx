@@ -1,5 +1,5 @@
 "use client"
-import React from "react";
+import React, { useEffect } from "react";
 import { 
   Drawer, DrawerContent, DrawerHeader, DrawerBody, DrawerFooter, 
   Button, Input, Divider 
@@ -21,9 +21,16 @@ export const EditCustomerDrawer = ({ isOpen, onClose, onOpenChange, customerId, 
     const customer = customerState.items.find(c => c.id === customerId);
 
     // Initialize form with the customer's existing JSON data
-    const { control, handleSubmit } = useForm({
-        defaultValues: customer?.data
+    const { control, handleSubmit, reset } = useForm({
+        defaultValues: customer?.data || {}
     });
+
+    // Reset form values when customer changes or drawer opens
+    useEffect(() => {
+        if (isOpen && customer?.data) {
+            reset(customer.data);
+        }
+    }, [isOpen, customer?.data, reset]);
 
     return (
         <Drawer isOpen={isOpen} onClose={onClose} onOpenChange={onOpenChange} size="md" backdrop="opaque">
