@@ -74,8 +74,7 @@ export const EditCustomerDrawer = ({ isOpen, onClose, onOpenChange, customerId, 
                                 Cancel
                             </Button>
                             <Button 
-                                color="secondary" 
-                                className="bg-[#7828C8] px-8 font-bold" 
+                                color="secondary"  
                                 type="submit"
                                 startContent={<Save size={18} />}
                             >
