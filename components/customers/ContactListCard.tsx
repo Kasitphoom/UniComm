@@ -18,7 +18,6 @@ export enum CONTACT_SOURCE {
 
 interface ContactListCardProps {
     list: ContactListDTO;
-    onEdit: (id: string) => void;
     onView: (id: string) => void;
 }
 
@@ -28,7 +27,7 @@ const sourceColorMap: Record<CONTACT_SOURCE, "default" | "primary" | "secondary"
     [CONTACT_SOURCE.SALESFORCE]: "secondary",
 };
 
-export const ContactListCard = ({ list, onEdit, onView }: ContactListCardProps) => {
+export const ContactListCard = ({ list, onView }: ContactListCardProps) => {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const dispatch = useAppDispatch();
@@ -159,7 +158,6 @@ export const ContactListCard = ({ list, onEdit, onView }: ContactListCardProps) 
                 listToEdit={list}
                 onSuccess={() => {
                     setIsEditModalOpen(false);
-                    onEdit(list.id);
                 }}
             />
 
