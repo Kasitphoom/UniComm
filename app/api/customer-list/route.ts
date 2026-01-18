@@ -105,19 +105,39 @@ export const POST = async ( request: NextRequest ) => {
                 return { field: key, type };
             });
 
-            // Create the contact list with CSV_UPLOAD source
-            const contactList = await prisma.contactList.create({
-                data: {
-                    name: name.trim(),
-                    source: "CSV_UPLOAD",
-                    remarks: remarks || null,
-                    fields: fields,
-                },
+            // Use transaction to ensure both contact list and customers are created atomically
+            const result = await prisma.$transaction(async (tx) => {
+                // Create the contact list with CSV_UPLOAD source
+                const contactList = await tx.contactList.create({
+                    data: {
+                        name: name.trim(),
+                        source: "CSV_UPLOAD",
+                        remarks: remarks || null,
+                        fields: fields,
+                    },
+                });
+
+                // Create customers from CSV records
+                const customers = records.map(record => ({
+                    listId: contactList.id,
+                    data: record, // Each row's data as JSON object
+                }));
+
+                // Bulk insert customers
+                await tx.customer.createMany({
+                    data: customers,
+                });
+
+                return {
+                    contactList,
+                    customersCreated: customers.length,
+                };
             });
 
             return NextResponse.json({ 
-                contactList,
-                recordsCount: records.length 
+                contactList: result.contactList,
+                recordsCount: records.length,
+                customersCreated: result.customersCreated
             }, { status: 201 });
 
         } else {
