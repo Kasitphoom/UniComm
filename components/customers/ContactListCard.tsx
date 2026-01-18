@@ -55,7 +55,7 @@ export const ContactListCard = ({ list, onEdit, onView }: ContactListCardProps) 
     const isDeleting = deleteStatus === "loading";
     return (
         <div className="group relative flex md:grid md:grid-cols-[1fr_auto_auto] gap-4 flex-col md:flex-row items-start md:items-center justify-between p-4 bg-white border-b border-gray-100 hover:bg-gray-50 transition-all first:rounded-t-xl last:rounded-b-xl last:border-b-0 shadow-sm">
-            <div className="flex flex-col gap-1 mb-4 md:mb-0">
+            <div className="flex flex-col gap-1 mb-4 md:mb-0 w-full">
                 <div className="flex items-center justify-between md:justify-start gap-3 w-full">
                     <h3 className="text-foreground wrap-break-words line-clamp-2 md:pr-0">
                         {list.name}
@@ -71,12 +71,12 @@ export const ContactListCard = ({ list, onEdit, onView }: ContactListCardProps) 
                         {list.source?.replace("_", " ")}
                     </Chip>
                 </div>
-                   <p className="text-tiny text-default-400 max-w-full md:max-w-87.5 wrap-break-words line-clamp-2 md:line-clamp-1 mt-1">
+                <p className="text-tiny text-default-400 max-w-full md:max-w-87.5 wrap-break-words line-clamp-2 md:line-clamp-1 mt-1">
                     {list.remarks || "No remarks provided"}
                 </p>
             </div>
 
-            <div className="grid grid-cols-3 gap-8 md:gap-4 mb-5 md:mb-0 w-fit">
+            <div className="grid grid-cols-3 gap-8 md:gap-4 mb-5 md:mb-0 w-full md:w-fit">
                 <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-1.5 opacity-50">
                         <UsersIcon size={12} className="shrink-0" />
