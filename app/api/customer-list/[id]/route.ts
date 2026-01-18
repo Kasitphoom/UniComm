@@ -2,7 +2,7 @@ import { requireAuth } from "@/lib/api-auth";
 import { getBusinessPrisma } from "@/lib/prisma-business";
 import { NextRequest, NextResponse } from "next/server";
 
-export const PATCH = async ( request: NextRequest, { params }: { params: { id: string } } ) => {
+export const PATCH = async ( request: NextRequest, context: { params: Promise<{ id: string }> } ) => {
     try {
         const auth = await requireAuth(request);
         if (!auth.ok) return auth.response;
@@ -13,7 +13,7 @@ export const PATCH = async ( request: NextRequest, { params }: { params: { id: s
             return NextResponse.json({ error: "Business database not found." }, { status: 404 });
         }
 
-        const { id } = await params;
+        const { id } = await context.params;
         const body = await request.json();
         const { name, remarks } = body;
 
@@ -36,7 +36,7 @@ export const PATCH = async ( request: NextRequest, { params }: { params: { id: s
     }
 }
 
-export const DELETE = async ( request: NextRequest, { params }: { params: { id: string } } ) => {
+export const DELETE = async ( request: NextRequest, context: { params: Promise<{ id: string }> } ) => {
     try {
         const auth = await requireAuth(request);
         if (!auth.ok) return auth.response;
@@ -47,7 +47,7 @@ export const DELETE = async ( request: NextRequest, { params }: { params: { id: 
             return NextResponse.json({ error: "Business database not found." }, { status: 404 });
         }
 
-        const { id } = await params;
+        const { id } = await context.params;
 
         await prisma.contactList.delete({
             where: { id },
@@ -60,7 +60,7 @@ export const DELETE = async ( request: NextRequest, { params }: { params: { id: 
     }
 }
 
-export const GET = async ( request: NextRequest, { params }: { params: { id: string } } ) => {
+export const GET = async ( request: NextRequest, context: { params: Promise<{ id: string }> } ) => {
     try {
         const auth = await requireAuth(request);
         if (!auth.ok) return auth.response;
@@ -71,7 +71,7 @@ export const GET = async ( request: NextRequest, { params }: { params: { id: str
             return NextResponse.json({ error: "Business database not found." }, { status: 404 });
         }
 
-        const { id } = await params;
+        const { id } = await context.params;
 
         // Parse pagination and search from query params
         const url = new URL(request.url);
