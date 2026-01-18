@@ -5,6 +5,7 @@ import { ContactListCard, CONTACT_SOURCE } from "./ContactListCard";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { fetchCustomerLists } from "@/features/customers/customerListsSlice";
 import { Spinner } from "@heroui/react";
+import { useRouter } from "next/navigation";
 
 // Mocking one customer list as requested
 const MOCK_LISTS = [
@@ -29,16 +30,11 @@ const MOCK_LISTS = [
 export default function ContactListCollection() {
 
     const dispatch = useAppDispatch();
+    const router = useRouter();
     const { items: customerList, status, error } = useAppSelector((state) => state.customerLists.list)
 
-    const handleEdit = (id: string) => {
-        console.log("Navigating to edit list:", id);
-        // router.push(`/dashboard/lists/${id}/edit`);
-    };
-
     const handleView = (id: string) => {
-        console.log("Navigating to view list:", id);
-        // router.push(`/dashboard/lists/${id}`);
+        router.push(`customers/${id}`);
     }
 
     useEffect(() => {
@@ -66,7 +62,6 @@ export default function ContactListCollection() {
                 <ContactListCard
                     key={list.id}
                     list={list}
-                    onEdit={handleEdit}
                     onView={handleView}
                 />
             ))}
