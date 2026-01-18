@@ -1,15 +1,17 @@
 "use client"
 import React, { useEffect, useMemo, useState } from "react"
-import { 
-    Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, 
+import {
+    Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
     Spinner, Button, Pagination, Selection, Tooltip, Divider
 } from "@heroui/react"
 import { EditIcon, Trash2, Plus, Search } from "lucide-react"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import { fetchListCustomers } from "@/features/customers/listCustomersSlice"
+import { fetchListCustomers, deleteCustomers } from "@/features/customers/listCustomersSlice"
 import { useSearchParams, useRouter } from "next/navigation"
 import CustomersControlBar from "./CustomersControlBar"
 import { ListCustomersState } from "@/features/customers/types"
+import { EditCustomerDrawer } from "./EditCustomerDrawer"
+import ConfirmDialog from "../common/ConfirmDialog"
 
 type Props = { id: string }
 
@@ -17,8 +19,10 @@ const CustomersTable: React.FC<Props> = ({ id }) => {
     const searchParams = useSearchParams()
     const router = useRouter()
     const dispatch = useAppDispatch()
-    
+
     const [selectedKeys, setSelectedKeys] = useState<Selection>(new Set([]));
+    const [isEditDrawerOpen, setIsEditDrawerOpen] = useState(false);
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
     const query = searchParams.get("query") || ""
     const page = parseInt(searchParams.get("page") || "1", 10) || 1
@@ -63,27 +67,39 @@ const CustomersTable: React.FC<Props> = ({ id }) => {
         router.replace(`?${params.toString()}`)
     }
 
+    const handleDeleteConfirm = async () => {
+        const idsToDelete = selectedKeys === "all" 
+            ? items.map(item => item.id) 
+            : Array.from(selectedKeys as Set<string>);
+        
+        await dispatch(deleteCustomers({ listId: id, ids: idsToDelete }));
+        setIsDeleteDialogOpen(false);
+        setSelectedKeys(new Set([]));
+    }
+
     return (
         <div className="flex flex-col gap-0 w-full bg-white rounded-2xl border border-default-100 shadow-sm overflow-hidden">
-            
+
             {/* --- 1. ALWAYS VISIBLE TOOLBAR --- */}
             <div className="flex flex-col sm:flex-row justify-between items-center p-4 gap-4 bg-white">
                 <div className="flex items-center gap-2">
-                    <Button 
-                        size="sm" 
-                        variant="flat" 
+                    <Button
+                        size="sm"
+                        variant="flat"
                         color="primary"
                         isDisabled={isEditDisabled}
                         startContent={<EditIcon size={16} />}
+                        onPress={() => setIsEditDrawerOpen(true)}
                     >
                         Edit
                     </Button>
-                    <Button 
-                        size="sm" 
-                        variant="flat" 
+                    <Button
+                        size="sm"
+                        variant="flat"
                         color="danger"
                         isDisabled={isDeleteDisabled}
                         startContent={<Trash2 size={16} />}
+                        onPress={() => setIsDeleteDialogOpen(true)}
                     >
                         Delete {selectionCount > 1 ? `(${selectionCount})` : ""}
                     </Button>
@@ -100,7 +116,7 @@ const CustomersTable: React.FC<Props> = ({ id }) => {
                 {columns.length === 0 ? (
                     <div className="flex items-center justify-center py-10 text-default-400 text-sm">No fields to display.</div>
                 ) : (
-                    <Table 
+                    <Table
                         aria-label="Customers list table"
                         selectionMode="multiple"
                         selectedKeys={selectedKeys}
@@ -119,8 +135,8 @@ const CustomersTable: React.FC<Props> = ({ id }) => {
                                 </TableColumn>
                             )}
                         </TableHeader>
-                        <TableBody 
-                            items={items} 
+                        <TableBody
+                            items={items}
                             emptyContent="No customers found."
                             isLoading={status === "loading"}
                         >
@@ -162,6 +178,23 @@ const CustomersTable: React.FC<Props> = ({ id }) => {
                     }}
                 />
             </div>
+
+            <EditCustomerDrawer
+                isOpen={isEditDrawerOpen}
+                onOpenChange={(open) => setIsEditDrawerOpen(open)}
+                onClose={() => { }}
+                customerId={Array.from(selectedKeys as Set<string>)[0]}
+                fields={columns}
+                onSave={() => { }}
+            />
+
+            <ConfirmDialog
+                title="Delete Customers"
+                content={`Are you sure you want to delete ${selectionCount} selected customer${selectionCount > 1 ? "s" : ""}? This action cannot be undone.`}
+                isOpen={isDeleteDialogOpen}
+                onCancel={() => setIsDeleteDialogOpen(false)}
+                onConfirm={handleDeleteConfirm}
+            />
         </div>
     )
 }

@@ -29,6 +29,29 @@ export const fetchListCustomers = createAsyncThunk(
   }
 )
 
+export const deleteCustomers = createAsyncThunk(
+  "listCustomers/delete",
+  async (payload: { listId: string; ids: string[] }) => {
+    const { listId, ids } = payload
+
+    const res = await fetch(`/api/customer-list/${listId}/customer`, {
+      method: "DELETE",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ ids }),
+    })
+
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(text || "Failed to delete customers")
+    }
+
+    return { ids }
+  }
+)
+
 const initialState: ListCustomersState = {
   listId: null,
   contactList: null,
@@ -68,6 +91,19 @@ const listCustomersSlice = createSlice({
       .addCase(fetchListCustomers.rejected, (state, action) => {
         state.status = "failed"
         state.error = action.error.message || "Failed to fetch customers"
+      })
+      .addCase(deleteCustomers.pending, (state) => {
+        state.status = "loading"
+        state.error = null
+      })
+      .addCase(deleteCustomers.fulfilled, (state, action) => {
+        state.status = "succeeded"
+        state.items = state.items.filter((item) => !action.payload.ids.includes(item.id))
+        state.total = Math.max(0, state.total - action.payload.ids.length)
+      })
+      .addCase(deleteCustomers.rejected, (state, action) => {
+        state.status = "failed"
+        state.error = action.error.message || "Failed to delete customers"
       })
   },
 })
