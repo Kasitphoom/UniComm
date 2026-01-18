@@ -29,7 +29,7 @@ export const ContactListCard = ({ list, onEdit, onView }: ContactListCardProps) 
             
             <div className="flex flex-col gap-1 min-w-full md:min-w-75 lg:min-w-100 mb-4 md:mb-0">
                 <div className="flex items-center justify-between md:justify-start gap-3">
-                    <h3 className="font-bold text-foreground truncate pr-20 md:pr-0">
+                    <h3 className="text-foreground truncate pr-20 md:pr-0">
                         {list.name}
                     </h3>
                     
