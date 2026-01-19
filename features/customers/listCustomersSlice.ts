@@ -76,6 +76,54 @@ export const updateCustomer = createAsyncThunk(
   }
 )
 
+export const createCustomersManual = createAsyncThunk(
+  "listCustomers/createManual",
+  async (payload: { listId: string; customers: Array<Record<string, any>> }) => {
+    const { listId, customers } = payload
+
+    const res = await fetch(`/api/customer-list/${listId}/customer`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(customers),
+    })
+
+    if (!res.ok) {
+      const errorData = await res.json()
+      throw new Error(errorData.error || "Failed to create customers")
+    }
+
+    const result = await res.json()
+    return { count: result.count }
+  }
+)
+
+export const createCustomersFromCSV = createAsyncThunk(
+  "listCustomers/createFromCSV",
+  async (payload: { listId: string; file: File }) => {
+    const { listId, file } = payload
+
+    const formData = new FormData()
+    formData.append("file", file)
+
+    const res = await fetch(`/api/customer-list/${listId}/customer`, {
+      method: "POST",
+      credentials: "include",
+      body: formData,
+    })
+
+    if (!res.ok) {
+      const errorData = await res.json()
+      throw new Error(errorData.error || "Failed to create customers from CSV")
+    }
+
+    const result = await res.json()
+    return { count: result.count }
+  }
+)
+
 const initialState: ListCustomersState = {
   listId: null,
   contactList: null,
@@ -143,6 +191,30 @@ const listCustomersSlice = createSlice({
       .addCase(updateCustomer.rejected, (state, action) => {
         state.status = "failed"
         state.error = action.error.message || "Failed to update customer"
+      })
+      .addCase(createCustomersManual.pending, (state) => {
+        state.status = "loading"
+        state.error = null
+      })
+      .addCase(createCustomersManual.fulfilled, (state, action) => {
+        state.status = "succeeded"
+        state.total += action.payload.count
+      })
+      .addCase(createCustomersManual.rejected, (state, action) => {
+        state.status = "failed"
+        state.error = action.error.message || "Failed to create customers"
+      })
+      .addCase(createCustomersFromCSV.pending, (state) => {
+        state.status = "loading"
+        state.error = null
+      })
+      .addCase(createCustomersFromCSV.fulfilled, (state, action) => {
+        state.status = "succeeded"
+        state.total += action.payload.count
+      })
+      .addCase(createCustomersFromCSV.rejected, (state, action) => {
+        state.status = "failed"
+        state.error = action.error.message || "Failed to create customers from CSV"
       })
   },
 })
