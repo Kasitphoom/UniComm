@@ -4,7 +4,7 @@ import {
     Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
     Spinner, Button, Pagination, Selection, Tooltip, Divider
 } from "@heroui/react"
-import { EditIcon, Trash2, Plus, Search } from "lucide-react"
+import { EditIcon, Trash2, Plus, Search, Key, KeyRound } from "lucide-react"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import { fetchListCustomers, deleteCustomers, updateCustomer } from "@/features/customers/listCustomersSlice"
 import { useSearchParams, useRouter } from "next/navigation"
@@ -68,10 +68,10 @@ const CustomersTable: React.FC<Props> = ({ id }) => {
     }
 
     const handleDeleteConfirm = async () => {
-        const idsToDelete = selectedKeys === "all" 
-            ? items.map(item => item.id) 
+        const idsToDelete = selectedKeys === "all"
+            ? items.map(item => item.id)
             : Array.from(selectedKeys as Set<string>);
-        
+
         await dispatch(deleteCustomers({ listId: id, ids: idsToDelete }));
         setIsDeleteDialogOpen(false);
         setSelectedKeys(new Set([]));
@@ -80,7 +80,7 @@ const CustomersTable: React.FC<Props> = ({ id }) => {
     const handleSaveCustomer = async (data: Record<string, any>) => {
         const customerId = Array.from(selectedKeys as Set<string>)[0];
         if (!customerId) return;
-        
+
         await dispatch(updateCustomer({ listId: id, customerId, data }));
         setIsEditDrawerOpen(false);
         setSelectedKeys(new Set([]));
@@ -114,7 +114,7 @@ const CustomersTable: React.FC<Props> = ({ id }) => {
                     </Button>
                 </div>
 
-                <CustomersControlBar />
+                <CustomersControlBar listId={id} />
             </div>
 
             <Divider />
@@ -138,11 +138,20 @@ const CustomersTable: React.FC<Props> = ({ id }) => {
                         }}
                     >
                         <TableHeader columns={columns}>
-                            {(column) => (
-                                <TableColumn key={column.key}>
-                                    {column.label}
-                                </TableColumn>
-                            )}
+                            {(column) => {
+                                const isPrimaryKey = column.key === contactList?.primaryKey;
+                                return (
+                                    <TableColumn
+                                        key={column.key}
+                                        className={isPrimaryKey ? "whitespace-nowrap" : ""}
+                                    >
+                                        <div className="flex items-center gap-2 flex-nowrap">
+                                            {isPrimaryKey && <KeyRound size={14} className="shrink-0" />}
+                                            <span>{column.label}</span>
+                                        </div>
+                                    </TableColumn>
+                                )
+                            }}
                         </TableHeader>
                         <TableBody
                             items={items}

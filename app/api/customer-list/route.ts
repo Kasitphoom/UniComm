@@ -2,6 +2,8 @@ import { requireAuth } from "@/lib/api-auth";
 import { getBusinessPrisma } from "@/lib/prisma-business";
 import { NextRequest, NextResponse } from "next/server";
 import { parse } from "csv-parse/sync";
+import { userHasPermissionAPI } from "@/utils/permissions";
+import { UserRole } from "@/app/generated/business/prisma";
 
 export const GET = async ( request: NextRequest ) => {
     try {
@@ -35,6 +37,14 @@ export const POST = async ( request: NextRequest ) => {
         const auth = await requireAuth(request);
         if (!auth.ok) return auth.response;
 
+        const userHasPermission = userHasPermissionAPI(request, [UserRole.OWNER, UserRole.ADMIN])
+        if (!userHasPermission) {
+            return NextResponse.json(
+                { error: "Insufficient permissions." },
+                { status: 403 },
+            )
+        }
+
         const prisma = await getBusinessPrisma(auth.businessId!);
 
         if (!prisma) {
@@ -50,6 +60,7 @@ export const POST = async ( request: NextRequest ) => {
             const file = formData.get("file") as File | null;
             const name = formData.get("name") as string | null;
             const remarks = formData.get("remarks") as string | null;
+            const upsertMode = formData.get("upsertMode") === "true";
 
             if (!name || name.trim().length === 0) {
                 return NextResponse.json({ error: "Name is required." }, { status: 400 });
@@ -113,7 +124,9 @@ export const POST = async ( request: NextRequest ) => {
                         name: name.trim(),
                         source: "CSV_UPLOAD",
                         remarks: remarks || null,
+                        primaryKey: fields[0].field,
                         fields: fields,
+                        upsertMode: upsertMode,
                     },
                 });
 
@@ -143,7 +156,7 @@ export const POST = async ( request: NextRequest ) => {
         } else {
             // Handle manual creation (JSON body)
             const body = await request.json();
-            const { name, source, remarks } = body;
+            const { name, source, remarks, upsertMode } = body;
 
             // Validate required fields
             if (!name || typeof name !== "string" || name.trim().length === 0) {
@@ -162,7 +175,8 @@ export const POST = async ( request: NextRequest ) => {
                     name: name.trim(),
                     source: source || "MANUAL",
                     remarks: remarks || null,
-                    fields: [], // Empty fields array for manual creation
+                    fields: [],
+                    upsertMode,
                 },
             });
 

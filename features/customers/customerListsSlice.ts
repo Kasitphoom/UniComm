@@ -23,7 +23,7 @@ export const fetchCustomerLists = createAsyncThunk(
 // Thunk: create customer list with manual entry
 export const createCustomerListManual = createAsyncThunk(
     "customerLists/createManual",
-    async (payload: { name: string; source?: "MANUAL" | "SALESFORCE"; remarks?: string }) => {
+    async (payload: { name: string; source?: "MANUAL" | "SALESFORCE"; remarks?: string; upsertMode?: boolean }) => {
         const res = await fetch("/api/customer-list", {
             method: "POST",
             headers: {
@@ -46,13 +46,14 @@ export const createCustomerListManual = createAsyncThunk(
 // Thunk: create customer list with CSV upload
 export const createCustomerListWithCSV = createAsyncThunk(
     "customerLists/createWithCSV",
-    async (payload: { name: string; file: File; remarks?: string }) => {
+    async (payload: { name: string; file: File; remarks?: string; upsertMode?: boolean }) => {
         const formData = new FormData()
         formData.append("name", payload.name)
         formData.append("file", payload.file)
         if (payload.remarks) {
             formData.append("remarks", payload.remarks)
         }
+        formData.append("upsertMode", String(payload.upsertMode ?? false))
 
         const res = await fetch("/api/customer-list", {
             method: "POST",
@@ -73,7 +74,7 @@ export const createCustomerListWithCSV = createAsyncThunk(
 // Thunk: patch customer list
 export const patchCustomerList = createAsyncThunk(
     "customerLists/patch",
-    async (payload: { id: string; name?: string; remarks?: string }) => {
+    async (payload: { id: string; name?: string; remarks?: string; primaryKey?: string, upsertMode?: boolean }) => {
         const res = await fetch(`/api/customer-list/${payload.id}`, {
             method: "PATCH",
             headers: {
@@ -83,6 +84,8 @@ export const patchCustomerList = createAsyncThunk(
             body: JSON.stringify({
                 name: payload.name,
                 remarks: payload.remarks,
+                primaryKey: payload.primaryKey,
+                upsertMode: payload.upsertMode,
             }),
         })
 

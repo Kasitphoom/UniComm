@@ -70,7 +70,7 @@ export const ContactListCard = ({ list, onView }: ContactListCardProps) => {
                         {list.source?.replace("_", " ")}
                     </Chip>
                 </div>
-                <p className="text-tiny text-default-400 max-w-full md:max-w-87.5 wrap-break-words line-clamp-2 md:line-clamp-1 mt-1">
+                <p className="text-tiny text-default-400 max-w-full wrap-break-words line-clamp-2 md:line-clamp-1 mt-1">
                     {list.remarks || "No remarks provided"}
                 </p>
             </div>

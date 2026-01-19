@@ -99,6 +99,9 @@ model ContactList {
   source    CONTACT_SOURCE?
   remarks   String?
 
+  primaryKey String  @default("")
+  upsertMode Boolean @default(true)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

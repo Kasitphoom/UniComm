@@ -11,27 +11,28 @@ import {
     Input,
     Textarea,
     RadioGroup,
-    Radio,
     Card,
-    RadioProps,
-    useRadio,
     cn,
-    VisuallyHidden,
-    Divider,
+    Checkbox,
+    Select,
+    SelectItem,
 } from "@heroui/react";
 import { useForm, Controller } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 import { Upload, FileText, CheckCircle2, Info, Plus } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import { 
-    createCustomerListManual, 
+import {
+    createCustomerListManual,
     createCustomerListWithCSV,
     patchCustomerList,
     resetCreateStatus,
-    resetUpdateStatus 
+    resetUpdateStatus
 } from "@/features/customers/customerListsSlice";
 import { ContactListDTO } from "@/features/customers/types";
+import { Customer } from "@/app/generated/business/prisma";
+import { fetchListCustomers } from "@/features/customers/listCustomersSlice";
+import CustomRadio from "./CustomRadio";
 
 // Create validation schema
 const createCustomerListSchema = yup.object().shape({
@@ -49,49 +50,24 @@ const createCustomerListSchema = yup.object().shape({
         .mixed<"MANUAL" | "CSV_UPLOAD">()
         .oneOf(["MANUAL", "CSV_UPLOAD"], "Invalid source")
         .required(),
+    primaryKey: yup
+        .string()
+        .optional()
+        .default(""),
+    upsertMode: yup
+        .boolean()
+        .default(false),
 });
 
 type CreateCustomerListFormData = yup.InferType<typeof createCustomerListSchema>;
-
-
-const CustomRadio = (props: RadioProps) => {
-    const {
-        Component, children, isSelected, description,
-        getBaseProps, getWrapperProps, getInputProps,
-    } = useRadio(props);
-
-    return (
-        <Component
-            {...getBaseProps()}
-            className={cn(
-                "group inline-flex items-center hover:bg-content2",
-                "max-w-full cursor-pointer border-2 border-default-200 rounded-xl gap-4 p-4",
-                "data-[selected=true]:border-secondary data-[selected=true]:bg-secondary-50/50",
-            )}
-        >
-            <VisuallyHidden>
-                <input {...getInputProps()} />
-            </VisuallyHidden>
-            {/* <span {...getWrapperProps()} className={cn(
-                "border-2 border-default-300 group-data-[selected=true]:border-secondary",
-                "shrink-0 w-5 h-5"
-            )} /> */}
-            <div className="flex flex-col gap-1">
-                {children && <span className="font-semibold text-sm">{children}</span>}
-                {description && (
-                    <span className="text-tiny text-default-400">{description}</span>
-                )}
-            </div>
-        </Component>
-    );
-};
-
 
 interface CreateCustomerListModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSuccess?: () => void;
     listToEdit?: ContactListDTO;
+    showAdvancedSettings?: boolean;
+    customers?: Customer[];
 }
 
 const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
@@ -99,6 +75,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
     onClose,
     onSuccess,
     listToEdit,
+    showAdvancedSettings = false,
 }) => {
     const dispatch = useAppDispatch();
     const { status: createStatus, error: createError } = useAppSelector((state) => state.customerLists.create);
@@ -108,6 +85,19 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
     const isEditing = !!listToEdit;
     const status = isEditing ? updateStatus : createStatus;
     const error = isEditing ? updateError : createError;
+
+    // Extract unique field keys from customer data
+    const getListToEditField = (): string[] => {
+        if (!listToEdit || !listToEdit.fields) return [];
+        if (!Array.isArray(listToEdit.fields)) return [];
+        return listToEdit.fields
+            .filter((field): field is { field: string; type: string } => 
+                typeof field === 'object' && field !== null && 'field' in field
+            )
+            .map((field) => field.field);
+    };
+
+    const fieldKeys = getListToEditField();
 
     const {
         control,
@@ -122,6 +112,8 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
             name: listToEdit?.name || "",
             remarks: listToEdit?.remarks || "",
             source: "MANUAL",
+            primaryKey: listToEdit?.primaryKey || "",
+            upsertMode: listToEdit?.upsertMode ?? true,
         },
     });
 
@@ -131,6 +123,14 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
     useEffect(() => {
         if (!isOpen) {
             dispatch(isEditing ? resetUpdateStatus() : resetCreateStatus());
+        } else {
+            reset({
+                name: listToEdit?.name || "",
+                remarks: listToEdit?.remarks || "",
+                source: "MANUAL",
+                primaryKey: listToEdit?.primaryKey || "",
+                upsertMode: listToEdit?.upsertMode ?? true,
+            })
         }
     }, [isOpen, dispatch, isEditing]);
 
@@ -148,7 +148,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
-        
+
         if (!file) {
             setCsvFile(null);
             return;
@@ -177,7 +177,11 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                     id: listToEdit.id,
                     name: data.name,
                     remarks: data.remarks || undefined,
+                    primaryKey: showAdvancedSettings ? data.primaryKey || undefined : undefined,
+                    upsertMode: showAdvancedSettings ? data.upsertMode : undefined,
                 })).unwrap();
+
+                dispatch(fetchListCustomers({ id: listToEdit.id }));
             } else if (data.source === "CSV_UPLOAD") {
                 // Handle CSV upload creation
                 if (!csvFile) {
@@ -188,6 +192,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                     name: data.name,
                     file: csvFile,
                     remarks: data.remarks || undefined,
+                    upsertMode: data.upsertMode,
                 })).unwrap();
             } else {
                 // Handle manual creation
@@ -195,6 +200,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                     name: data.name,
                     source: data.source as "MANUAL" | "SALESFORCE",
                     remarks: data.remarks || undefined,
+                    upsertMode: data.upsertMode,
                 })).unwrap();
             }
         } catch (error) {
@@ -218,27 +224,22 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
             onClose={handleClose}
             backdrop="blur"
             size="2xl"
-            classNames={{
-                base: "bg-white dark:bg-zinc-950 border border-default-100",
-                header: "border-b-0 pt-8 px-8",
-                body: "pb-8 px-8",
-                footer: "border-t border-default-100 bg-default-50/50 px-8 py-4"
-            }}
+            scrollBehavior="inside"
         >
             <ModalContent>
-                <form onSubmit={handleSubmit(onSubmit)}>
-                    <ModalHeader className="flex flex-col gap-1">
-                        <h2 className="text-lg font-bold tracking-tight">
-                            {isEditing ? "Edit Customer List" : "Create Customer List"}
-                        </h2>
-                        <p className="text-small text-default-500 font-normal">
-                            {isEditing 
-                                ? "Update the list name and description."
-                                : "Define your customer segment and choose how to populate the data."
-                            }
-                        </p>
-                    </ModalHeader>
-                    <ModalBody className="flex flex-col gap-8">
+                <ModalHeader className="flex flex-col gap-1">
+                    <h2 className="text-lg font-bold tracking-tight">
+                        {isEditing ? "Edit Customer List" : "Create Customer List"}
+                    </h2>
+                    <p className="text-small text-default-500 font-normal">
+                        {isEditing
+                            ? "Update the list name and description."
+                            : "Define your customer segment and choose how to populate the data."
+                        }
+                    </p>
+                </ModalHeader>
+                <ModalBody>
+                    <form className="flex flex-col gap-8" id="customer-list-form" onSubmit={handleSubmit(onSubmit)}>
                         {error && (
                             <div className="flex items-center gap-3 p-3 rounded-xl bg-danger-50 text-danger text-sm border border-danger-100">
                                 <Info size={18} />
@@ -326,8 +327,8 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                                 <label htmlFor="csv-file-input" className="cursor-pointer group">
                                     <div className={cn(
                                         "relative flex flex-col items-center justify-center p-8 rounded-2xl border-2 border-dashed transition-all",
-                                        csvFile 
-                                            ? "border-success-200 bg-success-50/30" 
+                                        csvFile
+                                            ? "border-success-200 bg-success-50/30"
                                             : "border-default-200 bg-default-50 group-hover:bg-default-100 group-hover:border-secondary-300"
                                     )}>
                                         {!csvFile ? (
@@ -356,9 +357,71 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                                 </label>
                             </div>
                         )}
-                    </ModalBody>
 
-                    <ModalFooter>
+                        {/* --- Section 4: Advanced Settings (only in settings mode) --- */}
+                        {showAdvancedSettings && (
+                            <div className="flex flex-col gap-4">
+                                <label className="text-xs font-medium text-default-400">Advanced Settings</label>
+                                <Controller
+                                    name="primaryKey"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <Select
+                                            {...field}
+                                            label="Primary Key"
+                                            labelPlacement="outside"
+                                            placeholder="Select a field"
+                                            variant="flat"
+                                            description="The field used to match and upsert existing records"
+                                            isDisabled={isLoading || fieldKeys.length === 0}
+                                            classNames={{ 
+                                                trigger: "bg-default-100/50 border-none",
+                                                base: "mt-0!",
+                                            }}
+                                            selectedKeys={field.value ? new Set([field.value]) : new Set()}
+                                            onSelectionChange={(keys) => {
+                                                const selected = Array.from(keys)[0];
+                                                field.onChange(selected || "");
+                                            }}
+                                        >
+                                            {fieldKeys.map((key) => (
+                                                <SelectItem key={key}>
+                                                    {key}
+                                                </SelectItem>
+                                            ))}
+                                        </Select>
+                                    )}
+                                />
+                            </div>
+                        )}
+
+                        <div className="p-4 rounded-xl bg-default-50 border border-default-100">
+                            <div className="flex items-start gap-3">
+                                <Controller
+                                    name="upsertMode"
+                                    control={control}
+                                    render={({ field: { value, onChange, ...field } }) => (
+                                        <Checkbox
+                                            {...field}
+                                            isDisabled={isLoading}
+                                            isSelected={value}
+                                            onValueChange={onChange}
+                                            color="secondary"
+                                            classNames={{ label: "text-tiny text-default-600 pl-2" }}
+                                        >
+                                            <div className="flex flex-col gap-2">
+                                                <span className="font-bold text-default-800">Upsert Mode (Update existing)</span>
+                                                <span>If a customer matches the Primary Key, overwrite their data instead of creating a new entry.</span>
+                                            </div>
+                                        </Checkbox>
+                                    )}
+                                />
+                            </div>
+                        </div>
+                    </form>
+                </ModalBody>
+
+                <ModalFooter>
                         <Button
                             variant="light"
                             onPress={handleClose}
@@ -369,6 +432,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                         </Button>
                         <Button
                             type="submit"
+                            form="customer-list-form"
                             color="secondary"
                             isLoading={isLoading}
                             isDisabled={!isValid || isLoading || (!isEditing && sourceValue === "CSV_UPLOAD" && !csvFile)}
@@ -377,7 +441,6 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                             {isEditing ? "Save Changes" : "Create List"}
                         </Button>
                     </ModalFooter>
-                </form>
             </ModalContent>
         </Modal>
     );
