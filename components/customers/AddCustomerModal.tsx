@@ -20,7 +20,7 @@ import * as yup from "yup";
 import { Upload, FileText, CheckCircle2, Info, Plus } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { resetCreateStatus } from "@/features/customers/customerListsSlice";
-import { fetchListCustomers } from "@/features/customers/listCustomersSlice";
+import { createCustomersFromCSV, createCustomersManual, fetchListCustomers } from "@/features/customers/listCustomersSlice";
 import CustomRadio from "./CustomRadio";
 import { ManualEntryGrid, ManualEntryGridHandle } from "./ManualEntryGrid";
 
@@ -51,11 +51,11 @@ const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
     listId,
 }) => {
     const dispatch = useAppDispatch();
-    const { contactList } = useAppSelector((state) => state.listCustomers);
-    const { status: createStatus, error: createError } = useAppSelector((state) => state.customerLists.create);
+    const { contactList, status: listStatus, error: listError } = useAppSelector((state) => state.listCustomers);
     const [csvFile, setCsvFile] = useState<File | null>(null);
     const [isDragActive, setIsDragActive] = useState(false);
     const [manualError, setManualError] = useState<string | null>(null);
+    const [hasCreated, setHasCreated] = useState(false);
     const gridRef = useRef<ManualEntryGridHandle | null>(null);
 
     const {
@@ -73,27 +73,30 @@ const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
     });
 
     const sourceValue = useWatch({ control, name: "source" });
-    const isLoading = createStatus === "loading";
+    const isLoading = listStatus === "loading";
 
     // Reset status when modal closes
     useEffect(() => {
         if (!isOpen) {
-            dispatch(resetCreateStatus());
+            setManualError(null);
+            setHasCreated(false);
         }
-    }, [isOpen, dispatch]);
+    }, [isOpen]);
 
     // Handle successful creation
     useEffect(() => {
-        if (createStatus === "succeeded") {
+        if (listStatus === "succeeded" && hasCreated) {
             reset();
             setCsvFile(null);
+            setManualError(null);
+            setHasCreated(false);
             onClose();
             dispatch(fetchListCustomers({ id: listId }));
             if (onSuccess) {
                 onSuccess();
             }
         }
-    }, [createStatus, reset, onClose, onSuccess, listId, dispatch]);
+    }, [listStatus, hasCreated, reset, onClose, onSuccess, listId, dispatch]);
 
     const handleFileChange = (file: File | null) => {
         if (!file) {
@@ -147,12 +150,11 @@ const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                     return;
                 }
 
-                // TODO: Implement CSV upload for adding customers
-                // await dispatch(createCustomersFromCSV({
-                //     listId,
-                //     file: csvFile,
-                //     upsertMode: data.upsertMode,
-                // })).unwrap();
+                setHasCreated(true);
+                await dispatch(createCustomersFromCSV({
+                    listId,
+                    file: csvFile,
+                })).unwrap();
             } else {
                 // Manual mode validation: ensure primary key values are not empty
                 const pk = contactList?.primaryKey?.trim();
@@ -167,11 +169,15 @@ const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                     return;
                 }
                 setManualError(null);
-                // TODO: Implement manual customer creation
-                // await dispatch(createCustomerManual({
-                //     listId,
-                //     data: formData,
-                // })).unwrap();
+                // Manual customer creation with validated data
+                const rows = gridRef.current?.getRows() ?? [];
+                const customers = rows.map(r => r.data);
+                
+                setHasCreated(true);
+                await dispatch(createCustomersManual({
+                    listId,
+                    customers,
+                })).unwrap();
             }
         } catch (error) {
             console.error("Failed to add customers:", error);
@@ -181,7 +187,7 @@ const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
     const handleClose = () => {
         reset();
         setCsvFile(null);
-        dispatch(resetCreateStatus());
+        setManualError(null);
         onClose();
     };
 
@@ -208,10 +214,10 @@ const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
                     </ModalHeader>
 
                     <ModalBody className="py-6">
-                        {(createError || manualError) && (
+                        {(listError || manualError) && (
                             <div className="flex items-center gap-3 p-3 mb-6 rounded-xl bg-danger-50 text-danger text-sm border border-danger-100">
                                 <Info size={18} />
-                                {manualError || createError}
+                                {manualError || listError}
                             </div>
                         )}
 

@@ -30,17 +30,15 @@ export const ManualEntryGrid = React.memo(forwardRef<ManualEntryGridHandle, { fi
     const typedFields = (fields || []) as DynamicField[];
 
     const addRow = () => {
-        setRows([...rows, { id: crypto.randomUUID(), data: {} }]);
+        setRows((prev) => [...prev, { id: crypto.randomUUID(), data: {} }]);
     };
 
     const removeRow = (id: string) => {
-        if (rows.length > 1) {
-            setRows(rows.filter(row => row.id !== id));
-        }
+        setRows((prev) => (prev.length > 1 ? prev.filter(row => row.id !== id) : prev));
     };
 
     const handleInputChange = (id: string, key: string, value: string) => {
-        setRows(rows.map(row =>
+        setRows((prev) => prev.map(row =>
             row.id === id ? { ...row, data: { ...row.data, [key]: value } } : row
         ));
     };
