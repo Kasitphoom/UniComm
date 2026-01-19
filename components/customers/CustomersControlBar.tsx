@@ -13,8 +13,12 @@ const CustomersControlBar: React.FC = () => {
     return (
         <>
             <div className="flex flex-col gap-3 justify-end md:flex-row md:items-center">
-                <Button isIconOnly variant="ghost" startContent={<Settings size={16}/>} onPress={() => setIsSettingsModalOpen(true)}/>
-                <SearchBar props={{ classNames: { mainWrapper: "border border-default-500 rounded-medium"} }} />
+                <Button isIconOnly variant="ghost" startContent={<Settings size={16} />} onPress={() => setIsSettingsModalOpen(true)} />
+                <SearchBar props={{
+                    classNames: {
+                        inputWrapper: "border-2! border-default-300",
+                    }
+                }} />
                 <Button color="secondary" className="shrink-0" startContent={<PlusIcon size={16} />}>Add Customer</Button>
             </div>
 
