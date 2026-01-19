@@ -222,26 +222,22 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
             onClose={handleClose}
             backdrop="blur"
             size="2xl"
-            classNames={{
-                wrapper: "p-4",
-                body: "pb-8 px-8",
-                footer: "border-t border-default-100 bg-default-50/50 px-8 py-4"
-            }}
+            scrollBehavior="inside"
         >
             <ModalContent>
-                <form onSubmit={handleSubmit(onSubmit)}>
-                    <ModalHeader className="flex flex-col gap-1">
-                        <h2 className="text-lg font-bold tracking-tight">
-                            {isEditing ? "Edit Customer List" : "Create Customer List"}
-                        </h2>
-                        <p className="text-small text-default-500 font-normal">
-                            {isEditing
-                                ? "Update the list name and description."
-                                : "Define your customer segment and choose how to populate the data."
-                            }
-                        </p>
-                    </ModalHeader>
-                    <ModalBody className="flex flex-col gap-8">
+                <ModalHeader className="flex flex-col gap-1">
+                    <h2 className="text-lg font-bold tracking-tight">
+                        {isEditing ? "Edit Customer List" : "Create Customer List"}
+                    </h2>
+                    <p className="text-small text-default-500 font-normal">
+                        {isEditing
+                            ? "Update the list name and description."
+                            : "Define your customer segment and choose how to populate the data."
+                        }
+                    </p>
+                </ModalHeader>
+                <ModalBody>
+                    <form className="flex flex-col gap-8" id="customer-list-form" onSubmit={handleSubmit(onSubmit)}>
                         {error && (
                             <div className="flex items-center gap-3 p-3 rounded-xl bg-danger-50 text-danger text-sm border border-danger-100">
                                 <Info size={18} />
@@ -387,9 +383,10 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                                 </div>
                             </div>
                         </div>
-                    </ModalBody>
+                    </form>
+                </ModalBody>
 
-                    <ModalFooter>
+                <ModalFooter>
                         <Button
                             variant="light"
                             onPress={handleClose}
@@ -400,6 +397,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                         </Button>
                         <Button
                             type="submit"
+                            form="customer-list-form"
                             color="secondary"
                             isLoading={isLoading}
                             isDisabled={!isValid || isLoading || (!isEditing && sourceValue === "CSV_UPLOAD" && !csvFile)}
@@ -408,7 +406,6 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                             {isEditing ? "Save Changes" : "Create List"}
                         </Button>
                     </ModalFooter>
-                </form>
             </ModalContent>
         </Modal>
     );
