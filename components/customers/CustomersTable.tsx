@@ -114,7 +114,7 @@ const CustomersTable: React.FC<Props> = ({ id }) => {
                     </Button>
                 </div>
 
-                <CustomersControlBar />
+                <CustomersControlBar listId={id} />
             </div>
 
             <Divider />

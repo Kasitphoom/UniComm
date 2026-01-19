@@ -4,10 +4,16 @@ import { Button } from "@heroui/react"
 import SearchBar from "@/components/SearchBar"
 import { PlusIcon, Settings } from "lucide-react"
 import CreateCustomerListModal from "./CreateCustomerListModal"
+import AddCustomerModal from "./AddCustomerModal"
 import { useAppSelector } from "@/store/hooks"
 
-const CustomersControlBar: React.FC = () => {
+interface CustomersControlBarProps {
+    listId?: string;
+}
+
+const CustomersControlBar: React.FC<CustomersControlBarProps> = ({ listId }) => {
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
+    const [isAddCustomerModalOpen, setIsAddCustomerModalOpen] = useState(false)
     const listCustomers = useAppSelector((state) => state.listCustomers)
 
     return (
@@ -21,7 +27,7 @@ const CustomersControlBar: React.FC = () => {
                         }
                     }} />
                     </div>
-                <Button color="secondary" className="shrink-0" startContent={<PlusIcon size={16} />}>Add Customer</Button>
+                <Button color="secondary" className="shrink-0" startContent={<PlusIcon size={16} />} onPress={() => setIsAddCustomerModalOpen(true)}>Add Customer</Button>
             </div>
 
             <CreateCustomerListModal
@@ -30,6 +36,14 @@ const CustomersControlBar: React.FC = () => {
                 showAdvancedSettings={true}
                 listToEdit={listCustomers.contactList || undefined}
             />
+
+            {listId && (
+                <AddCustomerModal
+                    isOpen={isAddCustomerModalOpen}
+                    onClose={() => setIsAddCustomerModalOpen(false)}
+                    listId={listId}
+                />
+            )}
         </>
     )
 }
