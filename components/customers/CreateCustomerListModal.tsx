@@ -18,18 +18,19 @@ import {
     cn,
     VisuallyHidden,
     Divider,
+    Checkbox,
 } from "@heroui/react";
 import { useForm, Controller } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 import { Upload, FileText, CheckCircle2, Info, Plus } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import { 
-    createCustomerListManual, 
+import {
+    createCustomerListManual,
     createCustomerListWithCSV,
     patchCustomerList,
     resetCreateStatus,
-    resetUpdateStatus 
+    resetUpdateStatus
 } from "@/features/customers/customerListsSlice";
 import { ContactListDTO } from "@/features/customers/types";
 
@@ -49,6 +50,9 @@ const createCustomerListSchema = yup.object().shape({
         .mixed<"MANUAL" | "CSV_UPLOAD">()
         .oneOf(["MANUAL", "CSV_UPLOAD"], "Invalid source")
         .required(),
+    upsertMode: yup
+        .boolean()
+        .default(false),
 });
 
 type CreateCustomerListFormData = yup.InferType<typeof createCustomerListSchema>;
@@ -148,7 +152,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
-        
+
         if (!file) {
             setCsvFile(null);
             return;
@@ -219,8 +223,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
             backdrop="blur"
             size="2xl"
             classNames={{
-                base: "bg-white dark:bg-zinc-950 border border-default-100",
-                header: "border-b-0 pt-8 px-8",
+                wrapper: "p-4",
                 body: "pb-8 px-8",
                 footer: "border-t border-default-100 bg-default-50/50 px-8 py-4"
             }}
@@ -232,7 +235,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                             {isEditing ? "Edit Customer List" : "Create Customer List"}
                         </h2>
                         <p className="text-small text-default-500 font-normal">
-                            {isEditing 
+                            {isEditing
                                 ? "Update the list name and description."
                                 : "Define your customer segment and choose how to populate the data."
                             }
@@ -326,8 +329,8 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                                 <label htmlFor="csv-file-input" className="cursor-pointer group">
                                     <div className={cn(
                                         "relative flex flex-col items-center justify-center p-8 rounded-2xl border-2 border-dashed transition-all",
-                                        csvFile 
-                                            ? "border-success-200 bg-success-50/30" 
+                                        csvFile
+                                            ? "border-success-200 bg-success-50/30"
                                             : "border-default-200 bg-default-50 group-hover:bg-default-100 group-hover:border-secondary-300"
                                     )}>
                                         {!csvFile ? (
@@ -356,6 +359,34 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                                 </label>
                             </div>
                         )}
+                        <div className="flex flex-col gap-1">
+                            <label className="text-sm" htmlFor="upsertMode">
+                                Table Settings
+                            </label>
+                            <div className="p-4 rounded-xl bg-default-50 border border-default-100">
+                                <div className="flex items-start gap-3">
+                                    <Controller
+                                        name="upsertMode"
+                                        control={control}
+                                        render={({ field: { value, onChange, ...field } }) => (
+                                            <Checkbox
+                                                {...field}
+                                                isDisabled={isLoading}
+                                                isSelected={value}
+                                                onValueChange={onChange}
+                                                color="secondary"
+                                                classNames={{ label: "text-tiny text-default-600 pl-2" }}
+                                            >
+                                                <div className="flex flex-col gap-2">
+                                                    <span className="font-bold text-default-800">Upsert Mode (Update existing)</span>
+                                                    <span>If a customer matches the Primary Key, overwrite their data instead of creating a new entry.</span>
+                                                </div>
+                                            </Checkbox >
+                                        )}
+                                    />
+                                </div>
+                            </div>
+                        </div>
                     </ModalBody>
 
                     <ModalFooter>
