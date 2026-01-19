@@ -11,13 +11,8 @@ import {
     Input,
     Textarea,
     RadioGroup,
-    Radio,
     Card,
-    RadioProps,
-    useRadio,
     cn,
-    VisuallyHidden,
-    Divider,
     Checkbox,
     Select,
     SelectItem,
@@ -37,6 +32,7 @@ import {
 import { ContactListDTO } from "@/features/customers/types";
 import { Customer } from "@/app/generated/business/prisma";
 import { fetchListCustomers } from "@/features/customers/listCustomersSlice";
+import CustomRadio from "./CustomRadio";
 
 // Create validation schema
 const createCustomerListSchema = yup.object().shape({
@@ -64,40 +60,6 @@ const createCustomerListSchema = yup.object().shape({
 });
 
 type CreateCustomerListFormData = yup.InferType<typeof createCustomerListSchema>;
-
-
-const CustomRadio = (props: RadioProps) => {
-    const {
-        Component, children, isSelected, description,
-        getBaseProps, getWrapperProps, getInputProps,
-    } = useRadio(props);
-
-    return (
-        <Component
-            {...getBaseProps()}
-            className={cn(
-                "group inline-flex items-center hover:bg-content2",
-                "max-w-full cursor-pointer border-2 border-default-200 rounded-xl gap-4 p-4",
-                "data-[selected=true]:border-secondary data-[selected=true]:bg-secondary-50/50",
-            )}
-        >
-            <VisuallyHidden>
-                <input {...getInputProps()} />
-            </VisuallyHidden>
-            {/* <span {...getWrapperProps()} className={cn(
-                "border-2 border-default-300 group-data-[selected=true]:border-secondary",
-                "shrink-0 w-5 h-5"
-            )} /> */}
-            <div className="flex flex-col gap-1">
-                {children && <span className="font-semibold text-sm">{children}</span>}
-                {description && (
-                    <span className="text-tiny text-default-400">{description}</span>
-                )}
-            </div>
-        </Component>
-    );
-};
-
 
 interface CreateCustomerListModalProps {
     isOpen: boolean;
