@@ -19,6 +19,8 @@ import {
     VisuallyHidden,
     Divider,
     Checkbox,
+    Select,
+    SelectItem,
 } from "@heroui/react";
 import { useForm, Controller } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
@@ -33,6 +35,8 @@ import {
     resetUpdateStatus
 } from "@/features/customers/customerListsSlice";
 import { ContactListDTO } from "@/features/customers/types";
+import { Customer } from "@/app/generated/business/prisma";
+import { fetchListCustomers } from "@/features/customers/listCustomersSlice";
 
 // Create validation schema
 const createCustomerListSchema = yup.object().shape({
@@ -50,6 +54,10 @@ const createCustomerListSchema = yup.object().shape({
         .mixed<"MANUAL" | "CSV_UPLOAD">()
         .oneOf(["MANUAL", "CSV_UPLOAD"], "Invalid source")
         .required(),
+    primaryKey: yup
+        .string()
+        .optional()
+        .default(""),
     upsertMode: yup
         .boolean()
         .default(false),
@@ -96,6 +104,8 @@ interface CreateCustomerListModalProps {
     onClose: () => void;
     onSuccess?: () => void;
     listToEdit?: ContactListDTO;
+    showAdvancedSettings?: boolean;
+    customers?: Customer[];
 }
 
 const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
@@ -103,6 +113,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
     onClose,
     onSuccess,
     listToEdit,
+    showAdvancedSettings = false,
 }) => {
     const dispatch = useAppDispatch();
     const { status: createStatus, error: createError } = useAppSelector((state) => state.customerLists.create);
@@ -112,6 +123,19 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
     const isEditing = !!listToEdit;
     const status = isEditing ? updateStatus : createStatus;
     const error = isEditing ? updateError : createError;
+
+    // Extract unique field keys from customer data
+    const getListToEditField = (): string[] => {
+        if (!listToEdit || !listToEdit.fields) return [];
+        if (!Array.isArray(listToEdit.fields)) return [];
+        return listToEdit.fields
+            .filter((field): field is { field: string; type: string } => 
+                typeof field === 'object' && field !== null && 'field' in field
+            )
+            .map((field) => field.field);
+    };
+
+    const fieldKeys = getListToEditField();
 
     const {
         control,
@@ -126,6 +150,8 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
             name: listToEdit?.name || "",
             remarks: listToEdit?.remarks || "",
             source: "MANUAL",
+            primaryKey: listToEdit?.primaryKey || "",
+            upsertMode: listToEdit?.upsertMode ?? true,
         },
     });
 
@@ -135,6 +161,14 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
     useEffect(() => {
         if (!isOpen) {
             dispatch(isEditing ? resetUpdateStatus() : resetCreateStatus());
+        } else {
+            reset({
+                name: listToEdit?.name || "",
+                remarks: listToEdit?.remarks || "",
+                source: "MANUAL",
+                primaryKey: listToEdit?.primaryKey || "",
+                upsertMode: listToEdit?.upsertMode ?? true,
+            })
         }
     }, [isOpen, dispatch, isEditing]);
 
@@ -181,7 +215,11 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                     id: listToEdit.id,
                     name: data.name,
                     remarks: data.remarks || undefined,
+                    primaryKey: showAdvancedSettings ? data.primaryKey || undefined : undefined,
+                    upsertMode: showAdvancedSettings ? data.upsertMode : undefined,
                 })).unwrap();
+
+                dispatch(fetchListCustomers({ id: listToEdit.id }));
             } else if (data.source === "CSV_UPLOAD") {
                 // Handle CSV upload creation
                 if (!csvFile) {
@@ -192,6 +230,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                     name: data.name,
                     file: csvFile,
                     remarks: data.remarks || undefined,
+                    upsertMode: data.upsertMode,
                 })).unwrap();
             } else {
                 // Handle manual creation
@@ -199,6 +238,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                     name: data.name,
                     source: data.source as "MANUAL" | "SALESFORCE",
                     remarks: data.remarks || undefined,
+                    upsertMode: data.upsertMode,
                 })).unwrap();
             }
         } catch (error) {
@@ -355,32 +395,65 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                                 </label>
                             </div>
                         )}
-                        <div className="flex flex-col gap-1">
-                            <label className="text-sm" htmlFor="upsertMode">
-                                Table Settings
-                            </label>
-                            <div className="p-4 rounded-xl bg-default-50 border border-default-100">
-                                <div className="flex items-start gap-3">
-                                    <Controller
-                                        name="upsertMode"
-                                        control={control}
-                                        render={({ field: { value, onChange, ...field } }) => (
-                                            <Checkbox
-                                                {...field}
-                                                isDisabled={isLoading}
-                                                isSelected={value}
-                                                onValueChange={onChange}
-                                                color="secondary"
-                                                classNames={{ label: "text-tiny text-default-600 pl-2" }}
-                                            >
-                                                <div className="flex flex-col gap-2">
-                                                    <span className="font-bold text-default-800">Upsert Mode (Update existing)</span>
-                                                    <span>If a customer matches the Primary Key, overwrite their data instead of creating a new entry.</span>
-                                                </div>
-                                            </Checkbox >
-                                        )}
-                                    />
-                                </div>
+
+                        {/* --- Section 4: Advanced Settings (only in settings mode) --- */}
+                        {showAdvancedSettings && (
+                            <div className="flex flex-col gap-4">
+                                <label className="text-xs font-medium text-default-400">Advanced Settings</label>
+                                <Controller
+                                    name="primaryKey"
+                                    control={control}
+                                    render={({ field }) => (
+                                        <Select
+                                            {...field}
+                                            label="Primary Key"
+                                            labelPlacement="outside"
+                                            placeholder="Select a field"
+                                            variant="flat"
+                                            description="The field used to match and upsert existing records"
+                                            isDisabled={isLoading || fieldKeys.length === 0}
+                                            classNames={{ 
+                                                trigger: "bg-default-100/50 border-none",
+                                                base: "mt-0!",
+                                            }}
+                                            selectedKeys={field.value ? new Set([field.value]) : new Set()}
+                                            onSelectionChange={(keys) => {
+                                                const selected = Array.from(keys)[0];
+                                                field.onChange(selected || "");
+                                            }}
+                                        >
+                                            {fieldKeys.map((key) => (
+                                                <SelectItem key={key}>
+                                                    {key}
+                                                </SelectItem>
+                                            ))}
+                                        </Select>
+                                    )}
+                                />
+                            </div>
+                        )}
+
+                        <div className="p-4 rounded-xl bg-default-50 border border-default-100">
+                            <div className="flex items-start gap-3">
+                                <Controller
+                                    name="upsertMode"
+                                    control={control}
+                                    render={({ field: { value, onChange, ...field } }) => (
+                                        <Checkbox
+                                            {...field}
+                                            isDisabled={isLoading}
+                                            isSelected={value}
+                                            onValueChange={onChange}
+                                            color="secondary"
+                                            classNames={{ label: "text-tiny text-default-600 pl-2" }}
+                                        >
+                                            <div className="flex flex-col gap-2">
+                                                <span className="font-bold text-default-800">Upsert Mode (Update existing)</span>
+                                                <span>If a customer matches the Primary Key, overwrite their data instead of creating a new entry.</span>
+                                            </div>
+                                        </Checkbox>
+                                    )}
+                                />
                             </div>
                         </div>
                     </form>

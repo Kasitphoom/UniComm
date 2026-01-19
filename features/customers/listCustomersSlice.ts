@@ -1,6 +1,6 @@
 "use client"
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit"
-import type { ListCustomersState, CustomerRecord } from "./types"
+import type { ListCustomersState, CustomerRecord, ContactListDTO } from "./types"
 
 export const fetchListCustomers = createAsyncThunk(
   "listCustomers/fetch",
@@ -21,7 +21,7 @@ export const fetchListCustomers = createAsyncThunk(
     }
 
     const data = (await res.json()) as {
-      contactList: { id: string; name: string; fields?: any[] | null; _count?: { customers: number } }
+      contactList: ContactListDTO
       customers: { items: CustomerRecord[]; page: number; pageSize: number; total: number; totalPages: number }
     }
 

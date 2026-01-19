@@ -1,3 +1,4 @@
+import { Customer } from "@/app/generated/business/prisma";
 import { requireAuth } from "@/lib/api-auth";
 import { getBusinessPrisma } from "@/lib/prisma-business";
 import { NextRequest, NextResponse } from "next/server";
@@ -15,18 +16,25 @@ export const PATCH = async ( request: NextRequest, context: { params: Promise<{ 
 
         const { id } = await context.params;
         const body = await request.json();
-        const { name, remarks } = body;
+        const { name, remarks, primaryKey, upsertMode } = body;
 
         if (!name || name.trim().length === 0) {
             return NextResponse.json({ error: "Name is required." }, { status: 400 });
         }
 
+        // Build update data - only include optional fields if provided
+        const updateData: any = {
+            name,
+            remarks,
+        };
+
+        if (primaryKey) updateData.primaryKey = primaryKey;
+
+        if (upsertMode) updateData.upsertMode = upsertMode;
+
         const updatedList = await prisma.contactList.update({
             where: { id },
-            data: {
-                name,
-                remarks,
-            },
+            data: updateData,
         });
 
         return NextResponse.json({ contactList: updatedList }, { status: 200 });
@@ -98,8 +106,7 @@ export const GET = async ( request: NextRequest, context: { params: Promise<{ id
         // If there is a search query, fetch all customers for the list and filter in application layer.
         // MongoDB + Prisma JSON filters are limited; application-side filtering ensures search across dynamic fields in `data`.
         let total = contactList._count.customers || 0;
-        type CustomerRecord = { id: string; listId: string; data: any; createdAt: Date; updatedAt: Date };
-        let customers: CustomerRecord[] = [];
+        let customers: Customer[] = [];
 
         if (q) {
             const all = await prisma.customer.findMany({
@@ -154,6 +161,6 @@ export const GET = async ( request: NextRequest, context: { params: Promise<{ id
         );
 
     } catch (error) {
-        return NextResponse.json({ error: "Failed to fetch contact list." }, { status: 500 });
+        return NextResponse.json({ error: error }, { status: 500 });
     }
 }
