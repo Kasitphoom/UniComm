@@ -5,15 +5,22 @@ import SearchBar from '../SearchBar'
 import { Button, ButtonGroup, Dropdown, DropdownMenu, DropdownTrigger, DropdownItem } from '@heroui/react'
 import { ChevronDown, FilePlusCorner } from 'lucide-react'
 import CreateTemplateModal from './CreateTemplateModal'
+import { useUser } from '@/components/providers/UserProvider'
+import { canCreateResource } from '@/utils/permissions'
 
 const ControlBar = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const currentUser = useUser();
+    const canCreate = canCreateResource(currentUser.role);
+
     return (
-        <div className='flex gap-4 justify-end'>
-            <ViewMode />
-            <SearchBar />
-            <ButtonGroup className='rounded-xl overflow-hidden'>
-                <Button color='secondary' startContent={<FilePlusCorner size={16} />} onPress={() => setIsModalOpen(true)}>New Template</Button>
+        <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-end'>
+            <div className='flex items-center gap-4'>
+                <ViewMode />
+                <SearchBar />
+            </div>
+            <ButtonGroup className='rounded-xl overflow-hidden' isDisabled={!canCreate}>
+                <Button className='w-full' color='secondary' startContent={<FilePlusCorner size={16} />} onPress={() => setIsModalOpen(true)}>New Template</Button>
                 <Dropdown placement='bottom-end'>
                     <DropdownTrigger className='min-w-0'>
                         <Button color='secondary'><ChevronDown size={16}/></Button>

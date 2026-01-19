@@ -1,10 +1,15 @@
 'use client'
-import { Divider, User } from '@heroui/react'
+import { Divider, Dropdown, DropdownItem, DropdownMenu, DropdownTrigger, User } from '@heroui/react'
 import React from 'react'
 import { useUser } from '@/components/providers/UserProvider'
+import { signOut } from 'next-auth/react'
 
 const HeaderUserInner = () => {
   const user = useUser()
+
+  const onLogout = async () => {
+    await signOut({ callbackUrl: '/' })
+  }
 
   if (user.loading) {
     return (
@@ -27,11 +32,24 @@ const HeaderUserInner = () => {
   return (
     <div className='flex gap-4 h-[40px]'>
       <Divider orientation='vertical' />
-      <User
-        name={displayName}
-        avatarProps={{ name: displayName?.toUpperCase() || 'U' }}
-        description={description}
-      />
+      <Dropdown placement='bottom-end'>
+        <DropdownTrigger>
+          <User
+            name={displayName}
+            avatarProps={{ name: displayName?.toUpperCase() || 'U' }}
+            description={description}
+            classNames={{
+              name: 'hidden sm:inline',
+              description: 'hidden sm:inline',
+            }}
+          />
+        </DropdownTrigger>
+        <DropdownMenu aria-label="User menu" onAction={(key) => key === 'logout' && onLogout()}>
+          <DropdownItem key="logout" color="danger">
+            Logout
+          </DropdownItem>
+        </DropdownMenu>
+      </Dropdown>
     </div>
   )
 }
