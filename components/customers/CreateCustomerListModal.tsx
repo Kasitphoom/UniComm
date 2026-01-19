@@ -81,6 +81,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
     const { status: createStatus, error: createError } = useAppSelector((state) => state.customerLists.create);
     const { status: updateStatus, error: updateError } = useAppSelector((state) => state.customerLists.update);
     const [csvFile, setCsvFile] = useState<File | null>(null);
+    const [isDragActive, setIsDragActive] = useState(false);
 
     const isEditing = !!listToEdit;
     const status = isEditing ? updateStatus : createStatus;
@@ -146,9 +147,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
         }
     }, [status, reset, onClose, onSuccess]);
 
-    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-
+    const handleFileChange = (file: File | null) => {
         if (!file) {
             setCsvFile(null);
             return;
@@ -167,6 +166,30 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
         }
 
         setCsvFile(file);
+    };
+
+    const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0] || null;
+        handleFileChange(file);
+    };
+
+    const handleDrag = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.type === "dragenter" || e.type === "dragover") {
+            setIsDragActive(true);
+        } else if (e.type === "dragleave") {
+            setIsDragActive(false);
+        }
+    };
+
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragActive(false);
+
+        const file = e.dataTransfer.files?.[0] || null;
+        handleFileChange(file);
     };
 
     const onSubmit = async (data: CreateCustomerListFormData) => {
@@ -320,23 +343,31 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                                 <input
                                     type="file"
                                     accept=".csv"
-                                    onChange={handleFileChange}
+                                    onChange={handleInputChange}
                                     className="hidden"
                                     id="csv-file-input"
                                 />
                                 <label htmlFor="csv-file-input" className="cursor-pointer group">
-                                    <div className={cn(
-                                        "relative flex flex-col items-center justify-center p-8 rounded-2xl border-2 border-dashed transition-all",
-                                        csvFile
-                                            ? "border-success-200 bg-success-50/30"
-                                            : "border-default-200 bg-default-50 group-hover:bg-default-100 group-hover:border-secondary-300"
-                                    )}>
+                                    <div
+                                        onDragEnter={handleDrag}
+                                        onDragOver={handleDrag}
+                                        onDragLeave={handleDrag}
+                                        onDrop={handleDrop}
+                                        className={cn(
+                                            "relative flex flex-col items-center justify-center p-8 rounded-2xl border-2 border-dashed transition-all",
+                                            isDragActive
+                                                ? "border-secondary-400 bg-secondary-50"
+                                                : csvFile
+                                                    ? "border-success-200 bg-success-50/30"
+                                                    : "border-default-200 bg-default-50 group-hover:bg-default-100 group-hover:border-secondary-300"
+                                        )}
+                                    >
                                         {!csvFile ? (
                                             <>
                                                 <div className="p-3 rounded-full bg-white shadow-sm mb-3 group-hover:scale-110 transition-transform">
                                                     <Upload size={24} className="text-secondary" />
                                                 </div>
-                                                <p className="text-sm font-semibold">Click to upload CSV</p>
+                                                <p className="text-sm font-semibold">Click or drag CSV here</p>
                                                 <p className="text-xs text-default-400 mt-1">Max size 10MB (UTF-8 encoding)</p>
                                             </>
                                         ) : (
