@@ -18,11 +18,16 @@ export const EditCustomerDrawer = ({ isOpen, onClose, onOpenChange, customerId, 
 }) => {
 
     const customerState = useAppSelector((state) => state.listCustomers);
-    const customer = customerState.items.find(c => c.id === customerId);
+    const customerObject = customerState.items.find(c => c.id === customerId);
+    const customer = {
+        ...customerObject,
+        data: customerObject?.data && typeof customerObject.data === 'object' && !Array.isArray(customerObject.data)
+            ? (customerObject.data as Record<string, any>)
+            : {}
+    }
 
-    // Initialize form with the customer's existing JSON data
     const { control, handleSubmit, reset } = useForm({
-        defaultValues: customer?.data || {}
+        defaultValues: customer.data
     });
 
     // Reset form values when customer changes or drawer opens
