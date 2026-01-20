@@ -1,4 +1,4 @@
-import type { Plugin, Schema } from "@pdfme/common"
+import type { PDFRenderProps, Plugin, Schema } from "@pdfme/common"
 import { createSvgStr } from "@pdfme/schemas/utils"
 import { Blocks } from "lucide"
 import type { UIRenderProps } from "@pdfme/common"
@@ -69,27 +69,98 @@ const fetchLatestComponentSchemas = async (componentName?: string): Promise<Sche
     }
 }
 
+// Normalize schema content for PDF rendering, providing safe values per type
+const getSchemaContent = (schema: any): string => {
+    if (!schema) return "";
+    const value = schema.content;
+    
+    // fallback
+    if (value === undefined || value === null) return "";
+    return typeof value === 'string' ? value : String(value);
+}
+
 // Simple square component: draws a gray square in UI and PDF
 const ComponentBlocks: Plugin<ComponentBlocksSchema> = {
-    pdf: async (arg: any) => {
-        const { schema, pdfDoc, pageNumber } = arg as {
-            schema: ComponentBlocksSchema
-            pdfDoc: any
-            pageNumber: number
-        }
-        const page = pdfDoc.getPages()[pageNumber]
-        const { position, width, height } = schema
+    pdf: async (arg: PDFRenderProps<ComponentBlocksSchema>) => {
+        const { schema, pdfDoc } = arg
+        const { position } = schema
         if (!position) return
 
-        page.drawRectangle({
-            x: position.x,
-            y: position.y,
-            width,
-            height,
-            color: [0.9, 0.9, 0.9],
-            borderColor: [0.3, 0.3, 0.3],
-            borderWidth: 1,
-        })
+        let children = schema.componentSchemas || []
+
+        if (!children.length) {
+            return
+        }
+
+        // Compute bounding box of all child schemas in mm
+        let minX = Infinity
+        let minY = Infinity
+        let maxX = -Infinity
+        let maxY = -Infinity
+
+        for (const s of children) {
+            const pos = (s as any).position
+            const w = (s as any).width
+            const h = (s as any).height
+            if (!pos || typeof w !== "number" || typeof h !== "number") continue
+            const x1 = pos.x
+            const y1 = pos.y
+            const x2 = x1 + w
+            const y2 = y1 + h
+            minX = Math.min(minX, x1)
+            minY = Math.min(minY, y1)
+            maxX = Math.max(maxX, x2)
+            maxY = Math.max(maxY, y2)
+        }
+
+        if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) {
+            return
+        }
+
+        const groupWidthMm = Math.max(0.0001, maxX - minX)
+        const groupHeightMm = Math.max(0.0001, maxY - minY)
+
+        // Render each child schema
+        for (const s of children) {
+            const pos = (s as any).position
+            const w = (s as any).width
+            const h = (s as any).height
+            if (!pos || typeof w !== "number" || typeof h !== "number") continue
+
+            // Calculate child position relative to group
+            const childX = position.x + ((pos.x - minX) / groupWidthMm) * schema.width
+            const childY = position.y + ((pos.y - minY) / groupHeightMm) * schema.height
+            const childWidth = (w / groupWidthMm) * schema.width
+            const childHeight = (h / groupHeightMm) * schema.height
+
+            const type = (s as any).type as string
+            const plugin = type === "ComponentBlocks" ? ComponentBlocks : builtinPluginMap[type]
+
+            if (plugin && typeof plugin.pdf === "function") {
+                // Create a modified schema with calculated position and size
+                const childInput = getSchemaContent(s)
+
+                const modifiedSchema = {
+                    ...(s as any),
+                    position: { x: childX, y: childY },
+                    width: childWidth,
+                    height: childHeight,
+                    content: childInput,
+                    value: (s as any).value !== undefined ? childInput : (s as any).value,
+                }
+
+                try {
+                    let pdfArgs = {
+                        ...arg,
+                        schema: modifiedSchema,
+                        value: childInput,
+                    }
+                    await plugin.pdf(pdfArgs)
+                } catch (e) {
+                    console.error(`ComponentBlocks: failed to render child ${type}`, e)
+                }
+            }
+        }
     },
 
     ui: async (arg: UIRenderProps<ComponentBlocksSchema>) => {

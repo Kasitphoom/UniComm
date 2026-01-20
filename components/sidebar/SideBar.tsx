@@ -2,7 +2,7 @@
 import React from 'react'
 import { usePathname } from 'next/navigation'
 import { Divider } from '@heroui/react';
-import { BlocksIcon, ChevronsLeft, LayoutDashboard, NotepadTextDashed } from 'lucide-react';
+import { BlocksIcon, ChevronsLeft, LayoutDashboard, NotepadTextDashed, UserIcon, UsersIcon } from 'lucide-react';
 import { motion } from 'motion/react';
 import Image from 'next/image';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -10,6 +10,54 @@ import { toggleSidebar } from '@/features/ui/uiSlice';
 import Link from 'next/link';
 import SidebarNavItem from './SidebarNavItem';
 import { SidebarHierarchy } from '@/types/sidebar';
+
+export const Navigations: SidebarHierarchy = [
+    {
+        groupName: 'Overview',
+        items: [
+            { 
+                name: 'Dashboard', 
+                href: '/dashboard',
+                icon: <LayoutDashboard size={16} />,
+            },
+        ],
+    },
+    {
+        groupName: 'Content Management',
+        items: [
+            {
+                name: 'Templates',
+                href: '/templates',
+                icon: <NotepadTextDashed size={16} />,
+            },
+            {
+                name: 'Component Blocks',
+                href: '/components',
+                icon: <BlocksIcon size={16} />,
+            }
+        ]
+    },
+    {
+        groupName: 'Data and Integration',
+        items: [
+            {
+                name: 'Customers',
+                href: '/customers',
+                icon: <UsersIcon size={16} />,
+            }
+        ]
+    },
+    {
+        groupName: 'System Settings',
+        items: [
+            {
+                name: 'Manage Users',
+                href: '/users',
+                icon: <UserIcon size={16} />,
+            }
+        ]
+    }
+]
 
 const SideBar = () => {
     const pathname = usePathname();
@@ -21,43 +69,15 @@ const SideBar = () => {
         return null;
     }
 
-    const Navigations: SidebarHierarchy = [
-        {
-            groupName: 'Overview',
-            items: [
-                { 
-                    name: 'Dashboard', 
-                    href: '/dashboard',
-                    icon: <LayoutDashboard size={16} />,
-                },
-            ],
-        },
-        {
-            groupName: 'Content Management',
-            items: [
-                {
-                    name: 'Templates',
-                    href: '/templates',
-                    icon: <NotepadTextDashed size={16} />,
-                },
-                {
-                    name: 'Component Blocks',
-                    href: '/components',
-                    icon: <BlocksIcon size={16} />,
-                }
-            ]
-        },
-    ]
-
     return (
         <motion.div 
-            className={`sticky h-svh border-r border-default-200 ${sidebarOpen ? 'w-[300px]' : 'w-[70px]'} shrink-0 flex-none flex flex-col transition-[width] duration-300`}
+            className={`hidden md:flex sticky md:h-svh border-r border-default-200 ${sidebarOpen ? 'w-75' : 'w-17.5'} shrink-0 flex-none flex-col transition-[width] duration-300`}
             transition={{
                 ease: 'easeInOut',
                 duration: 1
             }}
         >
-            <div className={`flex ${sidebarOpen ? 'justify-between' : 'justify-center'} p-4 border-b border-default-200`}>
+            <div className={`flex ${sidebarOpen ? 'justify-between' : 'justify-center'} p-4 border-b border-default-200 h-16 items-center`}>
                 {
                     sidebarOpen && <Link href={"/"}>
                         <Image
