@@ -16,11 +16,13 @@ import {
     Checkbox,
     Select,
     SelectItem,
+    Tabs,
+    Tab,
 } from "@heroui/react";
-import { useForm, Controller } from "react-hook-form";
+import { useForm, Controller, useFieldArray } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
-import { Upload, FileText, CheckCircle2, Info, Plus } from "lucide-react";
+import { Upload, FileText, CheckCircle2, Info, Plus, Settings2, Trash2, Columns } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import {
     createCustomerListManual,
@@ -57,6 +59,15 @@ const createCustomerListSchema = yup.object().shape({
     upsertMode: yup
         .boolean()
         .default(false),
+    fields: yup
+        .array()
+        .of(
+            yup.object().shape({
+                name: yup.string().required("Field name is required"),
+                type: yup.string().oneOf(["string", "number", "date", "boolean"]).required("Type is required"),
+            })
+        )
+        .default([]),
 });
 
 type CreateCustomerListFormData = yup.InferType<typeof createCustomerListSchema>;
@@ -98,6 +109,22 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
             .map((field) => field.field);
     };
 
+    // Convert JsonValue fields to typed array
+    const convertFieldsToFormData = (): Array<{ name: string; type: "string" | "number" | "date" | "boolean" }> => {
+        if (!listToEdit || !listToEdit.fields) return [];
+        if (!Array.isArray(listToEdit.fields)) return [];
+        return listToEdit.fields
+            .filter((field): field is { field: string; type: string } => 
+                typeof field === 'object' && field !== null && 'field' in field && 'type' in field
+            )
+            .map((field) => ({
+                name: field.field,
+                type: (field.type === "string" || field.type === "number" || field.type === "date" || field.type === "boolean") 
+                    ? field.type 
+                    : "string"
+            }));
+    };
+
     const fieldKeys = getListToEditField();
 
     const {
@@ -115,7 +142,13 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
             source: "MANUAL",
             primaryKey: listToEdit?.primaryKey || "",
             upsertMode: listToEdit?.upsertMode ?? true,
+            fields: convertFieldsToFormData(),
         },
+    });
+
+    const { fields, append, remove } = useFieldArray({
+        control,
+        name: "fields",
     });
 
     const sourceValue = watch("source");
@@ -131,6 +164,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                 source: "MANUAL",
                 primaryKey: listToEdit?.primaryKey || "",
                 upsertMode: listToEdit?.upsertMode ?? true,
+                fields: convertFieldsToFormData(),
             })
         }
     }, [isOpen, dispatch, isEditing]);
@@ -196,12 +230,31 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
         try {
             if (isEditing && listToEdit) {
                 // Handle edit
+                // Check if primary key field was renamed
+                let updatedPrimaryKey = data.primaryKey;
+                
+                if (data.primaryKey && data.fields && listToEdit.fields) {
+                    const oldFields = Array.isArray(listToEdit.fields) 
+                        ? listToEdit.fields.filter((field): field is { field: string; type: string } => 
+                            typeof field === 'object' && field !== null && 'field' in field
+                        )
+                        : [];
+                    
+                    // Find if the primary key field was renamed
+                    const oldPrimaryKeyFieldIndex = oldFields.findIndex(f => f.field === data.primaryKey);
+                    if (oldPrimaryKeyFieldIndex !== -1 && data.fields[oldPrimaryKeyFieldIndex]) {
+                        // Use the new name from the updated fields
+                        updatedPrimaryKey = data.fields[oldPrimaryKeyFieldIndex].name;
+                    }
+                }
+
                 await dispatch(patchCustomerList({
                     id: listToEdit.id,
                     name: data.name,
                     remarks: data.remarks || undefined,
-                    primaryKey: showAdvancedSettings ? data.primaryKey || undefined : undefined,
+                    primaryKey: showAdvancedSettings ? updatedPrimaryKey || undefined : undefined,
                     upsertMode: showAdvancedSettings ? data.upsertMode : undefined,
+                    fields: data.fields && data.fields.length > 0 ? data.fields : undefined,
                 })).unwrap();
 
                 dispatch(fetchListCustomers({ id: listToEdit.id }));
@@ -263,192 +316,242 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                 </ModalHeader>
                 <ModalBody>
                     <form className="flex flex-col gap-8" id="customer-list-form" onSubmit={handleSubmit(onSubmit)}>
-                        {error && (
-                            <div className="flex items-center gap-3 p-3 rounded-xl bg-danger-50 text-danger text-sm border border-danger-100">
-                                <Info size={18} />
-                                {error}
-                            </div>
-                        )}
+                    <Tabs aria-label="Settings Tabs" color="secondary" variant="underlined" classNames={{
+                                tabList: "w-full relative rounded-none p-0 border-b border-divider",
+                                cursor: "w-full",
+                            }}>
 
-                        {/* --- Section 1: Basic Info --- */}
-                        <div className="flex flex-col gap-4">
-                            <Controller
-                                name="name"
-                                control={control}
-                                render={({ field }) => (
-                                    <Input
-                                        {...field}
-                                        label="List Name"
-                                        labelPlacement="outside"
-                                        placeholder="e.g. Q1 Premium Retargeting"
-                                        variant="flat"
-                                        isInvalid={!!errors.name}
-                                        errorMessage={errors.name?.message}
-                                        isDisabled={isLoading}
-                                        classNames={{ inputWrapper: "bg-default-100/50 border-none" }}
-                                        isRequired
-                                    />
+                        <Tab key="general" title={<div className="flex items-center gap-2"><Settings2 size={16}/><span>General</span></div>}>
+                                {error && (
+                                    <div className="flex items-center gap-3 p-3 rounded-xl bg-danger-50 text-danger text-sm border border-danger-100">
+                                        <Info size={18} />
+                                        {error}
+                                    </div>
                                 )}
-                            />
 
-                            <Controller
-                                name="remarks"
-                                control={control}
-                                render={({ field }) => (
-                                    <Textarea
-                                        {...field}
-                                        label="Description"
-                                        labelPlacement="outside"
-                                        placeholder="What is this list for?"
-                                        variant="flat"
-                                        isInvalid={!!errors.remarks}
-                                        errorMessage={errors.remarks?.message}
-                                        isDisabled={isLoading}
-                                        minRows={2}
-                                        classNames={{ inputWrapper: "bg-default-100/50 border-none" }}
-                                    />
-                                )}
-                            />
-                        </div>
-
-                        {/* --- Section 2: Source Selection (only for creation) --- */}
-                        {!isEditing && (
-                            <div className="flex flex-col gap-3">
-                                <label className="text-sm font-medium text-default-700">Creation Method</label>
-                                <Controller
-                                    name="source"
-                                    control={control}
-                                    render={({ field }) => (
-                                        <RadioGroup
-                                            {...field}
-                                            orientation="horizontal"
-                                            isDisabled={isLoading}
-                                            classNames={{ wrapper: "grid grid-cols-1 sm:grid-cols-2 gap-4" }}
-                                        >
-                                            <CustomRadio value="MANUAL" description="Add customers one by one manually">
-                                                Manual Entry
-                                            </CustomRadio>
-                                            <CustomRadio value="CSV_UPLOAD" description="Import bulk data from a file">
-                                                CSV Upload
-                                            </CustomRadio>
-                                        </RadioGroup>
-                                    )}
-                                />
-                            </div>
-                        )}
-
-                        {/* --- Section 3: Conditional File Upload --- */}
-                        {!isEditing && sourceValue === "CSV_UPLOAD" && (
-                            <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-                                <input
-                                    type="file"
-                                    accept=".csv"
-                                    onChange={handleInputChange}
-                                    className="hidden"
-                                    id="csv-file-input"
-                                />
-                                <label htmlFor="csv-file-input" className="cursor-pointer group">
-                                    <div
-                                        onDragEnter={handleDrag}
-                                        onDragOver={handleDrag}
-                                        onDragLeave={handleDrag}
-                                        onDrop={handleDrop}
-                                        className={cn(
-                                            "relative flex flex-col items-center justify-center p-8 rounded-2xl border-2 border-dashed transition-all",
-                                            isDragActive
-                                                ? "border-secondary-400 bg-secondary-50"
-                                                : csvFile
-                                                    ? "border-success-200 bg-success-50/30"
-                                                    : "border-default-200 bg-default-50 group-hover:bg-default-100 group-hover:border-secondary-300"
+                                {/* --- Section 1: Basic Info --- */}
+                                <div className="flex flex-col gap-4">
+                                    <Controller
+                                        name="name"
+                                        control={control}
+                                        render={({ field }) => (
+                                            <Input
+                                                {...field}
+                                                label="List Name"
+                                                labelPlacement="outside"
+                                                placeholder="e.g. Q1 Premium Retargeting"
+                                                variant="flat"
+                                                isInvalid={!!errors.name}
+                                                errorMessage={errors.name?.message}
+                                                isDisabled={isLoading}
+                                                classNames={{ inputWrapper: "bg-default-100/50 border-none" }}
+                                                isRequired
+                                            />
                                         )}
-                                    >
-                                        {!csvFile ? (
-                                            <>
-                                                <div className="p-3 rounded-full bg-white shadow-sm mb-3 group-hover:scale-110 transition-transform">
-                                                    <Upload size={24} className="text-secondary" />
-                                                </div>
-                                                <p className="text-sm font-semibold">Click or drag CSV here</p>
-                                                <p className="text-xs text-default-400 mt-1">Max size 10MB (UTF-8 encoding)</p>
-                                            </>
-                                        ) : (
-                                            <div className="flex items-center gap-4 w-full">
-                                                <div className="p-3 rounded-xl bg-success text-white">
-                                                    <FileText size={24} />
-                                                </div>
-                                                <div className="flex flex-col flex-1 overflow-hidden">
-                                                    <span className="text-sm font-bold truncate">{csvFile.name}</span>
-                                                    <span className="text-tiny text-default-500">{(csvFile.size / 1024).toFixed(1)} KB • Ready to import</span>
-                                                </div>
-                                                <Button isIconOnly size="sm" variant="light" className="text-default-400">
-                                                    <CheckCircle2 size={20} className="text-success" />
+                                    />
+
+                                    <Controller
+                                        name="remarks"
+                                        control={control}
+                                        render={({ field }) => (
+                                            <Textarea
+                                                {...field}
+                                                label="Description"
+                                                labelPlacement="outside"
+                                                placeholder="What is this list for?"
+                                                variant="flat"
+                                                isInvalid={!!errors.remarks}
+                                                errorMessage={errors.remarks?.message}
+                                                isDisabled={isLoading}
+                                                minRows={2}
+                                                classNames={{ inputWrapper: "bg-default-100/50 border-none" }}
+                                            />
+                                        )}
+                                    />
+                                </div>
+
+                                {/* --- Section 2: Source Selection (only for creation) --- */}
+                                {!isEditing && (
+                                    <div className="flex flex-col gap-3">
+                                        <label className="text-sm font-medium text-default-700">Creation Method</label>
+                                        <Controller
+                                            name="source"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <RadioGroup
+                                                    {...field}
+                                                    orientation="horizontal"
+                                                    isDisabled={isLoading}
+                                                    classNames={{ wrapper: "grid grid-cols-1 sm:grid-cols-2 gap-4" }}
+                                                >
+                                                    <CustomRadio value="MANUAL" description="Add customers one by one manually">
+                                                        Manual Entry
+                                                    </CustomRadio>
+                                                    <CustomRadio value="CSV_UPLOAD" description="Import bulk data from a file">
+                                                        CSV Upload
+                                                    </CustomRadio>
+                                                </RadioGroup>
+                                            )}
+                                        />
+                                    </div>
+                                )}
+
+                                {/* --- Section 3: Conditional File Upload --- */}
+                                {!isEditing && sourceValue === "CSV_UPLOAD" && (
+                                    <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                                        <input
+                                            type="file"
+                                            accept=".csv"
+                                            onChange={handleInputChange}
+                                            className="hidden"
+                                            id="csv-file-input"
+                                        />
+                                        <label htmlFor="csv-file-input" className="cursor-pointer group">
+                                            <div
+                                                onDragEnter={handleDrag}
+                                                onDragOver={handleDrag}
+                                                onDragLeave={handleDrag}
+                                                onDrop={handleDrop}
+                                                className={cn(
+                                                    "relative flex flex-col items-center justify-center p-8 rounded-2xl border-2 border-dashed transition-all",
+                                                    isDragActive
+                                                        ? "border-secondary-400 bg-secondary-50"
+                                                        : csvFile
+                                                            ? "border-success-200 bg-success-50/30"
+                                                            : "border-default-200 bg-default-50 group-hover:bg-default-100 group-hover:border-secondary-300"
+                                                )}
+                                            >
+                                                {!csvFile ? (
+                                                    <>
+                                                        <div className="p-3 rounded-full bg-white shadow-sm mb-3 group-hover:scale-110 transition-transform">
+                                                            <Upload size={24} className="text-secondary" />
+                                                        </div>
+                                                        <p className="text-sm font-semibold">Click or drag CSV here</p>
+                                                        <p className="text-xs text-default-400 mt-1">Max size 10MB (UTF-8 encoding)</p>
+                                                    </>
+                                                ) : (
+                                                    <div className="flex items-center gap-4 w-full">
+                                                        <div className="p-3 rounded-xl bg-success text-white">
+                                                            <FileText size={24} />
+                                                        </div>
+                                                        <div className="flex flex-col flex-1 overflow-hidden">
+                                                            <span className="text-sm font-bold truncate">{csvFile.name}</span>
+                                                            <span className="text-tiny text-default-500">{(csvFile.size / 1024).toFixed(1)} KB • Ready to import</span>
+                                                        </div>
+                                                        <Button isIconOnly size="sm" variant="light" className="text-default-400">
+                                                            <CheckCircle2 size={20} className="text-success" />
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </label>
+                                    </div>
+                                )}
+
+                                {/* --- Section 4: Advanced Settings (only in settings mode) --- */}
+                                {showAdvancedSettings && (
+                                    <div className="flex flex-col gap-4">
+                                        <label className="text-xs font-medium text-default-400">Advanced Settings</label>
+                                        <Controller
+                                            name="primaryKey"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <Select
+                                                    {...field}
+                                                    label="Primary Key"
+                                                    labelPlacement="outside"
+                                                    placeholder="Select a field"
+                                                    variant="flat"
+                                                    description="The field used to match and upsert existing records"
+                                                    isDisabled={isLoading || fieldKeys.length === 0}
+                                                    classNames={{ 
+                                                        trigger: "bg-default-100/50 border-none",
+                                                        base: "mt-0!",
+                                                    }}
+                                                    selectedKeys={field.value ? new Set([field.value]) : new Set()}
+                                                    onSelectionChange={(keys) => {
+                                                        const selected = Array.from(keys)[0];
+                                                        field.onChange(selected || "");
+                                                    }}
+                                                >
+                                                    {fieldKeys.map((key) => (
+                                                        <SelectItem key={key}>
+                                                            {key}
+                                                        </SelectItem>
+                                                    ))}
+                                                </Select>
+                                            )}
+                                        />
+                                    </div>
+                                )}
+
+                                <div className="p-4 rounded-xl bg-default-50 border border-default-100">
+                                    <div className="flex items-start gap-3">
+                                        <Controller
+                                            name="upsertMode"
+                                            control={control}
+                                            render={({ field: { value, onChange, ...field } }) => (
+                                                <Checkbox
+                                                    {...field}
+                                                    isDisabled={isLoading}
+                                                    isSelected={value}
+                                                    onValueChange={onChange}
+                                                    color="secondary"
+                                                    classNames={{ label: "text-tiny text-default-600 pl-2" }}
+                                                >
+                                                    <div className="flex flex-col gap-2">
+                                                        <span className="font-bold text-default-800">Upsert Mode (Update existing)</span>
+                                                        <span>If a customer matches the Primary Key, overwrite their data instead of creating a new entry.</span>
+                                                    </div>
+                                                </Checkbox>
+                                            )}
+                                        />
+                                    </div>
+                                </div>
+                        </Tab>
+
+                        <Tab key="fields" title={<div className="flex items-center gap-2"><Columns size={16}/><span>Attributes</span></div>}>
+                                <div className="flex flex-col gap-4 pt-4">
+                                    <p className="text-xs text-default-300">Updating field names may take a while depending on the list size. This action may take up to 1 minute.</p>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-tiny uppercase font-bold text-default-400">Column Definitions</span>
+                                        <Button size="sm" variant="flat" color="secondary" onPress={() => append({ name: "", type: "string" })} startContent={<Plus size={16}/>}>
+                                            Add Attribute
+                                        </Button>
+                                    </div>
+                                    
+                                    <div className="flex flex-col gap-3">
+                                        {fields.map((item, index) => (
+                                            <div key={item.id} className="flex items-end gap-3 p-3 rounded-xl border border-default-100 bg-default-50/30">
+                                                <Controller
+                                                    name={`fields.${index}.name`}
+                                                    control={control}
+                                                    render={({ field }) => (
+                                                        <Input {...field} label="Field Name" size="sm" variant="bordered" placeholder="e.g. Phone Number" />
+                                                    )}
+                                                />
+                                                <Controller
+                                                    name={`fields.${index}.type`}
+                                                    control={control}
+                                                    render={({ field }) => (
+                                                        <Select {...field} label="Data Type" size="sm" variant="bordered" className="w-48" selectedKeys={field.value ? new Set([field.value]) : new Set()}>
+                                                            <SelectItem key="string">Text</SelectItem>
+                                                            <SelectItem key="number">Number</SelectItem>
+                                                            <SelectItem key="date">Date</SelectItem>
+                                                            <SelectItem key="boolean">Boolean</SelectItem>
+                                                        </Select>
+                                                    )}
+                                                />
+                                                <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => remove(index)}>
+                                                    <Trash2 size={18} />
                                                 </Button>
                                             </div>
-                                        )}
+                                        ))}
                                     </div>
-                                </label>
-                            </div>
-                        )}
-
-                        {/* --- Section 4: Advanced Settings (only in settings mode) --- */}
-                        {showAdvancedSettings && (
-                            <div className="flex flex-col gap-4">
-                                <label className="text-xs font-medium text-default-400">Advanced Settings</label>
-                                <Controller
-                                    name="primaryKey"
-                                    control={control}
-                                    render={({ field }) => (
-                                        <Select
-                                            {...field}
-                                            label="Primary Key"
-                                            labelPlacement="outside"
-                                            placeholder="Select a field"
-                                            variant="flat"
-                                            description="The field used to match and upsert existing records"
-                                            isDisabled={isLoading || fieldKeys.length === 0}
-                                            classNames={{ 
-                                                trigger: "bg-default-100/50 border-none",
-                                                base: "mt-0!",
-                                            }}
-                                            selectedKeys={field.value ? new Set([field.value]) : new Set()}
-                                            onSelectionChange={(keys) => {
-                                                const selected = Array.from(keys)[0];
-                                                field.onChange(selected || "");
-                                            }}
-                                        >
-                                            {fieldKeys.map((key) => (
-                                                <SelectItem key={key}>
-                                                    {key}
-                                                </SelectItem>
-                                            ))}
-                                        </Select>
-                                    )}
-                                />
-                            </div>
-                        )}
-
-                        <div className="p-4 rounded-xl bg-default-50 border border-default-100">
-                            <div className="flex items-start gap-3">
-                                <Controller
-                                    name="upsertMode"
-                                    control={control}
-                                    render={({ field: { value, onChange, ...field } }) => (
-                                        <Checkbox
-                                            {...field}
-                                            isDisabled={isLoading}
-                                            isSelected={value}
-                                            onValueChange={onChange}
-                                            color="secondary"
-                                            classNames={{ label: "text-tiny text-default-600 pl-2" }}
-                                        >
-                                            <div className="flex flex-col gap-2">
-                                                <span className="font-bold text-default-800">Upsert Mode (Update existing)</span>
-                                                <span>If a customer matches the Primary Key, overwrite their data instead of creating a new entry.</span>
-                                            </div>
-                                        </Checkbox>
-                                    )}
-                                />
-                            </div>
-                        </div>
+                                </div>
+                            </Tab>
+                        
+                    </Tabs>
                     </form>
                 </ModalBody>
 
