@@ -74,7 +74,14 @@ export const createCustomerListWithCSV = createAsyncThunk(
 // Thunk: patch customer list
 export const patchCustomerList = createAsyncThunk(
     "customerLists/patch",
-    async (payload: { id: string; name?: string; remarks?: string; primaryKey?: string, upsertMode?: boolean }) => {
+    async (payload: { 
+        id: string; 
+        name?: string; 
+        remarks?: string; 
+        primaryKey?: string; 
+        upsertMode?: boolean;
+        fields?: Array<{ name: string; type: string }>;
+    }) => {
         const res = await fetch(`/api/customer-list/${payload.id}`, {
             method: "PATCH",
             headers: {
@@ -86,6 +93,7 @@ export const patchCustomerList = createAsyncThunk(
                 remarks: payload.remarks,
                 primaryKey: payload.primaryKey,
                 upsertMode: payload.upsertMode,
+                fields: payload.fields,
             }),
         })
 
