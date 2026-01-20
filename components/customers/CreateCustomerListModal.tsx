@@ -269,6 +269,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                     file: csvFile,
                     remarks: data.remarks || undefined,
                     upsertMode: data.upsertMode,
+                    fields: data.fields && data.fields.length > 0 ? data.fields : undefined,
                 })).unwrap();
             } else {
                 // Handle manual creation
@@ -277,6 +278,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                     source: data.source as "MANUAL" | "SALESFORCE",
                     remarks: data.remarks || undefined,
                     upsertMode: data.upsertMode,
+                    fields: data.fields && data.fields.length > 0 ? data.fields : undefined,
                 })).unwrap();
             }
         } catch (error) {
@@ -315,13 +317,13 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                     </p>
                 </ModalHeader>
                 <ModalBody>
-                    <form className="flex flex-col gap-8" id="customer-list-form" onSubmit={handleSubmit(onSubmit)}>
+                    <form className="flex flex-col gap-4" id="customer-list-form" onSubmit={handleSubmit(onSubmit)}>
                     <Tabs aria-label="Settings Tabs" color="secondary" variant="underlined" classNames={{
                                 tabList: "w-full relative rounded-none p-0 border-b border-divider",
                                 cursor: "w-full",
                             }}>
 
-                        <Tab key="general" title={<div className="flex items-center gap-2"><Settings2 size={16}/><span>General</span></div>}>
+                        <Tab key="general" className="flex flex-col gap-4" title={<div className="flex items-center gap-2"><Settings2 size={16}/><span>General</span></div>}>
                                 {error && (
                                     <div className="flex items-center gap-3 p-3 rounded-xl bg-danger-50 text-danger text-sm border border-danger-100">
                                         <Info size={18} />
@@ -512,42 +514,58 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
 
                         <Tab key="fields" title={<div className="flex items-center gap-2"><Columns size={16}/><span>Attributes</span></div>}>
                                 <div className="flex flex-col gap-4 pt-4">
-                                    <p className="text-xs text-default-300">Updating field names may take a while depending on the list size. This action may take up to 1 minute.</p>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-tiny uppercase font-bold text-default-400">Column Definitions</span>
-                                        <Button size="sm" variant="flat" color="secondary" onPress={() => append({ name: "", type: "string" })} startContent={<Plus size={16}/>}>
-                                            Add Attribute
-                                        </Button>
-                                    </div>
+                                    {isEditing && (
+                                        <p className="text-xs text-default-300">Updating field names may take a while depending on the list size. This action may take up to 1 minute.</p>
+                                    )}
                                     
-                                    <div className="flex flex-col gap-3">
-                                        {fields.map((item, index) => (
-                                            <div key={item.id} className="flex items-end gap-3 p-3 rounded-xl border border-default-100 bg-default-50/30">
-                                                <Controller
-                                                    name={`fields.${index}.name`}
-                                                    control={control}
-                                                    render={({ field }) => (
-                                                        <Input {...field} label="Field Name" size="sm" variant="bordered" placeholder="e.g. Phone Number" />
-                                                    )}
-                                                />
-                                                <Controller
-                                                    name={`fields.${index}.type`}
-                                                    control={control}
-                                                    render={({ field }) => (
-                                                        <Select {...field} label="Data Type" size="sm" variant="bordered" className="w-48" selectedKeys={field.value ? new Set([field.value]) : new Set()}>
-                                                            <SelectItem key="string">Text</SelectItem>
-                                                            <SelectItem key="number">Number</SelectItem>
-                                                            <SelectItem key="date">Date</SelectItem>
-                                                            <SelectItem key="boolean">Boolean</SelectItem>
-                                                        </Select>
-                                                    )}
-                                                />
-                                                <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => remove(index)}>
-                                                    <Trash2 size={18} />
+                                    {!isEditing && sourceValue === "CSV_UPLOAD" ? (
+                                        <div className="p-4 rounded-xl bg-info-50 border border-info-200">
+                                            <p className="text-sm text-info-700">
+                                                <strong>Fields will be auto-detected</strong> from your CSV file headers. You cannot manually define fields when uploading a CSV.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-tiny uppercase font-bold text-default-400">Column Definitions</span>
+                                                <Button size="sm" variant="flat" color="secondary" onPress={() => append({ name: "", type: "string" })} startContent={<Plus size={16}/>}>
+                                                    Add Attribute
                                                 </Button>
                                             </div>
-                                        ))}
-                                    </div>
+                                            
+                                            <div className="flex flex-col gap-3">
+                                                {fields.map((item, index) => (
+                                                    <div key={item.id} className="flex items-end gap-3 p-3 rounded-xl border border-default-100 bg-default-50/30">
+                                                        <Controller
+                                                            name={`fields.${index}.name`}
+                                                            control={control}
+                                                            render={({ field }) => (
+                                                                <Input {...field} label="Field Name" size="sm" variant="bordered" placeholder="e.g. Phone Number" />
+                                                            )}
+                                                        />
+                                                        <Controller
+                                                            name={`fields.${index}.type`}
+                                                            control={control}
+                                                            render={({ field }) => (
+                                                                <Select {...field} label="Data Type" size="sm" variant="bordered" className="w-48" selectedKeys={field.value ? new Set([field.value]) : new Set()}>
+                                                                    <SelectItem key="string">Text</SelectItem>
+                                                                    <SelectItem key="number">Number</SelectItem>
+                                                                    <SelectItem key="date">Date</SelectItem>
+                                                                    <SelectItem key="boolean">Boolean</SelectItem>
+                                                                </Select>
+                                                            )}
+                                                        />
+                                                        <Button isIconOnly size="sm" variant="light" color="danger" onPress={() => remove(index)}>
+                                                            <Trash2 size={18} />
+                                                        </Button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            {fields.length === 0 && (
+                                                <p className="text-sm text-default-400 text-center py-4">No attributes defined yet. Click "Add Attribute" to get started.</p>
+                                            )}
+                                        </>
+                                    )}
                                 </div>
                             </Tab>
                         

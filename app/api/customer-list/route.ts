@@ -156,7 +156,7 @@ export const POST = async ( request: NextRequest ) => {
         } else {
             // Handle manual creation (JSON body)
             const body = await request.json();
-            const { name, source, remarks, upsertMode } = body;
+            const { name, source, remarks, upsertMode, fields } = body;
 
             // Validate required fields
             if (!name || typeof name !== "string" || name.trim().length === 0) {
@@ -169,13 +169,22 @@ export const POST = async ( request: NextRequest ) => {
                 return NextResponse.json({ error: "Invalid source. Must be MANUAL or SALESFORCE." }, { status: 400 });
             }
 
+            // Convert fields to the expected format if provided
+            let convertedFields: { field: string; type: string }[] = [];
+            if (fields && Array.isArray(fields)) {
+                convertedFields = fields.map((field: any) => ({
+                    field: field.name,
+                    type: field.type,
+                }));
+            }
+
             // Create empty contact list for manual creation
             const contactList = await prisma.contactList.create({
                 data: {
                     name: name.trim(),
                     source: source || "MANUAL",
                     remarks: remarks || null,
-                    fields: [],
+                    fields: convertedFields,
                     upsertMode,
                 },
             });
