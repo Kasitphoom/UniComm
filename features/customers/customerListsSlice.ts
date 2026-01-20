@@ -23,7 +23,13 @@ export const fetchCustomerLists = createAsyncThunk(
 // Thunk: create customer list with manual entry
 export const createCustomerListManual = createAsyncThunk(
     "customerLists/createManual",
-    async (payload: { name: string; source?: "MANUAL" | "SALESFORCE"; remarks?: string; upsertMode?: boolean }) => {
+    async (payload: { 
+        name: string; 
+        source?: "MANUAL" | "SALESFORCE"; 
+        remarks?: string; 
+        upsertMode?: boolean;
+        fields?: Array<{ name: string; type: string }>;
+    }) => {
         const res = await fetch("/api/customer-list", {
             method: "POST",
             headers: {
@@ -46,7 +52,13 @@ export const createCustomerListManual = createAsyncThunk(
 // Thunk: create customer list with CSV upload
 export const createCustomerListWithCSV = createAsyncThunk(
     "customerLists/createWithCSV",
-    async (payload: { name: string; file: File; remarks?: string; upsertMode?: boolean }) => {
+    async (payload: { 
+        name: string; 
+        file: File; 
+        remarks?: string; 
+        upsertMode?: boolean;
+        fields?: Array<{ name: string; type: string }>;
+    }) => {
         const formData = new FormData()
         formData.append("name", payload.name)
         formData.append("file", payload.file)
@@ -54,6 +66,9 @@ export const createCustomerListWithCSV = createAsyncThunk(
             formData.append("remarks", payload.remarks)
         }
         formData.append("upsertMode", String(payload.upsertMode ?? false))
+        if (payload.fields) {
+            formData.append("fields", JSON.stringify(payload.fields))
+        }
 
         const res = await fetch("/api/customer-list", {
             method: "POST",
