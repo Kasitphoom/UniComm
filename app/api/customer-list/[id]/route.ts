@@ -25,10 +25,19 @@ export const PATCH = async ( request: NextRequest, context: { params: Promise<{ 
 
         const { id } = await context.params;
         const body = await request.json();
-        const { name, remarks, primaryKey, upsertMode } = body;
+        const { name, remarks, primaryKey, upsertMode, fields } = body;
 
         if (!name || name.trim().length === 0) {
             return NextResponse.json({ error: "Name is required." }, { status: 400 });
+        }
+
+        // Get the current contact list to track field changes
+        const currentList = await prisma.contactList.findUnique({
+            where: { id },
+        });
+
+        if (!currentList) {
+            return NextResponse.json({ error: "Contact list not found." }, { status: 404 });
         }
 
         // Build update data - only include optional fields if provided
@@ -37,9 +46,82 @@ export const PATCH = async ( request: NextRequest, context: { params: Promise<{ 
             remarks,
         };
 
-        if (primaryKey) updateData.primaryKey = primaryKey;
+        if (primaryKey !== undefined) updateData.primaryKey = primaryKey;
 
-        if (upsertMode) updateData.upsertMode = upsertMode;
+        if (upsertMode !== undefined) updateData.upsertMode = upsertMode;
+
+        // Track field name changes for data migration
+        const fieldNameMapping: { [oldName: string]: string } = {};
+
+        if (fields && Array.isArray(fields)) {
+            // Convert field objects to the expected format
+            const convertedFields = fields.map((field: any) => ({
+                field: field.name,
+                type: field.type,
+            }));
+            updateData.fields = convertedFields;
+
+            // If primaryKey exists and fields are being updated, verify primaryKey still exists in new fields
+            // If the primary key field was renamed, we need to handle this case
+            if (primaryKey) {
+                const primaryKeyExists = convertedFields.some((f: any) => f.field === primaryKey);
+                if (!primaryKeyExists) {
+                    // Primary key field might have been renamed, but we'll let the client handle the mapping
+                    // The client should send the updated primaryKey if a field was renamed
+                    return NextResponse.json(
+                        { error: "Primary key field does not exist in the updated fields. Please update the primary key field name." },
+                        { status: 400 }
+                    );
+                }
+            }
+
+            // Build field name mapping from old to new fields
+            const oldFields = Array.isArray(currentList.fields) ? currentList.fields : [];
+            const oldFieldMap = new Map(
+                oldFields
+                    .filter((f: any): f is { field: string; type: string } =>
+                        typeof f === "object" && f !== null && "field" in f
+                    )
+                    .map((f: any, idx: number) => [idx, f.field])
+            );
+
+            // Match old fields to new fields by position and track renames
+            convertedFields.forEach((newField: any, idx: number) => {
+                const oldFieldName = oldFieldMap.get(idx);
+                if (oldFieldName && oldFieldName !== newField.field) {
+                    fieldNameMapping[oldFieldName] = newField.field;
+                }
+            });
+        }
+
+        // Migrate customer data if field names changed
+        if (Object.keys(fieldNameMapping).length > 0) {
+            const customers = await prisma.customer.findMany({
+                where: { listId: id },
+            });
+
+            for (const customer of customers) {
+                const updatedData: any = typeof customer.data === "object" && customer.data !== null 
+                    ? { ...customer.data } 
+                    : {};
+                let hasChanges = false;
+
+                for (const [oldName, newName] of Object.entries(fieldNameMapping)) {
+                    if (oldName in updatedData && !(newName in updatedData)) {
+                        updatedData[newName] = updatedData[oldName];
+                        delete updatedData[oldName];
+                        hasChanges = true;
+                    }
+                }
+
+                if (hasChanges) {
+                    await prisma.customer.update({
+                        where: { id: customer.id },
+                        data: { data: updatedData },
+                    });
+                }
+            }
+        }
 
         const updatedList = await prisma.contactList.update({
             where: { id },
