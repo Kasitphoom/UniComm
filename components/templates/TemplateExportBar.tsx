@@ -214,7 +214,8 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
                 previewable
                 exportable
                 requireApproval
-                approvalButtonConfig={{ disabled: !isOwner }}
+                // approvalButtonConfig={{ disabled: !isOwner }}
+                approvalButtonConfig={{ disabled: true }}
                 onExportButtonClick={handleExport}
                 onPreviewButtonClick={handlePreview}
             />
