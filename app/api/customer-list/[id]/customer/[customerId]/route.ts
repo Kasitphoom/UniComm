@@ -1,11 +1,21 @@
+import { UserRole } from "@/app/generated/business/prisma";
 import { requireAuth } from "@/lib/api-auth";
 import { getBusinessPrisma } from "@/lib/prisma-business";
+import { userHasPermissionAPI } from "@/utils/permissions";
 import { NextRequest, NextResponse } from "next/server";
 
 export const PATCH = async ( request: NextRequest, context: { params: Promise<{ id: string, customerId: string }> } ) => {
     try {
         const auth = await requireAuth(request);
         if (!auth.ok) return auth.response;
+
+        const userHasPermission = await userHasPermissionAPI(request, [UserRole.OWNER, UserRole.ADMIN])
+        if (!userHasPermission) {
+            return NextResponse.json(
+                { error: "Insufficient permissions." },
+                { status: 403 },
+            )
+        }
 
         const prisma = await getBusinessPrisma(auth.businessId!);
 

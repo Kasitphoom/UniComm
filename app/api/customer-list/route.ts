@@ -37,7 +37,7 @@ export const POST = async ( request: NextRequest ) => {
         const auth = await requireAuth(request);
         if (!auth.ok) return auth.response;
 
-        const userHasPermission = userHasPermissionAPI(request, [UserRole.OWNER, UserRole.ADMIN])
+        const userHasPermission = await userHasPermissionAPI(request, [UserRole.OWNER, UserRole.ADMIN])
         if (!userHasPermission) {
             return NextResponse.json(
                 { error: "Insufficient permissions." },
