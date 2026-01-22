@@ -9,6 +9,8 @@ import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { deleteCustomerList, resetDeleteStatus } from "@/features/customers/customerListsSlice";
 import CreateCustomerListModal from "./CreateCustomerListModal";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
+import { userHasPermissionClient } from "@/utils/permissions";
+import { UserRole } from "@/app/generated/business/prisma";
 
 export enum CONTACT_SOURCE {
     MANUAL = "MANUAL",
@@ -32,6 +34,7 @@ export const ContactListCard = ({ list, onView }: ContactListCardProps) => {
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const dispatch = useAppDispatch();
     const { status: deleteStatus } = useAppSelector((state) => state.customerLists.delete);
+    const userHasPermission = userHasPermissionClient([ UserRole.OWNER, UserRole.ADMIN ]);
 
     const handleEditClick = () => {
         setIsEditModalOpen(true);
@@ -130,7 +133,7 @@ export const ContactListCard = ({ list, onView }: ContactListCardProps) => {
                             <MoreVertical size={18} />
                         </Button>
                     </DropdownTrigger>
-                    <DropdownMenu aria-label="List actions">
+                    <DropdownMenu aria-label="List actions" disabledKeys={!userHasPermission ? ["edit", "delete"] : []}>
                         <DropdownItem
                             key="edit"
                             startContent={<EditIcon size={16} />}
