@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { getBusinessPrisma, getBusinessPrismaByCookie } from "@/lib/prisma-business"
 import { Template } from "@pdfme/common"
 import { transformTemplateToXml } from "@/utils/template/xml-pdf-transformer"
@@ -7,9 +7,10 @@ import { getStorageService } from "@/utils/upload/modules"
 import { hashTemplate } from "@/lib/draftStore"
 import { hasRolePermission, RolePermissions } from "@/lib/role-permissions"
 import { UserRole } from "@/app/generated/business/prisma"
+import { userHasPermissionAPI } from "@/utils/permissions"
 
 export async function GET(
-    _req: Request,
+    _req: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {
     try {
@@ -35,12 +36,19 @@ export async function GET(
 }
 
 export async function PATCH(
-    req: Request,
+    req: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {
     try {
         const auth = await requireAuth(req)
         if (!auth.ok) return auth.response
+
+        const userHasPermission = userHasPermissionAPI(req, [ 
+            UserRole.OWNER,
+            UserRole.ADMIN,
+            UserRole.MEMBER, 
+        ]);
+
         const { id } = await context.params
         const prisma = await getBusinessPrisma(auth.businessId!)
         const body: Template = await req.json()
@@ -56,7 +64,7 @@ export async function PATCH(
         }
 
         const isTemplateOwner = existingTemplate.userId === auth.userId
-        if (!isTemplateOwner) {
+        if (!isTemplateOwner || !userHasPermission) {
             return NextResponse.json(
                 { error: "You do not have permission to update this template" },
                 { status: 403 }
