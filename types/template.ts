@@ -23,7 +23,7 @@ export type TemplateUpdateInput = Prisma.TemplatesUpdateInput
 export type TemplateUncheckedUpdateInput = Prisma.TemplatesUncheckedUpdateInput
 
 // Lightweight shapes commonly used in UI lists
-export type TemplateListItem = Pick<Template, 'id' | 'title' | 'filePath' | 'createdAt' | 'updatedAt'> & {
+export type TemplateListItem = Template & {
   userId: string
   user: TemplateUser
   versions: TemplateVersion[]

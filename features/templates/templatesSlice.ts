@@ -313,6 +313,7 @@ const templatesSlice = createSlice({
                             id: action.payload.id,
                             title: action.payload.title as string,
                             filePath: action.payload.filePath as string,
+                            contactListId: action.payload.contactListId,
                             createdAt: action.payload.createdAt as any,
                             updatedAt: action.payload.updatedAt as any,
                             userId: action.payload.userId as string,
