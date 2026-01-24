@@ -1,10 +1,12 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { getBusinessPrisma } from "@/lib/prisma-business"
 import { sanitizeQuery } from "@/utils/sanitizer"
 import { getStorageService } from "@/utils/upload/modules"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { requireAuth } from "@/lib/api-auth"
+import { userHasPermissionAPI } from "@/utils/permissions"
+import { UserRole } from "@/app/generated/business/prisma"
 
 export async function GET(req: Request) {
     try {
@@ -72,12 +74,26 @@ export async function GET(req: Request) {
     }
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
     try {
         const auth = await requireAuth(req)
         if (!auth.ok) return auth.response
 
         const {userId: uid, businessId } = auth
+
+        const hasPermission = await userHasPermissionAPI(req,
+            [
+                UserRole.ADMIN,
+                UserRole.OWNER,
+                UserRole.MEMBER,
+            ]
+        )
+        if (!hasPermission) {
+            return NextResponse.json(
+                { error: "Not Enough Permission" },
+                { status: 403 }
+            )
+        }
 
         const body = await req.json()
         const {
@@ -85,6 +101,7 @@ export async function POST(req: Request) {
             orientation,
             widthCm,
             heightCm,
+            customerListId,
         } = body || {}
 
         if (!templateName || !orientation || !widthCm || !heightCm) {
@@ -144,6 +161,7 @@ export async function POST(req: Request) {
                 title: templateName,
                 filePath: fileUrl,
                 userId: uid,
+                contactListId: customerListId || null,
                 versions: {
                     create: {
                         filePath: fileUrl,

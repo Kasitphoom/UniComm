@@ -1,7 +1,9 @@
 'use client'
-import React from 'react'
+import React, { useEffect } from 'react'
 import { Controller, type Control, type FieldErrors, type UseFormSetValue, type UseFormWatch } from 'react-hook-form'
 import { Divider, Input, Select, SelectItem, type Selection } from '@heroui/react'
+import { useAppDispatch, useAppSelector } from '@/store/hooks'
+import { fetchCustomerLists } from '@/features/customers/customerListsSlice'
 
 export const PAPER_SIZES = [
 	{ label: 'A4', value: 'a4', widthCm: 21.0, heightCm: 29.7 },
@@ -36,11 +38,14 @@ function DesignSetupFields<TFieldValues extends Record<string, any>>({
 	nameLabel,
 	externalErrorMessage,
 }: Props<TFieldValues>) {
+	const dispatch = useAppDispatch()
 	const presetFor = (value: PaperSize) => PAPER_SIZES.find(p => p.value === value)
 
 	const paperSize = watch('paperSize' as any) as PaperSize
 	const width = watch('widthCm' as any) as string
 	const height = watch('heightCm' as any) as string
+
+	const { status: customerListStatus, items: customerList } = useAppSelector(state => state.customerLists.list);
 
 	const tryAutoSelectPreset = (wStr: string, hStr: string) => {
 		const w = parseFloat(wStr)
@@ -54,6 +59,12 @@ function DesignSetupFields<TFieldValues extends Record<string, any>>({
 		}
 		setValue('paperSize' as any, 'custom' as any, { shouldValidate: true })
 	}
+
+	useEffect(() => {
+		if (customerListStatus === 'idle' && customerList.length <= 0) {
+			dispatch(fetchCustomerLists())
+		}
+	}, [customerListStatus, customerList])
 
 	return (
 		<>
@@ -71,7 +82,30 @@ function DesignSetupFields<TFieldValues extends Record<string, any>>({
 						isInvalid={!!(errors as any)[nameField] || !!externalErrorMessage}
 						errorMessage={(errors as any)[nameField]?.message || (externalErrorMessage ? JSON.parse(externalErrorMessage || '{}').error : undefined)}
 						autoComplete='off'
+						isRequired
 					/>
+				)}
+			/>
+			<Controller
+				name={"customerListId" as any}
+				control={control}
+				render={({ field }) => (
+					<Select
+						label='Customer List'
+						selectionMode='single'
+						selectedKeys={new Set([field.value])}
+						onSelectionChange={(keys: Selection) => {
+							if (keys === 'all') return
+							const key = Array.from(keys)[0] as string | undefined
+							if (key) field.onChange(key)
+						}}
+						labelPlacement='outside'
+						placeholder='Select Customer List (Optional)'
+					>
+						{customerList.map((option) => (
+							<SelectItem key={option.id}>{option.name}</SelectItem>
+						))}
+					</Select>
 				)}
 			/>
 			<Divider />

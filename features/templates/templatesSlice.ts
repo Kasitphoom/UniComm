@@ -89,6 +89,7 @@ export const createTemplate = createAsyncThunk(
         orientation?: "portrait" | "landscape" | undefined;
         widthCm?: string | undefined;
         heightCm?: string | undefined;
+        customerListId?: string | undefined;
     }) => {
         const res = await fetch("/api/templates", {
             method: "POST",
