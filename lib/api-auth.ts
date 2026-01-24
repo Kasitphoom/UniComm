@@ -6,11 +6,50 @@ import type { JWT } from "next-auth/jwt"
 import authOptions from "@/lib/auth"
 import { cookies as nextCookies } from "next/headers"
 import { DEFAULT_BUSINESS_COOKIE } from "@/types/business"
+import { UserRole } from "@/app/generated/business/prisma"
+
+export type BusinessMembership = {
+    businessId: string
+    role: UserRole
+}
+
+export type CurrentBusinessProfile = {
+    id: string
+    businessId: string
+    email: string
+    displayName: string
+    role: UserRole
+}
+
+export type AuthToken = JWT & {
+    email?: string
+    sub?: string
+    id?: string
+    businessIds?: string[]
+    memberships?: BusinessMembership[]
+    currentBusinessProfile?: CurrentBusinessProfile
+    activeBusinessId?: string
+}
+
+export type AuthSession = Session & {
+    user?: {
+        id?: string
+        email?: string | null
+        name?: string | null
+        image?: string | null
+        businessIds?: string[]
+        memberships?: BusinessMembership[]
+        activeBusinessId?: string
+        currentBusinessProfile?: CurrentBusinessProfile
+    }
+    activeBusinessId?: string
+}
 
 export type ApiAuth = {
-    session: Session | null
-    token: JWT | null
+    session: AuthSession | null
+    token: AuthToken | null
     userId: string | null
+    mainUserId: string | null
     businessId: string | null
 }
 
@@ -32,8 +71,15 @@ export async function authenticateApi(req: Request): Promise<ApiAuth> {
     }).catch(() => null)
 
     const userId =
-        ((session?.user as any)?.currentBusinessProfile.id as string | undefined) ??
-        ((token as any)?.currentBusinessProfile.id as string | undefined) ??
+        ((session?.user as any)?.currentBusinessProfile?.id as string | undefined) ??
+        ((token as any)?.currentBusinessProfile?.id as string | undefined) ??
+        ((session?.user as any)?.id as string | undefined) ??
+        ((token as any)?.id as string | undefined) ??
+        null
+
+    const mainUserId =
+        ((session?.user as any)?.id as string | undefined) ??
+        ((token as any)?.id as string | undefined) ??
         null
 
     let businessId: string | null =
@@ -50,15 +96,14 @@ export async function authenticateApi(req: Request): Promise<ApiAuth> {
 
     if (!businessId) {
         try {
-            const store = nextCookies() // in Next.js 13/14 headers variant this is synchronous
-            // @ts-expect-error: runtime type may differ in edge/server contexts
-            businessId = store.get?.(DEFAULT_BUSINESS_COOKIE)?.value ?? null
+            const store = await nextCookies()
+            businessId = (await store).get(DEFAULT_BUSINESS_COOKIE)?.value ?? null
         } catch {
             // ignore
         }
     }
 
-    return { session, token: token as JWT | null, userId, businessId }
+    return { session: session as AuthSession | null, token: token as AuthToken | null, userId, mainUserId, businessId }
 }
 
 export type RequireAuthResult =

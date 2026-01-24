@@ -2,7 +2,7 @@
 import React from 'react'
 import { usePathname } from 'next/navigation'
 import { Divider } from '@heroui/react';
-import { BlocksIcon, ChevronsLeft, LayoutDashboard, NotepadTextDashed } from 'lucide-react';
+import { BlocksIcon, ChevronsLeft, LayoutDashboard, NotepadTextDashed, UserIcon, UsersIcon } from 'lucide-react';
 import { motion } from 'motion/react';
 import Image from 'next/image';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
@@ -37,6 +37,26 @@ export const Navigations: SidebarHierarchy = [
             }
         ]
     },
+    {
+        groupName: 'Data and Integration',
+        items: [
+            {
+                name: 'Customers',
+                href: '/customers',
+                icon: <UsersIcon size={16} />,
+            }
+        ]
+    },
+    {
+        groupName: 'System Settings',
+        items: [
+            {
+                name: 'Manage Users',
+                href: '/users',
+                icon: <UserIcon size={16} />,
+            }
+        ]
+    }
 ]
 
 const SideBar = () => {
@@ -57,7 +77,7 @@ const SideBar = () => {
                 duration: 1
             }}
         >
-            <div className={`flex ${sidebarOpen ? 'justify-between' : 'justify-center'} p-4 border-b border-default-200`}>
+            <div className={`flex ${sidebarOpen ? 'justify-between' : 'justify-center'} p-4 border-b border-default-200 h-16 items-center`}>
                 {
                     sidebarOpen && <Link href={"/"}>
                         <Image

@@ -47,7 +47,7 @@ export const generatePdfPreview = async (template: Template) => {
     return pdfBytes
 }
 
-const TemplateExportBar = ({ id }: { id: string }) => {
+const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) => {
     const { isOpen, onOpen, onOpenChange } = useDisclosure()
     const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null)
     const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null)
@@ -214,6 +214,8 @@ const TemplateExportBar = ({ id }: { id: string }) => {
                 previewable
                 exportable
                 requireApproval
+                // approvalButtonConfig={{ disabled: !isOwner }}
+                approvalButtonConfig={{ disabled: true }}
                 onExportButtonClick={handleExport}
                 onPreviewButtonClick={handlePreview}
             />

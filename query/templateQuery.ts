@@ -75,3 +75,12 @@ export const getTemplateData = async (templateId: string): Promise<TemplateWithU
     })
     return template
 }
+
+export const getComponentBlockData = async (componentBlockId: string) => {
+    const prismaBusiness = await getBusinessPrismaByCookie()
+    const componentBlock = await prismaBusiness.componentBlock.findUnique({
+        where: { id: componentBlockId },
+        include: { user: true, versions: { orderBy: {createdAt: "desc"}} },
+    })
+    return componentBlock
+}
