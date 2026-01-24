@@ -32,9 +32,10 @@ import {
     resetUpdateStatus
 } from "@/features/customers/customerListsSlice";
 import { ContactListDTO } from "@/features/customers/types";
-import { Customer } from "@/app/generated/business/prisma";
+import { Customer, UserRole } from "@/app/generated/business/prisma";
 import { fetchListCustomers } from "@/features/customers/listCustomersSlice";
 import CustomRadio from "./CustomRadio";
+import { userHasPermissionClient } from "@/utils/permissions";
 
 // Create validation schema
 const createCustomerListSchema = yup.object().shape({
@@ -94,6 +95,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
     const [csvFile, setCsvFile] = useState<File | null>(null);
     const [isDragActive, setIsDragActive] = useState(false);
 
+    const userHasPermission = userHasPermissionClient([ UserRole.OWNER, UserRole.ADMIN ]);
     const isEditing = !!listToEdit;
     const status = isEditing ? updateStatus : createStatus;
     const error = isEditing ? updateError : createError;
@@ -587,7 +589,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                             form="customer-list-form"
                             color="secondary"
                             isLoading={isLoading}
-                            isDisabled={!isValid || isLoading || (!isEditing && sourceValue === "CSV_UPLOAD" && !csvFile)}
+                            isDisabled={!userHasPermission || (isValid && !isLoading && (isEditing || sourceValue !== "CSV_UPLOAD" || !!csvFile))}
                             startContent={!isLoading && (isEditing ? <Plus size={18} /> : <Plus size={18} />)}
                         >
                             {isEditing ? "Save Changes" : "Create List"}

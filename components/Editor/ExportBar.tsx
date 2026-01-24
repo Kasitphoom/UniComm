@@ -391,9 +391,9 @@ const ExportBar = ({
         <div className="w-full px-4 py-2 bg-white border-b border-default-200 flex justify-end items-center">
             <div className='flex items-center gap-4'> 
                 <div className="flex items-center gap-1">
-                    <Button isIconOnly variant="light" color="default" size="sm" onPress={onHistoryButtonClick}>
+                    {/* <Button isIconOnly variant="light" color="default" size="sm" onPress={onHistoryButtonClick}>
                         <History size={20} />
-                    </Button>
+                    </Button> */}
                     <Button isIconOnly variant="light" color="default" size="sm" onPress={onSettingsButtonClick}>
                         <Settings size={20} />
                     </Button>
