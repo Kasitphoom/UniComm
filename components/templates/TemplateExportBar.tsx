@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import ExportBar from '../Editor/ExportBar'
+import TemplateSettingsModal from './TemplateSettingsModal'
 import { getStorageService } from '@/utils/upload/modules'
 import { TemplateWithUser } from '@/types/template'
 import { addToast, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, useDisclosure, Spinner, Tabs, Tab } from '@heroui/react'
@@ -49,6 +50,7 @@ export const generatePdfPreview = async (template: Template) => {
 
 const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) => {
     const { isOpen, onOpen, onOpenChange } = useDisclosure()
+    const { isOpen: isSettingsOpen, onOpen: onSettingOpen, onOpenChange: onSettingsOpenChange } = useDisclosure()
     const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null)
     const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null)
     const [isGeneratingPreview, setIsGeneratingPreview] = useState(false)
@@ -218,6 +220,7 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
                 approvalButtonConfig={{ disabled: true }}
                 onExportButtonClick={handleExport}
                 onPreviewButtonClick={handlePreview}
+                onSettingsButtonClick={() => onSettingOpen()}
             />
 
             {/* PDF Preview Modal */}
@@ -270,6 +273,12 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
                     )}
                 </ModalContent>
             </Modal>
+
+            <TemplateSettingsModal
+                isOpen={isSettingsOpen}
+                onOpenChange={onSettingsOpenChange}
+                templateId={id}
+            />
         </>
     )
 }

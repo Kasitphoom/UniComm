@@ -106,6 +106,29 @@ export const createTemplate = createAsyncThunk(
     }
 )
 
+export const updateTemplateSettings = createAsyncThunk(
+    "templates/updateSettings",
+    async (payload: { id: string; title: string; contactListId?: string | null }) => {
+        const res = await fetch(`/api/templates/${payload.id}/settings`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+                title: payload.title,
+                contactListId: payload.contactListId ?? null,
+            }),
+        })
+
+        if (!res.ok) {
+            const text = await res.text()
+            throw new Error(text || "Failed to update template settings")
+        }
+
+        const data = (await res.json()) as Template
+        return data
+    }
+)
+
 export const getParsedTemplateSchema = createAsyncThunk(
     "templates/getParsedTemplateSchema",
     async (id: string) => {
@@ -333,6 +356,39 @@ const templatesSlice = createSlice({
             .addCase(updateTemplate.rejected, (state, action) => {
                 state.detail.status = "failed"
                 state.detail.error = action.error.message || "Unknown error"
+            })
+
+        // updateTemplateSettings
+        builder
+            .addCase(updateTemplateSettings.pending, (state) => {
+                state.detail.status = "loading"
+                state.detail.error = null
+            })
+            .addCase(updateTemplateSettings.fulfilled, (state, action) => {
+                state.detail.status = "succeeded"
+                const updatedTemplate = action.payload
+
+                if (state.detail.data) {
+                    state.detail.data = { ...state.detail.data, ...updatedTemplate } as any
+                } else {
+                    state.detail.data = updatedTemplate as any
+                }
+
+                state.list.items = state.list.items.map((item) =>
+                    item.id === updatedTemplate.id
+                        ? { ...item, title: updatedTemplate.title, updatedAt: updatedTemplate.updatedAt }
+                        : item
+                )
+
+                state.user.list.items = state.user.list.items.map((item) =>
+                    item.id === updatedTemplate.id
+                        ? { ...item, title: updatedTemplate.title, updatedAt: updatedTemplate.updatedAt }
+                        : item
+                )
+            })
+            .addCase(updateTemplateSettings.rejected, (state, action) => {
+                state.detail.status = "failed"
+                state.detail.error = action.error.message || "Failed to update template settings"
             })
     },
 })
