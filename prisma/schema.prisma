@@ -42,14 +42,20 @@ model BusinessUser {
 
 // ========= TEMPLATE MODELS =========
 model Templates {
-  id        String            @id @default(auto()) @map("_id") @db.ObjectId
-  title     String            @unique
-  filePath  String
-  userId    String
-  user      BusinessUser      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  versions  TemplateVersion[]
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  title    String            @unique
+  filePath String
+  versions TemplateVersion[]
+
+  userId String
+  user   BusinessUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  contactList   ContactList? @relation(fields: [contactListId], references: [id])
+  contactListId String?      @db.ObjectId
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model TemplateVersion {
@@ -102,8 +108,9 @@ model ContactList {
   primaryKey String  @default("")
   upsertMode Boolean @default(true)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  templates Templates[]
 }
 
 model Customer {

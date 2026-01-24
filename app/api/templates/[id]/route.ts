@@ -43,7 +43,7 @@ export async function PATCH(
         const auth = await requireAuth(req)
         if (!auth.ok) return auth.response
 
-        const userHasPermission = userHasPermissionAPI(req, [ 
+        const userHasPermission = await userHasPermissionAPI(req, [ 
             UserRole.OWNER,
             UserRole.ADMIN,
             UserRole.MEMBER, 
