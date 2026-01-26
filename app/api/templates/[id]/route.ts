@@ -22,7 +22,7 @@ export async function GET(
         const prisma = await getBusinessPrisma(auth.businessId!)
         const tpl = await prisma.templates.findUnique({
             where: { id },
-            include: { user: true },
+            include: { user: true, versions: true, contactList: true },
         })
         if (!tpl)
             return NextResponse.json({ error: "Not found" }, { status: 404 })

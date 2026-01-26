@@ -13,7 +13,7 @@ export type Template = PrismaTemplate
 export type TemplateUser = PrismaBusinessUser
 
 // Rich payloads using Prisma helpers
-export type TemplateWithUser = Prisma.TemplatesGetPayload<{ include: { user: true, versions: true } }>
+export type TemplateWithUser = Prisma.TemplatesGetPayload<{ include: { user: true, versions: true, contactList: true } }>
 
 // DTOs for create/update operations
 // Note: prefer CreateInput to use relation connect; use Unchecked* when setting userId directly.
