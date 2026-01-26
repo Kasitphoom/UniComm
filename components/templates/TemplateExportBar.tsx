@@ -5,7 +5,9 @@ import TemplateSettingsModal from './TemplateSettingsModal'
 import { getStorageService } from '@/utils/upload/modules'
 import { TemplateWithUser } from '@/types/template'
 import { addToast, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, useDisclosure, Spinner, Tabs, Tab } from '@heroui/react'
-import { useAppSelector } from '@/store/hooks'
+import { useAppDispatch, useAppSelector } from '@/store/hooks'
+import { loadTemplateDraft } from '@/lib/draftStore'
+import { setParsedTemplate } from '@/features/templates/templatesSlice'
 import { generate } from '@pdfme/generator'
 import { plugins } from '../Editor/plugins'
 import { Template, getInputFromTemplate } from '@pdfme/common'
@@ -50,6 +52,7 @@ export const generatePdfPreview = async (template: Template) => {
 
 const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) => {
     const { isOpen, onOpen, onOpenChange } = useDisclosure()
+    const dispatch = useAppDispatch()
     const { isOpen: isSettingsOpen, onOpen: onSettingOpen, onOpenChange: onSettingsOpenChange } = useDisclosure()
     const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null)
     const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null)
@@ -173,7 +176,11 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
     const handlePreview = async () => {
         setIsGeneratingPreview(true)
         try {
-            if (!parsedTemplate?.data) {
+            const draftKey = `template:${id}`
+            const draftTemplate = await loadTemplateDraft(draftKey)
+            const template = (draftTemplate ?? parsedTemplate?.data) as Template | null
+
+            if (!template) {
                 addToast({
                     title: 'Preview Error',
                     description: 'Parsed template data is not available for preview',
@@ -182,7 +189,11 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
                 return
             }
 
-            const template = parsedTemplate.data as Template
+            // Sync redux parsed state only when previewing
+            if (draftTemplate) {
+                dispatch(setParsedTemplate(draftTemplate))
+            }
+
             setPreviewTemplate(template)
 
             // Generate PDF as Uint8Array

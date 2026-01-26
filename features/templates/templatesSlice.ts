@@ -245,7 +245,12 @@ const templatesSlice = createSlice({
             state.parsedTemplate.status = "idle"
             state.parsedTemplate.error = null
             state.parsedTemplate.data = null
-        }
+        },
+        setParsedTemplate(state, action: PayloadAction<PDFTemplateType>) {
+            state.parsedTemplate.status = "succeeded"
+            state.parsedTemplate.error = null
+            state.parsedTemplate.data = action.payload
+        },
     },
     extraReducers: (builder) => {
         // fetchTemplates
@@ -394,6 +399,6 @@ const templatesSlice = createSlice({
     },
 })
 
-export const { setQuery, setPage, setPerPage, resetList, resetCreate, resetParsedSchema } =
+export const { setQuery, setPage, setPerPage, resetList, resetCreate, resetParsedSchema, setParsedTemplate } =
     templatesSlice.actions
 export default templatesSlice.reducer
