@@ -96,7 +96,7 @@ const Editor: React.FC<EditorProps> = ({ id, resource = 'template', draftKeyPref
             await saveTemplateDraft(draftId, updated) // fast local autosave
             scheduleIdleUpload()
         },
-        [draftId, scheduleIdleUpload]
+        [draftId, dispatch]
     )
 
     useEffect(() => {

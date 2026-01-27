@@ -7,7 +7,7 @@ import { TemplateWithUser } from '@/types/template'
 import { addToast, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, useDisclosure, Spinner, Tabs, Tab } from '@heroui/react'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { loadTemplateDraft } from '@/lib/draftStore'
-import { setParsedTemplate } from '@/features/templates/templatesSlice'
+import { updateTemplate } from '@/features/templates/templatesSlice'
 import { generate } from '@pdfme/generator'
 import { plugins } from '../Editor/plugins'
 import { Template, getInputFromTemplate } from '@pdfme/common'
@@ -145,7 +145,14 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
         try {
 
             const templateData = await clientFetchTemplate(id)
-            const template = await clientFetchParsedTemplate(id)
+            const parsedTemplate = await clientFetchParsedTemplate(id)
+            const draftKey = `template:${id}`
+            const draftTemplate = await loadTemplateDraft(draftKey)
+            const template = (draftTemplate ?? parsedTemplate?.data) as Template | null
+
+            if (!template) {
+                throw new Error('Template data is not available for PDF export')
+            }
 
             // Generate PDF as Uint8Array
             const pdfBytes = await generatePdfPreview(template)
@@ -187,11 +194,6 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
                     color: 'danger',
                 })
                 return
-            }
-
-            // Sync redux parsed state only when previewing
-            if (draftTemplate) {
-                dispatch(setParsedTemplate(draftTemplate))
             }
 
             setPreviewTemplate(template)
