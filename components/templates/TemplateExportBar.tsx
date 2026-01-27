@@ -59,6 +59,8 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
     const [isGeneratingPreview, setIsGeneratingPreview] = useState(false)
     const [selectedMode, setSelectedMode] = useState<string | number>('browser')
     const [isMobile, setIsMobile] = useState(false)
+    const [template, setTemplate] = useState<TemplateWithUser | null>(null)
+    const [isAlertVisible, setIsAlertVisible] = useState(false)
     const parsedTemplate = useAppSelector(state => state.templates.parsedTemplate)
 
     useEffect(() => {
@@ -71,6 +73,17 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
         window.addEventListener('resize', checkMobile)
         return () => window.removeEventListener('resize', checkMobile)
     }, [])
+
+    useEffect(() => {
+        console.log('Fetching template for export bar with id:', id)
+        const fetchTemplate = async () => {
+            const result = await clientFetchTemplate(id)
+            console.log('Fetched template for export bar:', result)
+            setTemplate(result)
+            setIsAlertVisible(!result.contactListId)
+        }
+        fetchTemplate()
+    }, [id])
 
     // Export Handler
     const handleExport = async (key: React.Key) => {
@@ -234,6 +247,17 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
                 onExportButtonClick={handleExport}
                 onPreviewButtonClick={handlePreview}
                 onSettingsButtonClick={() => onSettingOpen()}
+                settingsBadgeConfig={{
+                    isInvisible: template && !template.contactListId ? false : true,
+                    content: '!',
+                    color: 'danger',
+                }}
+                alertConfig={{
+                    title: "No Contact List Selected",
+                    description: "To use dynamic variables, you need to link a contact list to this template first.",
+                    isVisible: isAlertVisible,
+                    onClose: () => setIsAlertVisible(false),
+                }}
             />
 
             {/* PDF Preview Modal */}

@@ -1,6 +1,7 @@
 'use client'
 import React, { useState, useEffect, useCallback, Key } from 'react'
 import {
+    Alert,
     Button,
     ButtonGroup,
     Popover,
@@ -11,7 +12,10 @@ import {
     Chip,
     Spinner,
     Divider,
-    ScrollShadow
+    ScrollShadow,
+    AlertProps,
+    Badge,
+    BadgeProps
 } from '@heroui/react'
 import { useInfiniteScroll } from "@heroui/use-infinite-scroll"
 import {
@@ -357,12 +361,17 @@ const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: () => void, con
  * 
  * @param requireApproval whether to show the submit approval button
  * @param onSubmitApprovalClick a function to handle submit approval button click
+ * 
+ * @param approvalButtonConfig configuration object for the submit approval button
+ * 
+ * @param alertConfig configuration object for displaying an alert message
  *  
  * @returns 
  */
 const ExportBar = ({
     onHistoryButtonClick,
     onSettingsButtonClick,
+    settingsBadgeConfig,
 
     previewable = false,
     onPreviewButtonClick,
@@ -373,9 +382,12 @@ const ExportBar = ({
     requireApproval = false,
     onSubmitApprovalClick,
     approvalButtonConfig,
+
+    alertConfig,
 }: {
     onHistoryButtonClick?: () => void;
     onSettingsButtonClick?: () => void;
+    settingsBadgeConfig?: Omit<BadgeProps, "children">;
 
     previewable?: boolean;
     onPreviewButtonClick?: () => void;
@@ -386,17 +398,37 @@ const ExportBar = ({
     requireApproval?: boolean;
     onSubmitApprovalClick?: () => void;
     approvalButtonConfig?: submitApprovalButtonConfig;
+
+    alertConfig?: AlertProps;
 }) => {
     return (
-        <div className="w-full px-4 py-2 bg-white border-b border-default-200 flex justify-end items-center">
+        <div className="w-full px-4 py-2 gap-4 bg-white border-b border-default-200 flex justify-end items-center">
+
+            {
+                alertConfig?.isVisible && <Alert 
+                    {...alertConfig}
+                    title={alertConfig.title} 
+                    description={alertConfig.description} 
+                    classNames={{
+                        ...alertConfig.classNames,
+                        base: `${alertConfig.classNames?.base} py-1`,
+                        description: `${alertConfig.classNames?.description} text-xs`,
+                        title: `${alertConfig.classNames?.title} font-bold`
+                    }} 
+                    color={alertConfig.color || "danger"}
+                />
+            }
+
             <div className='flex items-center gap-4'> 
                 <div className="flex items-center gap-1">
                     {/* <Button isIconOnly variant="light" color="default" size="sm" onPress={onHistoryButtonClick}>
                         <History size={20} />
                     </Button> */}
-                    <Button isIconOnly variant="light" color="default" size="sm" onPress={onSettingsButtonClick}>
-                        <Settings size={20} />
-                    </Button>
+                    <Badge {...settingsBadgeConfig} isInvisible={settingsBadgeConfig?.isInvisible ?? false}>
+                        <Button isIconOnly variant="light" color="default" size="sm" onPress={onSettingsButtonClick}>
+                            <Settings size={20} />
+                        </Button>
+                    </Badge>
                 </div>
 
                 { previewable || exportable ? (
