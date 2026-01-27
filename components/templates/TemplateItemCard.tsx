@@ -2,7 +2,7 @@
 import { deleteTemplate, fetchTemplates, fetchUserTemplates } from '@/features/templates/templatesSlice'
 import { setSidebarOpen } from '@/features/ui/uiSlice'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
-import { TemplateWithUser } from '@/types/template'
+import { TemplateListItem } from '@/types/template'
 import { timeDifferenceFormatter } from '@/utils/DateFormatter'
 import { Button, Card, CardBody, CardFooter, Dropdown, DropdownMenu, DropdownTrigger, DropdownItem, Skeleton, User, addToast, Spinner } from '@heroui/react'
 import { Dot, EllipsisVertical, TrashIcon } from 'lucide-react'
@@ -22,7 +22,7 @@ const PdfViewer = dynamic(() => import('@/components/PdfViewer'), {
     loading: () => <div className='w-full h-full flex justify-center items-center'><Spinner color='secondary'/></div>, 
 })
 
-const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
+const TemplateItemCard = ({ template }: { template: TemplateListItem }) => {
     const dispatch = useAppDispatch()
     const router = useRouter()
     const pathname = usePathname()
