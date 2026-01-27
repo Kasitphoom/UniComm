@@ -91,146 +91,6 @@ const makeElementPlainTextContentEditable = (element: HTMLElement) => {
     })
 }
 
-// Render form mode with individual input fields for each variable
-const renderFormMode = async (
-    arg: UIRenderProps<TextWithVariablesSchema>,
-    rawText: string,
-    variables: string[]
-) => {
-    const { rootElement, schema, onChange, stopEditing, theme, value } = arg
-
-    // Parse existing values
-    let valueData: Record<string, string> = {}
-    if (typeof value === 'string' && value) {
-        try {
-            valueData = JSON.parse(value)
-        } catch {
-            valueData = {}
-        }
-    } else if (typeof value === 'object' && value !== null) {
-        valueData = value as Record<string, string>
-    }
-
-    // Remove outline from parent (we'll apply to individual fields)
-    if (rootElement.parentElement) {
-        rootElement.parentElement.style.outline = ''
-    }
-
-    rootElement.innerHTML = ''
-
-    // Create container matching the text styling
-    const container = document.createElement("div")
-    container.style.width = "100%"
-    container.style.height = "100%"
-    container.style.display = "flex"
-    container.style.flexDirection = "column"
-    if (schema.verticalAlignment === "middle") {
-        container.style.justifyContent = "center"
-    } else if (schema.verticalAlignment === "bottom") {
-        container.style.justifyContent = "flex-end"
-    } else {
-        container.style.justifyContent = "flex-start"
-    }
-    container.style.padding = "0"
-    container.style.boxSizing = "border-box"
-    container.style.border = "none"
-    container.style.background = schema.backgroundColor || "transparent"
-    container.style.opacity = typeof schema.opacity === "number" ? String(schema.opacity) : "1"
-    rootElement.appendChild(container)
-
-    const textBlock = document.createElement("div")
-    textBlock.style.width = "100%"
-    textBlock.style.fontFamily = schema.fontName || "sans-serif"
-    textBlock.style.fontSize = `${schema.fontSize || 12}pt`
-    textBlock.style.color = schema.fontColor || "#000000"
-    textBlock.style.textAlign = schema.alignment || "left"
-    if (typeof schema.lineHeight === "number") {
-        textBlock.style.lineHeight = String(schema.lineHeight)
-    }
-    if (typeof schema.characterSpacing === "number") {
-        textBlock.style.letterSpacing = `${schema.characterSpacing}pt`
-    }
-    if (schema.underline || schema.strikethrough) {
-        const decorations = [
-            schema.underline ? "underline" : "",
-            schema.strikethrough ? "line-through" : "",
-        ].filter(Boolean)
-        textBlock.style.textDecoration = decorations.join(" ")
-    }
-    textBlock.style.whiteSpace = "pre-wrap"
-    textBlock.style.wordBreak = "break-word"
-    textBlock.style.outline = "none"
-    textBlock.style.border = "none"
-    textBlock.style.margin = "0"
-    textBlock.style.padding = "0"
-    container.appendChild(textBlock)
-
-    // Track which characters are part of variables
-    const variableIndices: { [index: number]: string } = {}
-    variables.forEach(varName => {
-        const regex = new RegExp(`\\{\\{\\s*${varName.replace(/[/\-\\^$*+?.()|[\]{}]/g, '\\$&')}\\s*\\}\\}`, 'g')
-        let match
-        while ((match = regex.exec(rawText)) !== null) {
-            variableIndices[match.index] = varName
-        }
-    })
-
-    // Build the text with inline input fields
-    let inVariable = false
-    let currentVarName = ''
-
-    for (let i = 0; i < rawText.length; i++) {
-        if (variableIndices[i]) {
-            // Start of a variable
-            inVariable = true
-            currentVarName = variableIndices[i]
-
-            const input = document.createElement('span')
-            input.contentEditable = 'true'
-            input.style.outline = `${theme?.colorPrimary || '#1890ff'} dashed 1px`
-            input.style.padding = '2px 4px'
-            input.style.minWidth = '40px'
-            input.style.display = 'inline-block'
-            input.style.borderRadius = '2px'
-            input.textContent = valueData[currentVarName] || ''
-            
-            input.addEventListener('blur', (e: Event) => {
-                const newValue = (e.target as HTMLSpanElement).textContent || ''
-                if (newValue !== valueData[currentVarName]) {
-                    valueData[currentVarName] = newValue
-                    if (onChange) {
-                        onChange({ key: 'content', value: JSON.stringify(valueData) })
-                    }
-                    if (stopEditing) stopEditing()
-                }
-            })
-
-            input.addEventListener('keydown', (e: KeyboardEvent) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault()
-                    input.blur()
-                }
-            })
-
-            textBlock.appendChild(input)
-
-            // Skip the rest of the variable pattern {{varName}}
-            const varPattern = `{{${currentVarName}}}`
-            i += varPattern.length - 1
-        } else if (inVariable) {
-            // Check if we've exited the variable
-            if (rawText[i] === '}' && rawText[i - 1] === '}') {
-                inVariable = false
-                currentVarName = ''
-            }
-        } else {
-            // Regular text character
-            const span = document.createElement('span')
-            span.textContent = rawText[i]
-            textBlock.appendChild(span)
-        }
-    }
-}
 
 
 const TextWithVariables: Plugin<TextWithVariablesSchema> = {
@@ -273,11 +133,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             }
         }
 
-        // Form mode - render individual input fields for each variable
-        if (mode === 'form' && variables.length > 0) {
-            await renderFormMode(arg, rawText, variables)
-            return
-        }
+        // Form mode - do not render inputs; keep variables as-is
 
         // Parse value - it could be a string (JSON) or already an object
         let valueData: Record<string, any> | undefined
@@ -291,7 +147,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             valueData = value as Record<string, any>
         }
 
-        // In viewer mode, show processed text with variables replaced
+        // In designer mode, show raw text with {{variables}}; otherwise render with data
         const isEditableMode = mode === 'designer'
         const displayText = isEditableMode ? rawText : parseVariables(rawText, valueData)
 
@@ -367,6 +223,41 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 text = text.slice(0, -1)
             }
             return text
+        }
+
+        const getCaretOffset = (element: HTMLDivElement) => {
+            const selection = window.getSelection()
+            if (!selection || selection.rangeCount === 0) return 0
+            const range = selection.getRangeAt(0)
+            const preRange = range.cloneRange()
+            preRange.selectNodeContents(element)
+            preRange.setEnd(range.startContainer, range.startOffset)
+            return preRange.toString().length
+        }
+
+        const setCaretOffset = (element: HTMLDivElement, offset: number) => {
+            const selection = window.getSelection()
+            if (!selection) return
+            const range = document.createRange()
+            let current = 0
+            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+            let node: Node | null = null
+            while ((node = walker.nextNode())) {
+                const length = node.textContent?.length || 0
+                if (current + length >= offset) {
+                    range.setStart(node, Math.max(0, offset - current))
+                    range.collapse(true)
+                    selection.removeAllRanges()
+                    selection.addRange(range)
+                    return
+                }
+                current += length
+            }
+
+            range.selectNodeContents(element)
+            range.collapse(false)
+            selection.removeAllRanges()
+            selection.addRange(range)
         }
 
         // Handle blur event - save text and update variables
@@ -532,9 +423,8 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 const selection = window.getSelection()
                 if (!selection || !selection.rangeCount) return
 
-                const range = selection.getRangeAt(0)
-                const textContent = textBlock.textContent || ''
-                const cursorPos = range.startOffset
+                const textContent = getText(textBlock)
+                const cursorPos = getCaretOffset(textBlock)
 
                 // Find the "{{" before cursor
                 let startPos = cursorPos
@@ -561,14 +451,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 
                 // Set cursor after the inserted variable
                 const newCursorPos = startPos + `{{${fieldName}}}`.length
-                const newRange = document.createRange()
-                const textNode = textBlock.firstChild
-                if (textNode) {
-                    newRange.setStart(textNode, Math.min(newCursorPos, textNode.textContent?.length || 0))
-                    newRange.collapse(true)
-                    selection.removeAllRanges()
-                    selection.addRange(newRange)
-                }
+                setCaretOffset(textBlock, newCursorPos)
             }
 
             let lastText = rawText
