@@ -1,51 +1,156 @@
-import { PropPanel, PropPanelSchema, PropPanelWidgetProps } from "@pdfme/common";
+import { PropPanel, PropPanelWidgetProps } from "@pdfme/common";
+import { text as textPlugin } from "@pdfme/schemas";
 import { TextWithVariablesSchema } from "./TextWithVariables";
 
-export const TextWithVariablesPropPanel: PropPanel<TextWithVariablesSchema> = {
-    schema: ({ options, activeSchema, i18n }) => {
-        const panelSchema: Record<string, PropPanelSchema> = {
-            fontSize: {
-                type: "number",
-                title: "Font Size",
-                widget: "inputNumber",
-                props: {
-                    min: 8,
-                    max: 72,
-                    step: 1,
-                },
-            },
-            fontColor: {
-                type: "string",
-                title: "Font Color",
-                widget: "color",
-            },
-            alignment: {
-                type: "string",
-                title: "Text Alignment",
-                widget: "select",
-                props: {
-                    options: [
-                        { label: "Left", value: "left" },
-                        { label: "Center", value: "center" },
-                        { label: "Right", value: "right" },
-                    ],
-                },
-            },
-        }
+const mapDynamicVariables = (props: PropPanelWidgetProps) => {
+    const { rootElement, changeSchemas, activeSchema, i18n, options } = props;
 
-        return panelSchema
+    const mvtSchema = activeSchema as unknown as TextWithVariablesSchema;
+    const text = mvtSchema.text || "";
+    const variables = JSON.parse(mvtSchema.content || "{}") as Record<string, string>;
+    const variablesChanged = updateVariablesFromText(text, variables);
+    const varNames = Object.keys(variables);
+
+    if (variablesChanged) {
+        changeSchemas([
+            { key: "content", value: JSON.stringify(variables), schemaId: activeSchema.id },
+            { key: "variables", value: varNames, schemaId: activeSchema.id },
+            { key: "readOnly", value: varNames.length === 0, schemaId: activeSchema.id },
+        ]);
+    }
+
+    const placeholderRowEl = document
+        .getElementById("placeholder-dynamic-var")
+        ?.closest(".ant-form-item") as HTMLElement;
+    if (!placeholderRowEl) {
+        throw new Error("Failed to find Ant form placeholder row to create dynamic variables inputs.");
+    }
+    placeholderRowEl.style.display = "none";
+
+    // The wrapping form element has a display:flex which limits the width of the form fields, removing.
+    (rootElement.parentElement as HTMLElement).style.display = "block";
+
+    if (varNames.length > 0) {
+        for (let variableName of varNames) {
+            const varRow = placeholderRowEl.cloneNode(true) as HTMLElement;
+
+            const textarea = varRow.querySelector("textarea") as HTMLTextAreaElement;
+            textarea.id = "dynamic-var-" + variableName;
+            textarea.value = "";
+            textarea.addEventListener("change", (e: Event) => {
+                if (variableName in variables) {
+                    variables[variableName] = (e.target as HTMLTextAreaElement).value;
+                    changeSchemas([
+                        { key: "content", value: JSON.stringify(variables), schemaId: activeSchema.id },
+                    ]);
+                }
+            });
+
+            const label = varRow.querySelector("label") as HTMLLabelElement;
+            label.innerText = variableName;
+
+            varRow.style.display = "block";
+            rootElement.appendChild(varRow);
+        }
+    } else {
+        const para = document.createElement("p");
+        // Extract color value to avoid unsafe property access
+        const colorValue = options?.theme?.token?.colorPrimary || "#168fe3";
+        const isValidColor =
+            /^#[0-9A-F]{6}$/i.test(colorValue) ||
+            /^(rgb|hsl)a?\(\s*([+-]?\d+%?\s*,\s*){2,3}[+-]?\d+%?\s*\)$/i.test(colorValue);
+        const safeColorValue = isValidColor ? colorValue : "#168fe3";
+
+        // Use safe string concatenation for innerHTML
+        const typingInstructions = i18n("schemas.mvt.typingInstructions");
+        const sampleField = i18n("schemas.mvt.sampleField");
+        para.innerHTML =
+            typingInstructions +
+            ` <code style="color:${safeColorValue}; font-weight:bold;">{{` +
+            sampleField +
+            "}}</code>";
+        rootElement.appendChild(para);
+    }
+};
+
+export const TextWithVariablesPropPanel: PropPanel<TextWithVariablesSchema> = {
+    schema: (propPanelProps: Omit<PropPanelWidgetProps, "rootElement">) => {
+        const parentPropPanel = textPlugin.propPanel;
+        const parentSchema =
+            typeof parentPropPanel?.schema === "function" ? parentPropPanel.schema(propPanelProps) : {};
+
+        return {
+            ...parentSchema,
+            "-------": { type: "void", widget: "Divider" },
+            dynamicVarContainer: {
+                title: "Variables Sample Data",
+                type: "string",
+                widget: "Card",
+                span: 24,
+                properties: {
+                    dynamicVariables: {
+                        type: "object",
+                        widget: "mapDynamicVariables",
+                        bind: false,
+                        span: 24,
+                    },
+                    placeholderDynamicVar: {
+                        title: "Placeholder Dynamic Variable",
+                        type: "string",
+                        format: "textarea",
+                        props: {
+                            id: "placeholder-dynamic-var",
+                            autoSize: {
+                                minRows: 2,
+                                maxRows: 5,
+                            },
+                        },
+                        span: 24,
+                    },
+                },
+            },
+        };
     },
+    widgets: { ...(textPlugin.propPanel?.widgets || {}), mapDynamicVariables },
     defaultSchema: {
+        ...(textPlugin.propPanel?.defaultSchema || {}),
         type: "TextWithVariables",
         name: "Text with Variables",
-        position: { x: 10, y: 10 },
-        width: 100,
-        height: 20,
-        text: "",
+        text: "Add text here using {{}} for variables ",
+        content: "{}",
         variables: [],
-        fontSize: 12,
-        fontColor: "#000000",
-        alignment: "left",
+        readOnly: false,
     } as TextWithVariablesSchema,
-}
+};
+
+const updateVariablesFromText = (text: string, variables: Record<string, string>): boolean => {
+    const regex = /\{\{([^{}]+)\}\}/g;
+    const matches = Array.from(text.matchAll(regex)).map((match) => match[1].trim());
+    let changed = false;
+
+    if (matches.length > 0) {
+        // Add any new variables
+        for (const variableName of matches) {
+            if (!(variableName in variables)) {
+                variables[variableName] = "";
+                changed = true;
+            }
+        }
+        // Remove any that no longer exist
+        Object.keys(variables).forEach((variableName) => {
+            if (!matches.includes(variableName)) {
+                delete variables[variableName];
+                changed = true;
+            }
+        });
+    } else {
+        // No matches at all, so clear all variables
+        Object.keys(variables).forEach((variableName) => {
+            delete variables[variableName];
+            changed = true;
+        });
+    }
+
+    return changed;
+};
 

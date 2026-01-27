@@ -7,12 +7,26 @@ import { TextWithVariablesPropPanel } from "./propPanel"
 import { TemplateWithUser } from "@/types/template"
 
 export type TextWithVariablesSchema = Schema & {
-    fontSize?: number
-    fontColor?: string
-    alignment?: "left" | "center" | "right"
     fontName?: string
+    alignment?: "left" | "center" | "right" | "justify"
+    verticalAlignment?: "top" | "middle" | "bottom"
+    fontSize?: number
+    lineHeight?: number
+    strikethrough?: boolean
+    underline?: boolean
+    characterSpacing?: number
+    dynamicFontSize?: {
+        min: number
+        max: number
+        fit: "horizontal" | "vertical"
+    }
+    fontColor?: string
+    backgroundColor?: string
+    opacity?: number
     text?: string
     variables?: string[]
+    content?: string
+    readOnly?: boolean
 }
 
 // Get template ID from current URL
@@ -108,11 +122,20 @@ const renderFormMode = async (
     const container = document.createElement("div")
     container.style.width = "100%"
     container.style.height = "100%"
-    container.style.display = "block"
+    container.style.display = "flex"
+    container.style.flexDirection = "column"
+    if (schema.verticalAlignment === "middle") {
+        container.style.justifyContent = "center"
+    } else if (schema.verticalAlignment === "bottom") {
+        container.style.justifyContent = "flex-end"
+    } else {
+        container.style.justifyContent = "flex-start"
+    }
     container.style.padding = "0"
     container.style.boxSizing = "border-box"
     container.style.border = "none"
-    container.style.background = "#FF0000"
+    container.style.background = schema.backgroundColor || "transparent"
+    container.style.opacity = typeof schema.opacity === "number" ? String(schema.opacity) : "1"
     rootElement.appendChild(container)
 
     const textBlock = document.createElement("div")
@@ -121,6 +144,19 @@ const renderFormMode = async (
     textBlock.style.fontSize = `${schema.fontSize || 12}pt`
     textBlock.style.color = schema.fontColor || "#000000"
     textBlock.style.textAlign = schema.alignment || "left"
+    if (typeof schema.lineHeight === "number") {
+        textBlock.style.lineHeight = String(schema.lineHeight)
+    }
+    if (typeof schema.characterSpacing === "number") {
+        textBlock.style.letterSpacing = `${schema.characterSpacing}pt`
+    }
+    if (schema.underline || schema.strikethrough) {
+        const decorations = [
+            schema.underline ? "underline" : "",
+            schema.strikethrough ? "line-through" : "",
+        ].filter(Boolean)
+        textBlock.style.textDecoration = decorations.join(" ")
+    }
     textBlock.style.whiteSpace = "pre-wrap"
     textBlock.style.wordBreak = "break-word"
     textBlock.style.outline = "none"
@@ -268,11 +304,19 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         container.style.height = "100%"
         container.style.display = "flex"
         container.style.flexDirection = "column"
-        container.style.justifyContent = "flex-start"
+        if (schema.verticalAlignment === "middle") {
+            container.style.justifyContent = "center"
+        } else if (schema.verticalAlignment === "bottom") {
+            container.style.justifyContent = "flex-end"
+        } else {
+            container.style.justifyContent = "flex-start"
+        }
         container.style.padding = "0"
         container.style.boxSizing = "border-box"
         container.style.cursor = isEditableMode ? "text" : "default"
         container.style.border = "none"
+        container.style.background = schema.backgroundColor || "transparent"
+        container.style.opacity = typeof schema.opacity === "number" ? String(schema.opacity) : "1"
         rootElement.appendChild(container)
 
         // Create text element
@@ -283,6 +327,19 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         textBlock.style.fontSize = `${schema.fontSize || 12}pt`
         textBlock.style.color = schema.fontColor || "#000000"
         textBlock.style.textAlign = schema.alignment || "left"
+        if (typeof schema.lineHeight === "number") {
+            textBlock.style.lineHeight = String(schema.lineHeight)
+        }
+        if (typeof schema.characterSpacing === "number") {
+            textBlock.style.letterSpacing = `${schema.characterSpacing}pt`
+        }
+        if (schema.underline || schema.strikethrough) {
+            const decorations = [
+                schema.underline ? "underline" : "",
+                schema.strikethrough ? "line-through" : "",
+            ].filter(Boolean)
+            textBlock.style.textDecoration = decorations.join(" ")
+        }
         textBlock.style.whiteSpace = "pre-wrap"
         textBlock.style.wordBreak = "break-word"
         textBlock.style.outline = "none"
