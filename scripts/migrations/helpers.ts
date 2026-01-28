@@ -6,19 +6,6 @@ import type { BusinessMigration, MainMigration } from "./types"
 const currentDir = path.dirname(fileURLToPath(import.meta.url))
 const migrationsRoot = path.join(currentDir, "app-versions")
 
-export const getMigrationBranch = () => {
-    return process.env.MIGRATION_BRANCH || process.env.GIT_BRANCH || "main"
-}
-
-export const listAppVersions = () => {
-    if (!fs.existsSync(migrationsRoot)) return []
-    return fs
-        .readdirSync(migrationsRoot, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => entry.name)
-        .sort()
-}
-
 export const listBranches = (version: string) => {
     const branchesRoot = path.join(migrationsRoot, version, "branches")
     if (!fs.existsSync(branchesRoot)) return []
@@ -69,38 +56,6 @@ const loadModule = async <T>(
     const moduleUrl = resolveModuleUrl(version, resolvedBranch, db)
     const module = await import(moduleUrl)
     return (module.migrations || module.default || []) as T[]
-}
-
-export const loadMainMigrations = async (
-    versions: string[],
-    branch: string,
-) => {
-    const all: Array<MainMigration<any>> = []
-    for (const version of versions) {
-        const migrations = await loadModule<MainMigration<any>>(
-            version,
-            branch,
-            "main",
-        )
-        all.push(...migrations)
-    }
-    return all
-}
-
-export const loadBusinessMigrations = async (
-    versions: string[],
-    branch: string,
-) => {
-    const all: Array<BusinessMigration<any>> = []
-    for (const version of versions) {
-        const migrations = await loadModule<BusinessMigration<any>>(
-            version,
-            branch,
-            "business",
-        )
-        all.push(...migrations)
-    }
-    return all
 }
 
 export const loadMainMigrationsForVersion = async (
