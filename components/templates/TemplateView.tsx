@@ -2,7 +2,7 @@
 import { ChevronDown } from 'lucide-react'
 import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { Pagination, Spinner } from '@heroui/react'
+import { cn, Pagination, Spinner } from '@heroui/react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import TemplateItemCard from './TemplateItemCard'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
@@ -106,29 +106,37 @@ const TemplateView = ({
                                 <Spinner size="md" color="secondary" />
                             </div>
                         ) : (
-                            <div className='flex flex-col gap-4'>
-                                <div className={`grid grid-cols-1 ${viewMode === 'grid' ? " md:grid-cols-2 lg:grid-cols-4" : ""}  py-4 gap-4`}>
-                                    {
-                                        lists.map((template) => (
-                                            <TemplateItemCard key={template.id} template={template} />
-                                        ))
-                                    }
+                            <div className="flex flex-col gap-8 w-full">
+                                <div className={cn(
+                                    "grid gap-6 py-4",
+                                    viewMode === 'grid' 
+                                        ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" 
+                                        : "grid-cols-1"
+                                )}>
+                                    {lists.map((template) => (
+                                        <TemplateItemCard 
+                                            key={template.id} 
+                                            template={template}
+                                        />
+                                    ))}
                                 </div>
-                                {
-                                    !userOnly && totalPages && currentPage && (
-                                        <div className='flex justify-center'>
-                                            <Pagination
-                                                color="secondary"
-                                                page={currentPage}
-                                                total={totalPages}
-                                                onChange={onPageChange}
-                                                classNames={{
-                                                    item: 'bg-white',
-                                                }}
-                                            />
-                                        </div>
-                                    )
-                                }
+
+                                {/* Pagination Section */}
+                                {!userOnly && totalPages > 1 && (
+                                    <div className="flex justify-center border-t border-default-100 pt-8">
+                                        <Pagination
+                                            isCompact
+                                            showControls
+                                            color="secondary"
+                                            page={currentPage}
+                                            total={totalPages}
+                                            onChange={onPageChange}
+                                            classNames={{
+                                                cursor: "bg-[#7828C8] shadow-lg shadow-secondary/20",
+                                            }}
+                                        />
+                                    </div>
+                                )}
                             </div>
                         )}
                     </motion.div>
