@@ -36,8 +36,9 @@ model BusinessUser {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  templates      Templates[]
-  ComponentBlock ComponentBlock[]
+  templates         Templates[]
+  ComponentBlock    ComponentBlock[]
+  templateApprovals TemplateApprover[]
 }
 
 // ========= TEMPLATE MODELS =========
@@ -48,8 +49,10 @@ model Templates {
   filePath String
   versions TemplateVersion[]
 
-  userId String
+  userId String       @db.ObjectId
   user   BusinessUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  approvalUsers TemplateApprover[]
 
   contactList   ContactList? @relation(fields: [contactListId], references: [id])
   contactListId String?      @db.ObjectId
@@ -58,9 +61,22 @@ model Templates {
   updatedAt DateTime @updatedAt
 }
 
+model TemplateApprover {
+  id         String       @id @default(auto()) @map("_id") @db.ObjectId
+  templateId String       @db.ObjectId
+  template   Templates    @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  userId     String       @db.ObjectId
+  user       BusinessUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime     @default(now())
+
+  @@unique([templateId, userId])
+  @@index([templateId])
+  @@index([userId])
+}
+
 model TemplateVersion {
   id         String    @id @default(auto()) @map("_id") @db.ObjectId
-  templateId String
+  templateId String    @db.ObjectId
   template   Templates @relation(fields: [templateId], references: [id], onDelete: Cascade)
   version    String
   filePath   String
@@ -72,7 +88,7 @@ model ComponentBlock {
   id        String                  @id @default(auto()) @map("_id") @db.ObjectId
   name      String                  @unique
   filePath  String
-  userId    String
+  userId    String                  @db.ObjectId
   user      BusinessUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
   versions  ComponentBlockVersion[]
   createdAt DateTime                @default(now())
@@ -81,7 +97,7 @@ model ComponentBlock {
 
 model ComponentBlockVersion {
   id               String         @id @default(auto()) @map("_id") @db.ObjectId
-  componentBlockId String
+  componentBlockId String         @db.ObjectId
   componentBlock   ComponentBlock @relation(fields: [componentBlockId], references: [id], onDelete: Cascade)
   version          String
   filePath         String
@@ -124,4 +140,10 @@ model Customer {
   updatedAt DateTime @updatedAt
 
   @@index([listId])
+}
+
+model Migration {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String   @unique
+  appliedAt DateTime @default(now())
 }
