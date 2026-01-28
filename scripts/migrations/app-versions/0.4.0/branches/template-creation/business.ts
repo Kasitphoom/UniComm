@@ -1,6 +1,5 @@
 import type { PrismaClient } from "../../../../../../app/generated/business/prisma"
 import type { BusinessMigration } from "../../../../types"
-import { ObjectId } from "bson"
 
 export const migrations: Array<BusinessMigration<PrismaClient>> = [
     {
