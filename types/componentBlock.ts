@@ -3,8 +3,9 @@ import type {
   ComponentBlock as PrismaComponentBlock,
   BusinessUser as PrismaBusinessUser,
   ComponentBlockVersion,
-  Approver,
 } from '@/app/generated/business/prisma'
+
+import type { Approver } from '@/types/approver'
 
 export type ComponentBlock = PrismaComponentBlock
 export type ComponentBlockUser = PrismaBusinessUser

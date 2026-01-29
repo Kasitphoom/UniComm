@@ -17,11 +17,11 @@ export async function GET(req: Request) {
         const rawQuery = searchParams.get("query") || undefined
         const page = Math.max(
             1,
-            parseInt(searchParams.get("page") || "1", 10) || 1
+            parseInt(searchParams.get("page") || "1", 10) || 1,
         )
         const perPage = Math.min(
             50,
-            Math.max(1, parseInt(searchParams.get("perPage") || "8", 10) || 8)
+            Math.max(1, parseInt(searchParams.get("perPage") || "8", 10) || 8),
         )
         const userOnly = searchParams.get("userOnly") === "true"
 
@@ -51,10 +51,12 @@ export async function GET(req: Request) {
                 orderBy: { updatedAt: "desc" },
                 take: perPage,
                 skip: (page - 1) * perPage,
-                include: { 
+                include: {
                     user: true,
                     versions: { orderBy: { createdAt: "desc" } },
-                    approvers: true
+                    approvers: {
+                        include: { user: true },
+                    },
                 },
             }),
             prisma.templates.count({ where: whereOrUndefined }),
@@ -63,11 +65,11 @@ export async function GET(req: Request) {
         const totalPages = Math.max(0, Math.ceil(totalCount / perPage))
 
         // Add requireUserApproval field to each template
-        const templatesWithApprovalFlag = templates.map(template => ({
+        const templatesWithApprovalFlag = templates.map((template) => ({
             ...template,
             requireUserApproval: template.approvers.some(
-                approver => approver.userId === auth.userId
-            )
+                (approver) => approver.userId === auth.userId,
+            ),
         }))
 
         return NextResponse.json({
@@ -78,7 +80,7 @@ export async function GET(req: Request) {
     } catch (err: any) {
         return NextResponse.json(
             { error: err?.message || "Failed to fetch templates" },
-            { status: 500 }
+            { status: 500 },
         )
     }
 }
@@ -88,35 +90,30 @@ export async function POST(req: NextRequest) {
         const auth = await requireAuth(req)
         if (!auth.ok) return auth.response
 
-        const {userId: uid, businessId } = auth
+        const { userId: uid, businessId } = auth
 
-        const hasPermission = await userHasPermissionAPI(req,
-            [
-                UserRole.ADMIN,
-                UserRole.OWNER,
-                UserRole.MEMBER,
-            ]
-        )
+        const hasPermission = await userHasPermissionAPI(req, [
+            UserRole.ADMIN,
+            UserRole.OWNER,
+            UserRole.MEMBER,
+        ])
         if (!hasPermission) {
             return NextResponse.json(
                 { error: "Not Enough Permission" },
-                { status: 403 }
+                { status: 403 },
             )
         }
 
         const body = await req.json()
-        const {
-            templateName,
-            orientation,
-            widthCm,
-            heightCm,
-            customerListId,
-        } = body || {}
+        const { templateName, orientation, widthCm, heightCm, customerListId } =
+            body || {}
 
         if (!templateName || !orientation || !widthCm || !heightCm) {
             return NextResponse.json(
-                { error: "Missing any of the following in the body: templateName, orientation, widthCm, heightCm" },
-                { status: 400 }
+                {
+                    error: "Missing any of the following in the body: templateName, orientation, widthCm, heightCm",
+                },
+                { status: 400 },
             )
         }
 
@@ -131,7 +128,7 @@ export async function POST(req: NextRequest) {
         if (findExistingTemplate) {
             return NextResponse.json(
                 { error: "Template with the same name already exists" },
-                { status: 400 }
+                { status: 400 },
             )
         }
 
@@ -139,31 +136,40 @@ export async function POST(req: NextRequest) {
         if (!bu)
             return NextResponse.json(
                 { error: "Business user not found" },
-                { status: 404 }
+                { status: 404 },
             )
-        
+
         const storageService = getStorageService()
         if (!storageService)
             return NextResponse.json(
                 { error: "Storage service not configured" },
-                { status: 500 }
+                { status: 500 },
             )
-        
+
         const filePath = `${businessId}/templates/${encodeURIComponent(templateName)}.xml`
 
         // Load XML template from local file and inject dimensions
-        const templatePath = path.join(process.cwd(), 'app', 'api', 'templates', 'template.xml')
-        let xmlContent = await readFile(templatePath, 'utf8')
+        const templatePath = path.join(
+            process.cwd(),
+            "app",
+            "api",
+            "templates",
+            "template.xml",
+        )
+        let xmlContent = await readFile(templatePath, "utf8")
         // If orientation is landscape, swap width/height logically
         const w = String(widthCm)
         const h = String(heightCm)
-        const [finalW, finalH] = orientation === 'landscape' ? [h, w] : [w, h]
+        const [finalW, finalH] = orientation === "landscape" ? [h, w] : [w, h]
         xmlContent = xmlContent
             .replace(/REPLACE_WIDTH/g, finalW)
             .replace(/REPLACE_HEIGHT/g, finalH)
 
         // Upload to storage
-        const fileUrl = await storageService.uploadFile(Buffer.from(xmlContent, 'utf8'), filePath)
+        const fileUrl = await storageService.uploadFile(
+            Buffer.from(xmlContent, "utf8"),
+            filePath,
+        )
 
         const created = await prisma.templates.create({
             data: {
@@ -174,18 +180,22 @@ export async function POST(req: NextRequest) {
                 versions: {
                     create: {
                         filePath: fileUrl,
-                        version: 'initial',
-                    }
-                }
+                        version: "initial",
+                    },
+                },
             },
-            include: { user: true, versions: { orderBy: { createdAt: "desc" }, take: 1 }, approvers: true },
+            include: {
+                user: true,
+                versions: { orderBy: { createdAt: "desc" }, take: 1 },
+                approvers: { include: { user: true } },
+            },
         })
 
         return NextResponse.json(created, { status: 201 })
     } catch (err: any) {
         return NextResponse.json(
             { error: err?.message || "Failed to create template" },
-            { status: 500 }
+            { status: 500 },
         )
     }
 }

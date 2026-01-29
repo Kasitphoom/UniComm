@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from "next/server"
 
 export const PATCH = async (
     req: NextRequest,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
 ) => {
     try {
         const auth = await requireAuth(req)
@@ -22,55 +22,62 @@ export const PATCH = async (
         if (!existingTemplate) {
             return NextResponse.json(
                 { error: "Template not found" },
-                { status: 404 }
+                { status: 404 },
             )
         }
-        
-        const hasPermission = await userHasPermissionAPI(req,
-            [
-                UserRole.OWNER,
-                UserRole.ADMIN,
-                UserRole.MEMBER,
-            ]
-        )
 
-        if ((existingTemplate.userId !== auth.userId) || !hasPermission) {
+        const hasPermission = await userHasPermissionAPI(req, [
+            UserRole.OWNER,
+            UserRole.ADMIN,
+            UserRole.MEMBER,
+        ])
+
+        if (existingTemplate.userId !== auth.userId || !hasPermission) {
             return NextResponse.json(
                 { error: "Not authorized to update this template" },
-                { status: 403 }
+                { status: 403 },
             )
         }
 
         const existingApproval = await prisma.approver.findMany({
-            where: { templateId: id }
+            where: { templateId: id },
         })
 
         const approvalIdsToDelete = existingApproval
-            .filter(approval => !body.approvers.includes(approval.userId))
-            .map(approval => approval.id)
-        
+            .filter((approval) => !body.approvers.includes(approval.userId))
+            .map((approval) => approval.id)
+
         const approvalIdsToCreate = body.approvers.filter(
-            userId => !existingApproval.some(approval => approval.userId === userId)
+            (userId) =>
+                !existingApproval.some(
+                    (approval) => approval.userId === userId,
+                ),
         )
 
         const updatedApproval = await prisma.templates.update({
-            where:{ id },
+            where: { id },
             data: {
                 approvers: {
                     deleteMany: { id: { in: approvalIdsToDelete } },
-                    create: approvalIdsToCreate.map(userId => ({
-                        user: { connect: { id: userId } }
-                    }))
+                    create: approvalIdsToCreate.map((userId) => ({
+                        user: { connect: { id: userId } },
+                    })),
+                },
+            },
+            include: { 
+                approvers: { 
+                    include: { 
+                        user: true 
+                    }
                 }
             },
-            include: { approvers: true }
         })
 
         return NextResponse.json(updatedApproval)
     } catch (err: any) {
         return NextResponse.json(
             { error: err?.message || "Failed to update approval status" },
-            { status: 500 }
+            { status: 500 },
         )
     }
 }
