@@ -178,7 +178,7 @@ export async function POST(req: NextRequest) {
                     }
                 }
             },
-            include: { user: true, versions: { orderBy: { createdAt: "desc" }, take: 1 }},
+            include: { user: true, versions: { orderBy: { createdAt: "desc" }, take: 1 }, approvers: true },
         })
 
         return NextResponse.json(created, { status: 201 })

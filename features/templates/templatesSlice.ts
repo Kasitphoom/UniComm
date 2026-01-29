@@ -346,6 +346,8 @@ const templatesSlice = createSlice({
                             userId: action.payload.userId as string,
                             user: action.payload.user as any,
                             versions: action.payload.versions as any,
+                            approvers: action.payload.approvers as any,
+                            requireUserApproval: false,
                         },
                         ...state.list.items,
                     ]
