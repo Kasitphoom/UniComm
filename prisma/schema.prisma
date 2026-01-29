@@ -38,23 +38,61 @@ model BusinessUser {
 
   templates      Templates[]
   ComponentBlock ComponentBlock[]
+  approvals      Approver[]
 }
 
 // ========= TEMPLATE MODELS =========
 model Templates {
-  id        String            @id @default(auto()) @map("_id") @db.ObjectId
-  title     String            @unique
-  filePath  String
-  userId    String
-  user      BusinessUser      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  versions  TemplateVersion[]
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  title    String            @unique
+  filePath String
+  versions TemplateVersion[]
+
+  userId String       @db.ObjectId
+  user   BusinessUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  approvers Approver[]
+
+  contactList   ContactList? @relation(fields: [contactListId], references: [id])
+  contactListId String?      @db.ObjectId
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum APPROVAL_STATUS {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Approver {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  // Relations - one of these must be set
+  templateId       String?         @db.ObjectId
+  template         Templates?      @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  componentBlockId String?         @db.ObjectId
+  componentBlock   ComponentBlock? @relation(fields: [componentBlockId], references: [id], onDelete: Cascade)
+
+  userId String       @db.ObjectId
+  user   BusinessUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status APPROVAL_STATUS @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([templateId, componentBlockId, userId])
+  @@index([templateId])
+  @@index([componentBlockId])
+  @@index([userId])
 }
 
 model TemplateVersion {
   id         String    @id @default(auto()) @map("_id") @db.ObjectId
-  templateId String
+  templateId String    @db.ObjectId
   template   Templates @relation(fields: [templateId], references: [id], onDelete: Cascade)
   version    String
   filePath   String
@@ -66,16 +104,17 @@ model ComponentBlock {
   id        String                  @id @default(auto()) @map("_id") @db.ObjectId
   name      String                  @unique
   filePath  String
-  userId    String
+  userId    String                  @db.ObjectId
   user      BusinessUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
   versions  ComponentBlockVersion[]
+  approvers Approver[]
   createdAt DateTime                @default(now())
   updatedAt DateTime                @updatedAt
 }
 
 model ComponentBlockVersion {
   id               String         @id @default(auto()) @map("_id") @db.ObjectId
-  componentBlockId String
+  componentBlockId String         @db.ObjectId
   componentBlock   ComponentBlock @relation(fields: [componentBlockId], references: [id], onDelete: Cascade)
   version          String
   filePath         String
@@ -102,8 +141,9 @@ model ContactList {
   primaryKey String  @default("")
   upsertMode Boolean @default(true)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  templates Templates[]
 }
 
 model Customer {
@@ -117,4 +157,10 @@ model Customer {
   updatedAt DateTime @updatedAt
 
   @@index([listId])
+}
+
+model Migration {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String   @unique
+  appliedAt DateTime @default(now())
 }

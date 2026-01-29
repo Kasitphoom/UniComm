@@ -1,10 +1,13 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import ExportBar from '../Editor/ExportBar'
+import TemplateSettingsModal from './TemplateSettingsModal'
 import { getStorageService } from '@/utils/upload/modules'
 import { TemplateWithUser } from '@/types/template'
 import { addToast, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, useDisclosure, Spinner, Tabs, Tab } from '@heroui/react'
-import { useAppSelector } from '@/store/hooks'
+import { useAppDispatch, useAppSelector } from '@/store/hooks'
+import { loadTemplateDraft } from '@/lib/draftStore'
+import { updateTemplate, updateTemplateApprovers } from '@/features/templates/templatesSlice'
 import { generate } from '@pdfme/generator'
 import { plugins } from '../Editor/plugins'
 import { Template, getInputFromTemplate } from '@pdfme/common'
@@ -49,11 +52,15 @@ export const generatePdfPreview = async (template: Template) => {
 
 const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) => {
     const { isOpen, onOpen, onOpenChange } = useDisclosure()
+    const dispatch = useAppDispatch()
+    const { isOpen: isSettingsOpen, onOpen: onSettingOpen, onOpenChange: onSettingsOpenChange } = useDisclosure()
     const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null)
     const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null)
     const [isGeneratingPreview, setIsGeneratingPreview] = useState(false)
     const [selectedMode, setSelectedMode] = useState<string | number>('browser')
     const [isMobile, setIsMobile] = useState(false)
+    const [template, setTemplate] = useState<TemplateWithUser | null>(null)
+    const [isAlertVisible, setIsAlertVisible] = useState(false)
     const parsedTemplate = useAppSelector(state => state.templates.parsedTemplate)
 
     useEffect(() => {
@@ -66,6 +73,18 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
         window.addEventListener('resize', checkMobile)
         return () => window.removeEventListener('resize', checkMobile)
     }, [])
+
+    const fetchTemplate = async () => {
+        const result = await clientFetchTemplate(id)
+        console.log('Fetched template for export bar:', result)
+        setTemplate(result)
+        setIsAlertVisible(!result.contactListId)
+    }
+
+    useEffect(() => {
+        console.log('Fetching template for export bar with id:', id)
+        fetchTemplate()
+    }, [id])
 
     // Export Handler
     const handleExport = async (key: React.Key) => {
@@ -140,7 +159,14 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
         try {
 
             const templateData = await clientFetchTemplate(id)
-            const template = await clientFetchParsedTemplate(id)
+            const parsedTemplate = await clientFetchParsedTemplate(id)
+            const draftKey = `template:${id}`
+            const draftTemplate = await loadTemplateDraft(draftKey)
+            const template = (draftTemplate ?? parsedTemplate?.data) as Template | null
+
+            if (!template) {
+                throw new Error('Template data is not available for PDF export')
+            }
 
             // Generate PDF as Uint8Array
             const pdfBytes = await generatePdfPreview(template)
@@ -171,7 +197,11 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
     const handlePreview = async () => {
         setIsGeneratingPreview(true)
         try {
-            if (!parsedTemplate?.data) {
+            const draftKey = `template:${id}`
+            const draftTemplate = await loadTemplateDraft(draftKey)
+            const template = (draftTemplate ?? parsedTemplate?.data) as Template | null
+
+            if (!template) {
                 addToast({
                     title: 'Preview Error',
                     description: 'Parsed template data is not available for preview',
@@ -180,7 +210,6 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
                 return
             }
 
-            const template = parsedTemplate.data as Template
             setPreviewTemplate(template)
 
             // Generate PDF as Uint8Array
@@ -208,15 +237,34 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
         }
     }
 
+    const handleApprovalSubmit = async (approverIds: string[]) => {
+        await dispatch(updateTemplateApprovers({ id, approvers: approverIds }))
+        await fetchTemplate()
+    }
+
     return (
         <>
             <ExportBar
                 previewable
                 exportable
                 requireApproval
-                approvalButtonConfig={{ disabled: !isOwner }}
+                approvalButtonConfig={{ disabled: !isOwner, currentApprovers: template?.approvers || [] }}
+                // approvalButtonConfig={{ disabled: true }}
+                onSubmitApprovalClick={handleApprovalSubmit}
                 onExportButtonClick={handleExport}
                 onPreviewButtonClick={handlePreview}
+                onSettingsButtonClick={() => onSettingOpen()}
+                settingsBadgeConfig={{
+                    isInvisible: template && !template.contactListId ? false : true,
+                    content: '!',
+                    color: 'danger',
+                }}
+                alertConfig={{
+                    title: "No Contact List Selected",
+                    description: "To use dynamic variables, you need to link a contact list to this template first.",
+                    isVisible: isAlertVisible,
+                    onClose: () => setIsAlertVisible(false),
+                }}
             />
 
             {/* PDF Preview Modal */}
@@ -269,6 +317,12 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
                     )}
                 </ModalContent>
             </Modal>
+
+            <TemplateSettingsModal
+                isOpen={isSettingsOpen}
+                onOpenChange={onSettingsOpenChange}
+                templateId={id}
+            />
         </>
     )
 }

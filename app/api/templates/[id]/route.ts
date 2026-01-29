@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { getBusinessPrisma, getBusinessPrismaByCookie } from "@/lib/prisma-business"
 import { Template } from "@pdfme/common"
 import { transformTemplateToXml } from "@/utils/template/xml-pdf-transformer"
@@ -7,9 +7,10 @@ import { getStorageService } from "@/utils/upload/modules"
 import { hashTemplate } from "@/lib/draftStore"
 import { hasRolePermission, RolePermissions } from "@/lib/role-permissions"
 import { UserRole } from "@/app/generated/business/prisma"
+import { userHasPermissionAPI } from "@/utils/permissions"
 
 export async function GET(
-    _req: Request,
+    _req: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {
     try {
@@ -21,11 +22,19 @@ export async function GET(
         const prisma = await getBusinessPrisma(auth.businessId!)
         const tpl = await prisma.templates.findUnique({
             where: { id },
-            include: { user: true },
+            include: { user: true, versions: true, contactList: true, approvers: true },
         })
         if (!tpl)
             return NextResponse.json({ error: "Not found" }, { status: 404 })
-        return NextResponse.json(tpl)
+
+        const templateWithApprovalFlag = {
+            ...tpl,
+            requireUserApproval: tpl.approvers.some(
+                approver => approver.userId === auth.userId
+            )
+        }
+
+        return NextResponse.json(templateWithApprovalFlag)
     } catch (err: any) {
         return NextResponse.json(
             { error: err?.message || "Failed to fetch template" },
@@ -35,12 +44,19 @@ export async function GET(
 }
 
 export async function PATCH(
-    req: Request,
+    req: NextRequest,
     context: { params: Promise<{ id: string }> }
 ) {
     try {
         const auth = await requireAuth(req)
         if (!auth.ok) return auth.response
+
+        const userHasPermission = await userHasPermissionAPI(req, [ 
+            UserRole.OWNER,
+            UserRole.ADMIN,
+            UserRole.MEMBER, 
+        ]);
+
         const { id } = await context.params
         const prisma = await getBusinessPrisma(auth.businessId!)
         const body: Template = await req.json()
@@ -56,7 +72,7 @@ export async function PATCH(
         }
 
         const isTemplateOwner = existingTemplate.userId === auth.userId
-        if (!isTemplateOwner) {
+        if (!isTemplateOwner || !userHasPermission) {
             return NextResponse.json(
                 { error: "You do not have permission to update this template" },
                 { status: 403 }
