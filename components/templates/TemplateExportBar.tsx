@@ -7,7 +7,7 @@ import { TemplateWithUser } from '@/types/template'
 import { addToast, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, useDisclosure, Spinner, Tabs, Tab } from '@heroui/react'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { loadTemplateDraft } from '@/lib/draftStore'
-import { updateTemplate } from '@/features/templates/templatesSlice'
+import { updateTemplate, updateTemplateApprovers } from '@/features/templates/templatesSlice'
 import { generate } from '@pdfme/generator'
 import { plugins } from '../Editor/plugins'
 import { Template, getInputFromTemplate } from '@pdfme/common'
@@ -74,14 +74,15 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
         return () => window.removeEventListener('resize', checkMobile)
     }, [])
 
+    const fetchTemplate = async () => {
+        const result = await clientFetchTemplate(id)
+        console.log('Fetched template for export bar:', result)
+        setTemplate(result)
+        setIsAlertVisible(!result.contactListId)
+    }
+
     useEffect(() => {
         console.log('Fetching template for export bar with id:', id)
-        const fetchTemplate = async () => {
-            const result = await clientFetchTemplate(id)
-            console.log('Fetched template for export bar:', result)
-            setTemplate(result)
-            setIsAlertVisible(!result.contactListId)
-        }
         fetchTemplate()
     }, [id])
 
@@ -236,14 +237,20 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
         }
     }
 
+    const handleApprovalSubmit = async (approverIds: string[]) => {
+        await dispatch(updateTemplateApprovers({ id, approvers: approverIds }))
+        await fetchTemplate()
+    }
+
     return (
         <>
             <ExportBar
                 previewable
                 exportable
                 requireApproval
-                // approvalButtonConfig={{ disabled: !isOwner }}
-                approvalButtonConfig={{ disabled: true }}
+                approvalButtonConfig={{ disabled: !isOwner, currentApprovers: template?.approvers || [] }}
+                // approvalButtonConfig={{ disabled: true }}
+                onSubmitApprovalClick={handleApprovalSubmit}
                 onExportButtonClick={handleExport}
                 onPreviewButtonClick={handlePreview}
                 onSettingsButtonClick={() => onSettingOpen()}

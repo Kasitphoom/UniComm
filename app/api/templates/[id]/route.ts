@@ -22,11 +22,19 @@ export async function GET(
         const prisma = await getBusinessPrisma(auth.businessId!)
         const tpl = await prisma.templates.findUnique({
             where: { id },
-            include: { user: true, versions: true, contactList: true },
+            include: { user: true, versions: true, contactList: true, approvers: true },
         })
         if (!tpl)
             return NextResponse.json({ error: "Not found" }, { status: 404 })
-        return NextResponse.json(tpl)
+
+        const templateWithApprovalFlag = {
+            ...tpl,
+            requireUserApproval: tpl.approvers.some(
+                approver => approver.userId === auth.userId
+            )
+        }
+
+        return NextResponse.json(templateWithApprovalFlag)
     } catch (err: any) {
         return NextResponse.json(
             { error: err?.message || "Failed to fetch template" },

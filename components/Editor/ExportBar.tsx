@@ -27,32 +27,23 @@ import {
     Search
 } from 'lucide-react'
 import ExportButton, { ExportType } from './ExportButton'
-
-// --- 1. TYPES & MOCK API ---
-
-interface Approver {
-    id: string;
-    name: string;
-    email: string;
-    avatar?: string;
-}
+import { Approver, BusinessUser } from '@/app/generated/business/prisma'
+import { updateTemplateApprovers } from '@/features/templates/templatesSlice'
 
 interface ApiResponse {
-    users: Approver[];
+    users: BusinessUser[];
     currentPage: number;
     total: number; // Total number of PAGES
 }
 
-// Generate 50 mock users
-const DB_USERS: Approver[] = Array.from({ length: 50 }).map((_, i) => ({
-    id: `${i + 1}`,
-    name: `User ${i + 1}`,
-    email: `user${i + 1}@company.com`,
-    avatar: `https://i.pravatar.cc/150?u=${i + 1}`
-}))
+type SelectedUser = {
+    userId: string;
+    user: BusinessUser;
+}
 
 type submitApprovalButtonConfig = {
     disabled?: boolean;
+    currentApprovers?: Approver[];
 }
 
 // =========================================================================
@@ -60,17 +51,13 @@ type submitApprovalButtonConfig = {
 // =========================================================================
 const fetchUsers = async (page: number, query: string, perPage = 8): Promise<ApiResponse> => {
     
-    // ---------------------------------------------------------
-    // ⬇️ UNCOMMENT THIS BLOCK FOR REAL API IMPLEMENTATION ⬇️
-    // ---------------------------------------------------------
-    /*
     const searchParams = new URLSearchParams({
         page: page.toString(),
         perPage: perPage.toString(),
         query: query || "", // Sends empty string if query is null
     });
 
-    const response = await fetch(`/api/users?${searchParams.toString()}`, {
+    const response = await fetch(`/api/business/users?${searchParams.toString()}`, {
         method: "GET",
         headers: { "Content-Type": "application/json" }
     });
@@ -79,54 +66,28 @@ const fetchUsers = async (page: number, query: string, perPage = 8): Promise<Api
         throw new Error(`Error fetching users: ${response.statusText}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as {
+        users: BusinessUser[];
+        currentPage: number;
+        totalPage: number;
+    };
     
     // Ensure your backend returns exactly this shape, or map it here:
     return {
-        users: data.users,         // Array of users
-        currentPage: data.currentPage, // Current page number
-        total: data.total          // Total Pages (not total items)
+        users: data.users,
+        currentPage: data.currentPage,
+        total: data.totalPage
     };
-    */
-    // ---------------------------------------------------------
-    
-    // ⬇️ MOCK IMPLEMENTATION (DELETE THIS WHEN SWITCHING TO REAL API) ⬇️
-    return new Promise((resolve) => {
-        setTimeout(() => {
-            let filtered = DB_USERS
-            
-            // Filter logic (simulating backend search)
-            if (query.trim()) {
-                const lower = query.toLowerCase()
-                filtered = DB_USERS.filter(u =>
-                    u.name.toLowerCase().includes(lower) ||
-                    u.email.toLowerCase().includes(lower)
-                )
-            }
-
-            // Pagination logic (simulating backend pagination)
-            const totalPages = Math.ceil(filtered.length / perPage)
-            const start = (page - 1) * perPage
-            const end = start + perPage
-            const users = filtered.slice(start, end)
-
-            resolve({
-                users,
-                currentPage: page,
-                total: totalPages
-            })
-        }, 600)
-    })
 }
 
 // --- 2. COMPONENT ---
 
-const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: () => void, config: submitApprovalButtonConfig }) => {
+const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: (ids: string[]) => void, config: submitApprovalButtonConfig }) => {
     const [isOpen, setIsOpen] = useState(false)
     
     // Data State
-    const [selectedUsers, setSelectedUsers] = useState<Approver[]>([])
-    const [items, setItems] = useState<Approver[]>([])
+    const [selectedUsers, setSelectedUsers] = useState<SelectedUser[]>([])
+    const [items, setItems] = useState<BusinessUser[]>([])
     const [page, setPage] = useState(1)
     const [totalPages, setTotalPages] = useState(1)
     const [isLoading, setIsLoading] = useState(false)
@@ -158,7 +119,24 @@ const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: () => void, con
         }
     }, [])
 
-    // 2. Initial Load / Search Reset
+    // 2. Initialize selectedUsers from currentApprovers and fetched users
+    useEffect(() => {
+        if (!config?.currentApprovers || items.length === 0) return
+
+        const mappedUsers = config.currentApprovers
+            .map(approver => {
+                const user = items.find(u => u.id === approver.userId)
+                if (user) {
+                    return { userId: approver.userId, user }
+                }
+                return null
+            })
+            .filter((item): item is SelectedUser => item !== null)
+
+        setSelectedUsers(mappedUsers)
+    }, [items, config?.currentApprovers])
+
+    // 3. Initial Load / Search Reset
     useEffect(() => {
         if (!isOpen) return
 
@@ -171,7 +149,7 @@ const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: () => void, con
         return () => clearTimeout(timer)
     }, [isOpen, searchQuery, loadData])
 
-    // 3. HeroUI Infinite Scroll Hook
+    // 4. HeroUI Infinite Scroll Hook
     const [, scrollerRef] = useInfiniteScroll({
         hasMore,
         isEnabled: isOpen, // Only run logic when open
@@ -186,29 +164,26 @@ const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: () => void, con
 
     // -- Handlers --
 
-    const handleSelect = (user: Approver) => {
-        if (!selectedUsers.find(u => u.id === user.id)) {
-            setSelectedUsers(prev => [...prev, user])
+    const handleSelect = (user: BusinessUser) => {
+        if (!selectedUsers.find(s => s.userId === user.id)) {
+            setSelectedUsers(prev => [...prev, { userId: user.id, user }])
         }
     }
 
     const handleRemove = (userId: string) => {
-        setSelectedUsers(prev => prev.filter(u => u.id !== userId))
+        setSelectedUsers(prev => prev.filter(u => u.userId !== userId))
     }
 
     const handleSubmit = async () => {
-        if (selectedUsers.length === 0) return
         setIsSubmitting(true)
-        // Simulate submit
-        await new Promise(r => setTimeout(r, 1000))
-        alert(`Sent to IDs: ${selectedUsers.map(u => u.id).join(', ')}`)
+        if (onSubmit) onSubmit(selectedUsers.map(u => u.userId))
         setIsSubmitting(false)
         setIsOpen(false)
         setSelectedUsers([])
         setSearchQuery("")
     }
 
-    const visibleItems = items.filter(item => !selectedUsers.find(sel => sel.id === item.id))
+    const visibleItems = items.filter(item => !selectedUsers.find(sel => sel.userId === item.id))
 
     return (
         <Popover
@@ -234,21 +209,21 @@ const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: () => void, con
                 {/* Header */}
                 <div className="p-4 w-full bg-white">
                     <div className="mb-2 font-semibold text-small text-default-600">
-                        Select Approvers
+                        Select BusinessUsers
                     </div>
 
                     {/* Chips */}
                     {selectedUsers.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-3">
-                            {selectedUsers.map(user => (
+                            {selectedUsers.map(selected => (
                                 <Chip
-                                    key={user.id}
-                                    onClose={() => handleRemove(user.id)}
+                                    key={selected.userId}
+                                    onClose={() => handleRemove(selected.userId)}
                                     variant="flat"
                                     color="secondary"
                                     size="sm"
                                 >
-                                    {user.name}
+                                    {selected.user.displayName}
                                 </Chip>
                             ))}
                         </div>
@@ -285,10 +260,10 @@ const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: () => void, con
                                     onClick={() => handleSelect(user)}
                                 >
                                     <User
-                                        name={user.name}
+                                        name={user.displayName}
                                         description={user.email}
                                         avatarProps={{
-                                            src: user.avatar,
+                                            name: user.displayName,
                                             size: "sm",
                                             isBordered: false
                                         }}
@@ -334,9 +309,9 @@ const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: () => void, con
                         variant='light'
                         className='rounded-medium'
                         startContent={<Send size={14} />}
-                        onPress={onSubmit}
+                        onPress={handleSubmit}
                         isLoading={isSubmitting}
-                        isDisabled={selectedUsers.length === 0}
+                        isDisabled={isLoading}
                     >
                         Send Request
                     </Button>
@@ -396,7 +371,7 @@ const ExportBar = ({
     onExportButtonClick?: (key: Key) => void;
 
     requireApproval?: boolean;
-    onSubmitApprovalClick?: () => void;
+    onSubmitApprovalClick?: (ids: string[]) => void;
     approvalButtonConfig?: submitApprovalButtonConfig;
 
     alertConfig?: AlertProps;

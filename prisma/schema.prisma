@@ -36,9 +36,9 @@ model BusinessUser {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  templates         Templates[]
-  ComponentBlock    ComponentBlock[]
-  templateApprovals TemplateApprover[]
+  templates      Templates[]
+  ComponentBlock ComponentBlock[]
+  approvals      Approver[]
 }
 
 // ========= TEMPLATE MODELS =========
@@ -52,7 +52,7 @@ model Templates {
   userId String       @db.ObjectId
   user   BusinessUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  approvalUsers TemplateApprover[]
+  approvers Approver[]
 
   contactList   ContactList? @relation(fields: [contactListId], references: [id])
   contactListId String?      @db.ObjectId
@@ -61,16 +61,32 @@ model Templates {
   updatedAt DateTime @updatedAt
 }
 
-model TemplateApprover {
-  id         String       @id @default(auto()) @map("_id") @db.ObjectId
-  templateId String       @db.ObjectId
-  template   Templates    @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  userId     String       @db.ObjectId
-  user       BusinessUser @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt  DateTime     @default(now())
+enum APPROVAL_STATUS {
+  PENDING
+  APPROVED
+  REJECTED
+}
 
-  @@unique([templateId, userId])
+model Approver {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  // Relations - one of these must be set
+  templateId       String?         @db.ObjectId
+  template         Templates?      @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  componentBlockId String?         @db.ObjectId
+  componentBlock   ComponentBlock? @relation(fields: [componentBlockId], references: [id], onDelete: Cascade)
+
+  userId String       @db.ObjectId
+  user   BusinessUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status APPROVAL_STATUS @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([templateId, componentBlockId, userId])
   @@index([templateId])
+  @@index([componentBlockId])
   @@index([userId])
 }
 
@@ -91,6 +107,7 @@ model ComponentBlock {
   userId    String                  @db.ObjectId
   user      BusinessUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
   versions  ComponentBlockVersion[]
+  approvers Approver[]
   createdAt DateTime                @default(now())
   updatedAt DateTime                @updatedAt
 }

@@ -129,6 +129,28 @@ export const updateTemplateSettings = createAsyncThunk(
     }
 )
 
+export const updateTemplateApprovers = createAsyncThunk(
+    "templates/updateApprovers",
+    async (payload: { id: string; approvers: string[] }) => {
+        const res = await fetch(`/api/templates/${payload.id}/approval`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+                approvers: payload.approvers,
+            }),
+        })
+
+        if (!res.ok) {
+            const text = await res.text()
+            throw new Error(text || "Failed to update template approvers")
+        }
+
+        const data = (await res.json()) as Template
+        return data
+    }
+)
+
 export const getParsedTemplateSchema = createAsyncThunk(
     "templates/getParsedTemplateSchema",
     async (id: string) => {

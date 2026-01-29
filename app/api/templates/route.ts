@@ -54,6 +54,7 @@ export async function GET(req: Request) {
                 include: { 
                     user: true,
                     versions: { orderBy: { createdAt: "desc" } },
+                    approvers: true
                 },
             }),
             prisma.templates.count({ where: whereOrUndefined }),
@@ -61,8 +62,16 @@ export async function GET(req: Request) {
 
         const totalPages = Math.max(0, Math.ceil(totalCount / perPage))
 
+        // Add requireUserApproval field to each template
+        const templatesWithApprovalFlag = templates.map(template => ({
+            ...template,
+            requireUserApproval: template.approvers.some(
+                approver => approver.userId === auth.userId
+            )
+        }))
+
         return NextResponse.json({
-            templates,
+            templates: templatesWithApprovalFlag,
             currentPage: page,
             total: totalPages,
         })
