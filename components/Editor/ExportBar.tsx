@@ -15,7 +15,11 @@ import {
     ScrollShadow,
     AlertProps,
     Badge,
-    BadgeProps
+    BadgeProps,
+    Dropdown,
+    DropdownTrigger,
+    DropdownMenu,
+    DropdownItem
 } from '@heroui/react'
 import { useInfiniteScroll } from "@heroui/use-infinite-scroll"
 import {
@@ -31,7 +35,7 @@ import {
     XCircle
 } from 'lucide-react'
 import ExportButton, { ExportType } from './ExportButton'
-import { BusinessUser } from '@/app/generated/business/prisma'
+import { APPROVAL_STATUS, BusinessUser } from '@/app/generated/business/prisma'
 import { updateTemplateApprovers } from '@/features/templates/templatesSlice'
 import { ApproverWithUser } from '@/types/approver'
 import { useUser } from '../providers/UserProvider'
@@ -50,11 +54,10 @@ type SelectedUser = {
 type submitApprovalButtonConfig = {
     disabled?: boolean;
     currentApprovers?: ApproverWithUser[];
+    isApprover?: boolean;
+    updateApproveStatus?: (status: Key) => void;
 }
 
-// =========================================================================
-// 🚀 TODO: REPLACE THIS FUNCTION WITH YOUR REAL API CALL
-// =========================================================================
 const fetchUsers = async (page: number, query: string, perPage = 8): Promise<ApiResponse> => {
     
     const searchParams = new URLSearchParams({
@@ -85,8 +88,6 @@ const fetchUsers = async (page: number, query: string, perPage = 8): Promise<Api
         total: data.totalPage
     };
 }
-
-// --- 2. COMPONENT ---
 
 const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: (ids: string[]) => void, config: submitApprovalButtonConfig }) => {
     const [isOpen, setIsOpen] = useState(false)
@@ -232,6 +233,81 @@ const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: (ids: string[])
 
     const visibleItems = items.filter(item => item.id !== user.currentBusinessProfile?.id && !selectedUsers.find(sel => sel.userId === item.id))
 
+    if (config.isApprover) {
+        return (
+            <ButtonGroup color={approvalSummary.color} variant="flat">
+                {/* LEFT SIDE: The Status & Progress Viewer */}
+                <Popover isOpen={isOpen} onOpenChange={setIsOpen}>
+                    <PopoverTrigger>
+                        <Button 
+                            className="font-bold px-4"
+                            startContent={approvalSummary.icon}
+                        >
+                            {approvalSummary.label}
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 p-0">
+                        {/* Your existing Progress List & User Items go here */}
+                        <div className="p-4 w-full flex flex-col gap-4">
+                            <div className="text-tiny font-bold text-default-400 uppercase mb-2">Current Progress</div>
+                            <div className="flex flex-col gap-3">
+                                {approvers.length > 0 && approvers.map((approver) => (
+                                    <div key={approver.id} className="flex items-center justify-between bg-white p-2">
+                                        <User
+                                            name={`${approver.user.displayName}`} // Map this to real names in your actual implementation
+                                            description={new Date(approver.updatedAt).toLocaleDateString()}
+                                            avatarProps={{ size: "sm", name: approver.user.displayName }}
+                                        />
+                                        <Chip 
+                                            size="sm" 
+                                            variant="flat" 
+                                            color={approver.status === "APPROVED" ? "success" : approver.status === "REJECTED" ? "danger" : approver.status === "PENDING" ? "warning" : "default"}
+                                        >
+                                            {approver.status}
+                                        </Chip>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </PopoverContent>
+                </Popover>
+
+                {/* RIGHT SIDE: The Action Menu */}
+                <Dropdown placement="bottom-end">
+                    <DropdownTrigger>
+                        <Button isIconOnly className="w-8">
+                            <ChevronDown size={16} />
+                        </Button>
+                    </DropdownTrigger>
+                    <DropdownMenu 
+                        aria-label="Approver Actions"
+                        onAction={(key) => config.updateApproveStatus?.(key)}
+                        className="min-w-37.5"
+                    >
+                        <DropdownItem 
+                            key={APPROVAL_STATUS.APPROVED}
+                            startContent={<CheckCircle2 size={18} className="text-success" />}
+                            description="Approve this version"
+                            className="py-3"
+                        >
+                            Approve
+                        </DropdownItem>
+                        <DropdownItem 
+                            key={APPROVAL_STATUS.REJECTED}
+                            variant="flat"
+                            color="default"
+                            startContent={<XCircle size={18} className="text-danger" />}
+                            description="Request changes"
+                            className="py-3"
+                        >
+                            Reject
+                        </DropdownItem>
+                    </DropdownMenu>
+                </Dropdown>
+            </ButtonGroup>
+        );
+    }
+
     return (
         <Popover
             placement="bottom-end"
@@ -261,13 +337,13 @@ const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: (ids: string[])
                         <div className="text-tiny font-bold text-default-400 uppercase tracking-wider mb-3">
                             Approval Progress
                         </div>
-                        <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-3 max-h-96 overflow-y-auto">
                             {approvers.map((approver) => (
-                                <div key={approver.id} className="flex items-center justify-between bg-white p-2 rounded-xl border border-default-100">
+                                <div key={approver.id} className="flex items-center justify-between bg-white p-2">
                                     <User
                                         name={`${approver.user.displayName}`} // Map this to real names in your actual implementation
                                         description={new Date(approver.updatedAt).toLocaleDateString()}
-                                        avatarProps={{ size: "sm", color: approver.status === "APPROVED" ? "success" : "default", name: approver.user.displayName }}
+                                        avatarProps={{ size: "sm", name: approver.user.displayName }}
                                     />
                                     <Chip 
                                         size="sm" 

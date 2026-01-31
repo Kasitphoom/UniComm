@@ -8,7 +8,7 @@ import type {
   TemplateVersion,
 } from '@/app/generated/business/prisma'
 
-import type { Approver } from '@/types/approver'
+import type { ApproverWithUser } from '@/types/approver'
 
 // Base model types (default selection = all scalar fields)
 export type Template = PrismaTemplate
@@ -33,7 +33,7 @@ export type TemplateListItem = Template & {
   userId: string
   user: TemplateUser
   versions: TemplateVersion[]
-  approvers?: Approver[]
+  approvers?: ApproverWithUser[]
   requireUserApproval: boolean
 }
 
