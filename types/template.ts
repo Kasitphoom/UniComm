@@ -25,7 +25,7 @@ export type TemplateUpdateInput = Prisma.TemplatesUpdateInput
 export type TemplateUncheckedUpdateInput = Prisma.TemplatesUncheckedUpdateInput
 
 export type TemplateWithUser = TemplateAPIResponse & {
-  requireUserApproval: boolean
+  requireUserApproval?: boolean
 }
 
 // Lightweight shapes commonly used in UI lists
