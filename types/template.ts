@@ -15,7 +15,7 @@ export type Template = PrismaTemplate
 export type TemplateUser = PrismaBusinessUser
 
 // Rich payloads using Prisma helpers
-export type TemplateWithUser = Prisma.TemplatesGetPayload<{ include: { user: true, versions: true, contactList: true, approvers: { include: { user: true } } } }>
+export type TemplateAPIResponse = Prisma.TemplatesGetPayload<{ include: { user: true, versions: true, contactList: true, approvers: { include: { user: true } } } }>
 
 // DTOs for create/update operations
 // Note: prefer CreateInput to use relation connect; use Unchecked* when setting userId directly.
@@ -23,6 +23,10 @@ export type TemplateCreateInput = Prisma.TemplatesCreateInput
 export type TemplateUncheckedCreateInput = Prisma.TemplatesUncheckedCreateInput
 export type TemplateUpdateInput = Prisma.TemplatesUpdateInput
 export type TemplateUncheckedUpdateInput = Prisma.TemplatesUncheckedUpdateInput
+
+export type TemplateWithUser = TemplateAPIResponse & {
+  requireUserApproval: boolean
+}
 
 // Lightweight shapes commonly used in UI lists
 export type TemplateListItem = Template & {
