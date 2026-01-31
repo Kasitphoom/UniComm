@@ -6,12 +6,13 @@ import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { requireAuth } from "@/lib/api-auth"
 import { userHasPermissionAPI } from "@/utils/permissions"
-import { UserRole } from "@/app/generated/business/prisma"
+import { Prisma, UserRole } from "@/app/generated/business/prisma"
 
 export async function GET(req: Request) {
     try {
         const auth = await requireAuth(req)
         if (!auth.ok) return auth.response
+        if (!auth.userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
         const { searchParams } = new URL(req.url)
         const rawQuery = searchParams.get("query") || undefined
@@ -29,7 +30,7 @@ export async function GET(req: Request) {
         const prisma = await getBusinessPrisma(auth.businessId!)
 
         // Build dynamic where clause
-        const where: any = {}
+        const where: Prisma.TemplatesWhereInput = {}
 
         if (q) {
             where.title = {
@@ -38,9 +39,18 @@ export async function GET(req: Request) {
             }
         }
 
-        if (userOnly) {
+        if (userOnly && auth.userId) {
             // Require authenticated session to filter by user
-            where.userId = auth.userId
+            where.OR = [
+                { userId: auth.userId },
+                {
+                    approvers: {
+                        some: {
+                            userId: auth.userId
+                        }
+                    }
+                }
+            ]
         }
         // If no filters applied, use undefined to avoid empty object edge cases
         const whereOrUndefined = Object.keys(where).length ? where : undefined
