@@ -4,7 +4,7 @@ import { setSidebarOpen } from '@/features/ui/uiSlice'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { TemplateListItem } from '@/types/template'
 import { timeDifferenceFormatter } from '@/utils/DateFormatter'
-import { Button, Card, CardBody, CardFooter, Dropdown, DropdownMenu, DropdownTrigger, DropdownItem, Skeleton, User, addToast, Spinner, cn } from '@heroui/react'
+import { Button, Card, CardBody, CardFooter, Dropdown, DropdownMenu, DropdownTrigger, DropdownItem, Skeleton, User, addToast, Spinner, cn, Chip } from '@heroui/react'
 import { Clock, Dot, EllipsisVertical, FileText, TrashIcon } from 'lucide-react'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
@@ -145,6 +145,20 @@ const TemplateItemCard = ({ template }: { template: TemplateListItem }) => {
             <CardBody className={cn("p-0 overflow-visible", viewMode === 'list' && "px-4 py-3")}>
                 {viewMode === 'grid' ? (
                     <div className="relative w-full aspect-video overflow-hidden rounded-t-xl bg-default-50 border-b border-default-100">
+                        {/* Status Badge Overlay */}
+                        {template.requireUserApproval && (
+                            <div className="absolute top-2 left-2 z-20">
+                                <Chip 
+                                    size="sm" 
+                                    color="warning" 
+                                    variant="shadow" 
+                                    className="text-[10px] font-bold shadow-sm"
+                                >
+                                    Awaiting Approval
+                                </Chip>
+                            </div>
+                        )}
+
                         {/* Interactive Hover Overlay */}
                         <div className="absolute inset-0 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-black/5 flex items-center justify-center backdrop-blur-[2px]">
                             <Button size="sm" variant="flat" className="bg-white/90 font-bold shadow-sm" onPress={onCardClick}>Edit Template</Button>

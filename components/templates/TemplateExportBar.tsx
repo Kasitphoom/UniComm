@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, Key } from 'react'
 import ExportBar from '../Editor/ExportBar'
 import TemplateSettingsModal from './TemplateSettingsModal'
 import { getStorageService } from '@/utils/upload/modules'
@@ -7,12 +7,14 @@ import { TemplateWithUser } from '@/types/template'
 import { addToast, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, useDisclosure, Spinner, Tabs, Tab } from '@heroui/react'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { loadTemplateDraft } from '@/lib/draftStore'
-import { updateTemplate, updateTemplateApprovers } from '@/features/templates/templatesSlice'
+import { updateTemplate, updateTemplateApprovalStatus, updateTemplateApprovers } from '@/features/templates/templatesSlice'
 import { generate } from '@pdfme/generator'
 import { plugins } from '../Editor/plugins'
 import { Template, getInputFromTemplate } from '@pdfme/common'
 import { clientFetchParsedTemplate, clientFetchTemplate } from '@/utils/template/utils'
 import dynamic from 'next/dynamic'
+import { useUser } from '../providers/UserProvider'
+import { ApprovalStatus } from '@/types/approver'
 
 const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { 
     ssr: false,
@@ -53,6 +55,7 @@ export const generatePdfPreview = async (template: Template) => {
 const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) => {
     const { isOpen, onOpen, onOpenChange } = useDisclosure()
     const dispatch = useAppDispatch()
+    const user = useUser()
     const { isOpen: isSettingsOpen, onOpen: onSettingOpen, onOpenChange: onSettingsOpenChange } = useDisclosure()
     const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null)
     const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null)
@@ -242,13 +245,31 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
         await fetchTemplate()
     }
 
+    const handleUpdateTemplateApprovalStatus = async (status: Key) => {
+        // No-op: handled in ExportBar
+        const approverId = template?.approvers.find(a => a.user.id === user.currentBusinessProfile?.id)?.id
+        if (!approverId) return
+
+        await dispatch(updateTemplateApprovalStatus({
+            templateId: id,
+            approvalId: approverId,
+            status: status as string as ApprovalStatus,
+        }))
+        await fetchTemplate()
+    }
+
     return (
         <>
             <ExportBar
                 previewable
                 exportable
                 requireApproval
-                approvalButtonConfig={{ disabled: !isOwner, currentApprovers: template?.approvers || [] }}
+                approvalButtonConfig={{ 
+                    disabled: !isOwner, 
+                    currentApprovers: template?.approvers || [],
+                    isApprover: template?.requireUserApproval || false,
+                    updateApproveStatus: handleUpdateTemplateApprovalStatus,
+                }}
                 // approvalButtonConfig={{ disabled: true }}
                 onSubmitApprovalClick={handleApprovalSubmit}
                 onExportButtonClick={handleExport}

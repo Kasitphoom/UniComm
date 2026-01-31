@@ -2,36 +2,43 @@ import { getBusinessPrismaByCookie } from "@/lib/prisma-business"
 import { TemplateWithUser } from "@/types/template"
 import { sanitizeQuery } from "@/utils/sanitizer"
 
-export const getTemplateWithPagination = async (query: string, currentPage: number = 1, itemsPerPage: number = 8) => {
-
+export const getTemplateWithPagination = async (
+    query: string,
+    currentPage: number = 1,
+    itemsPerPage: number = 8,
+) => {
     const prismaBusiness = await getBusinessPrismaByCookie()
     const q = sanitizeQuery(query)
 
     const templates = await prismaBusiness.templates.findMany({
-        where: q ? {
-            title: {
-                contains: q,
-                mode: 'insensitive',
-            },
-        } : undefined,
+        where: q
+            ? {
+                  title: {
+                      contains: q,
+                      mode: "insensitive",
+                  },
+              }
+            : undefined,
         take: itemsPerPage,
         skip: (currentPage - 1) * itemsPerPage,
         orderBy: {
-            updatedAt: 'desc',
+            updatedAt: "desc",
         },
         include: {
             user: true,
             versions: { orderBy: { createdAt: "desc" } },
-        }
+        },
     })
 
     const total = await prismaBusiness.templates.count({
-        where: q ? {
-            title: {
-                contains: q,
-                mode: 'insensitive',
-            },
-        } : undefined,
+        where: q
+            ? {
+                  title: {
+                      contains: q,
+                      mode: "insensitive",
+                  },
+              }
+            : undefined,
     })
 
     const totalPages = Math.ceil(total / itemsPerPage)
@@ -46,7 +53,10 @@ export const getTemplateWithPagination = async (query: string, currentPage: numb
     }
 }
 
-export const getTemplateByUserId = async (userId?: string, itemsPerPage: number = 8) => {
+export const getTemplateByUserId = async (
+    userId?: string,
+    itemsPerPage: number = 8,
+) => {
     if (!userId) return []
     const prismaBusiness = await getBusinessPrismaByCookie()
 
@@ -56,7 +66,7 @@ export const getTemplateByUserId = async (userId?: string, itemsPerPage: number 
         },
         take: itemsPerPage,
         orderBy: {
-            updatedAt: 'desc',
+            updatedAt: "desc",
         },
         include: {
             user: true,
@@ -67,11 +77,18 @@ export const getTemplateByUserId = async (userId?: string, itemsPerPage: number 
     return templates
 }
 
-export const getTemplateData = async (templateId: string): Promise<TemplateWithUser | null> => {
+export const getTemplateData = async (
+    templateId: string,
+): Promise<TemplateWithUser | null> => {
     const prismaBusiness = await getBusinessPrismaByCookie()
     const template = await prismaBusiness.templates.findUnique({
         where: { id: templateId },
-        include: { user: true, versions: { orderBy: {createdAt: "desc"}}, contactList: true, approvers: true },
+        include: {
+            user: true,
+            versions: { orderBy: { createdAt: "desc" } },
+            contactList: true,
+            approvers: { include: { user: true } },
+        },
     })
     return template
 }
@@ -80,7 +97,7 @@ export const getComponentBlockData = async (componentBlockId: string) => {
     const prismaBusiness = await getBusinessPrismaByCookie()
     const componentBlock = await prismaBusiness.componentBlock.findUnique({
         where: { id: componentBlockId },
-        include: { user: true, versions: { orderBy: {createdAt: "desc"}} },
+        include: { user: true, versions: { orderBy: { createdAt: "desc" } } },
     })
     return componentBlock
 }

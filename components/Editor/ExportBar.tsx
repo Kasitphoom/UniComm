@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useEffect, useCallback, Key } from 'react'
+import React, { useState, useEffect, useCallback, Key, useMemo } from 'react'
 import {
     Alert,
     Button,
@@ -15,7 +15,11 @@ import {
     ScrollShadow,
     AlertProps,
     Badge,
-    BadgeProps
+    BadgeProps,
+    Dropdown,
+    DropdownTrigger,
+    DropdownMenu,
+    DropdownItem
 } from '@heroui/react'
 import { useInfiniteScroll } from "@heroui/use-infinite-scroll"
 import {
@@ -24,11 +28,17 @@ import {
     Settings,
     Send,
     ChevronDown,
-    Search
+    Search,
+    CheckCircle2,
+    AlertCircle,
+    Clock,
+    XCircle
 } from 'lucide-react'
 import ExportButton, { ExportType } from './ExportButton'
-import { Approver, BusinessUser } from '@/app/generated/business/prisma'
+import { APPROVAL_STATUS, BusinessUser } from '@/app/generated/business/prisma'
 import { updateTemplateApprovers } from '@/features/templates/templatesSlice'
+import { ApproverWithUser } from '@/types/approver'
+import { useUser } from '../providers/UserProvider'
 
 interface ApiResponse {
     users: BusinessUser[];
@@ -43,12 +53,11 @@ type SelectedUser = {
 
 type submitApprovalButtonConfig = {
     disabled?: boolean;
-    currentApprovers?: Approver[];
+    currentApprovers?: ApproverWithUser[];
+    isApprover?: boolean;
+    updateApproveStatus?: (status: Key) => void;
 }
 
-// =========================================================================
-// 🚀 TODO: REPLACE THIS FUNCTION WITH YOUR REAL API CALL
-// =========================================================================
 const fetchUsers = async (page: number, query: string, perPage = 8): Promise<ApiResponse> => {
     
     const searchParams = new URLSearchParams({
@@ -80,8 +89,6 @@ const fetchUsers = async (page: number, query: string, perPage = 8): Promise<Api
     };
 }
 
-// --- 2. COMPONENT ---
-
 const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: (ids: string[]) => void, config: submitApprovalButtonConfig }) => {
     const [isOpen, setIsOpen] = useState(false)
     
@@ -93,6 +100,9 @@ const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: (ids: string[])
     const [isLoading, setIsLoading] = useState(false)
     const [searchQuery, setSearchQuery] = useState("")
     const [isSubmitting, setIsSubmitting] = useState(false)
+
+    const approvers = config?.currentApprovers || []
+    const user = useUser()
 
     // Derived state for the hook
     const hasMore = page < totalPages
@@ -162,6 +172,44 @@ const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: (ids: string[])
         },
     })
 
+    const approvalSummary = useMemo(() => {
+        // 1. ACTION STATE: No process has started yet
+        if (approvers.length === 0) {
+            return {
+                label: "Submit for Approval", // Clear call to action
+                color: "secondary" as const,  // Use your brand/primary action color
+                icon: <Send size={16} />,      // Use a "Send" or "Upload" icon
+                type: 'EMPTY'
+            }
+        }
+
+        const approvedCount = approvers.filter(a => a.status === "APPROVED").length
+        const rejectedCount = approvers.filter(a => a.status === "REJECTED").length
+
+        // 2. ALERT STATE: Someone said no
+        if (rejectedCount > 0) {
+            return { label: "Rejected", color: "danger" as const, icon: <XCircle size={16} />, type: 'REJECTED' }
+        }
+
+        // 3. SUCCESS STATE: Everyone said yes
+        if (approvedCount === approvers.length) {
+            return { label: "Fully Approved", color: "success" as const, icon: <CheckCircle2 size={16} />, type: 'FULL' }
+        }
+
+        // 4. PROGRESS STATE: Some have said yes
+        if (approvedCount > 0) {
+            return {
+                label: `${approvedCount}/${approvers.length} Approved`,
+                color: "warning" as const,
+                icon: <AlertCircle size={16} />,
+                type: 'PARTIAL'
+            }
+        }
+
+        // 5. WAITING STATE: Process started, but 0 approvals yet
+        return { label: "Awaiting Approval", color: "warning" as const, icon: <Clock size={16} />, type: 'PENDING' }
+    }, [approvers])
+
     // -- Handlers --
 
     const handleSelect = (user: BusinessUser) => {
@@ -183,7 +231,82 @@ const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: (ids: string[])
         setSearchQuery("")
     }
 
-    const visibleItems = items.filter(item => !selectedUsers.find(sel => sel.userId === item.id))
+    const visibleItems = items.filter(item => item.id !== user.currentBusinessProfile?.id && !selectedUsers.find(sel => sel.userId === item.id))
+
+    if (config.isApprover) {
+        return (
+            <ButtonGroup color={approvalSummary.color} variant="flat">
+                {/* LEFT SIDE: The Status & Progress Viewer */}
+                <Popover isOpen={isOpen} onOpenChange={setIsOpen}>
+                    <PopoverTrigger>
+                        <Button 
+                            className="font-bold px-4"
+                            startContent={approvalSummary.icon}
+                        >
+                            {approvalSummary.label}
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80 p-0">
+                        {/* Your existing Progress List & User Items go here */}
+                        <div className="p-4 w-full flex flex-col gap-4">
+                            <div className="text-tiny font-bold text-default-400 uppercase mb-2">Current Progress</div>
+                            <div className="flex flex-col gap-3">
+                                {approvers.length > 0 && approvers.map((approver) => (
+                                    <div key={approver.id} className="flex items-center justify-between bg-white p-2">
+                                        <User
+                                            name={`${approver.user.displayName}`} // Map this to real names in your actual implementation
+                                            description={new Date(approver.updatedAt).toLocaleDateString()}
+                                            avatarProps={{ size: "sm", name: approver.user.displayName }}
+                                        />
+                                        <Chip 
+                                            size="sm" 
+                                            variant="flat" 
+                                            color={approver.status === "APPROVED" ? "success" : approver.status === "REJECTED" ? "danger" : approver.status === "PENDING" ? "warning" : "default"}
+                                        >
+                                            {approver.status}
+                                        </Chip>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </PopoverContent>
+                </Popover>
+
+                {/* RIGHT SIDE: The Action Menu */}
+                <Dropdown placement="bottom-end">
+                    <DropdownTrigger>
+                        <Button isIconOnly className="w-8">
+                            <ChevronDown size={16} />
+                        </Button>
+                    </DropdownTrigger>
+                    <DropdownMenu 
+                        aria-label="Approver Actions"
+                        onAction={(key) => config.updateApproveStatus?.(key)}
+                        className="min-w-37.5"
+                    >
+                        <DropdownItem 
+                            key={APPROVAL_STATUS.APPROVED}
+                            startContent={<CheckCircle2 size={18} className="text-success" />}
+                            description="Approve this version"
+                            className="py-3"
+                        >
+                            Approve
+                        </DropdownItem>
+                        <DropdownItem 
+                            key={APPROVAL_STATUS.REJECTED}
+                            variant="flat"
+                            color="default"
+                            startContent={<XCircle size={18} className="text-danger" />}
+                            description="Request changes"
+                            className="py-3"
+                        >
+                            Reject
+                        </DropdownItem>
+                    </DropdownMenu>
+                </Dropdown>
+            </ButtonGroup>
+        );
+    }
 
     return (
         <Popover
@@ -195,21 +318,50 @@ const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: (ids: string[])
             offset={10}
         >
             <PopoverTrigger>
+                {/* Enhanced Trigger: Uses the semantic color from the approvalSummary 
+                  to instantly signal status to the user.
+                */}
                 <Button
-                    color="secondary"
+                    color={approvalSummary.color}
                     variant="solid"
+                    startContent={approvalSummary.icon}
                     endContent={<ChevronDown size={16} />}
-                    className="font-medium"
                     isDisabled={config?.disabled}
                 >
-                    Submit Approval
+                    {approvalSummary.label}
                 </Button>
             </PopoverTrigger>
             <PopoverContent className="w-85 p-0 overflow-hidden">
+                {approvers.length > 0 && (
+                    <div className="p-4 border-b border-default-100 w-full">
+                        <div className="text-tiny font-bold text-default-400 uppercase tracking-wider mb-3">
+                            Approval Progress
+                        </div>
+                        <div className="flex flex-col gap-3 max-h-96 overflow-y-auto">
+                            {approvers.map((approver) => (
+                                <div key={approver.id} className="flex items-center justify-between bg-white p-2">
+                                    <User
+                                        name={`${approver.user.displayName}`} // Map this to real names in your actual implementation
+                                        description={new Date(approver.updatedAt).toLocaleDateString()}
+                                        avatarProps={{ size: "sm", name: approver.user.displayName }}
+                                    />
+                                    <Chip 
+                                        size="sm" 
+                                        variant="flat" 
+                                        color={approver.status === "APPROVED" ? "success" : approver.status === "REJECTED" ? "danger" : approver.status === "PENDING" ? "warning" : "default"}
+                                    >
+                                        {approver.status}
+                                    </Chip>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* Header */}
                 <div className="p-4 w-full bg-white">
-                    <div className="mb-2 font-semibold text-small text-default-600">
-                        Select BusinessUsers
+                    <div className="mb-2 font-bold text-small">
+                        {approvers.length > 0 ? "Add / Remove Approvers" : "Request Approval"}
                     </div>
 
                     {/* Chips */}
@@ -302,18 +454,10 @@ const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: (ids: string[])
                 </ScrollShadow>
 
                 {/* Footer */}
-                <div className="p-3 w-full bg-default-50 flex justify-center items-center border-t border-default-200">
-                    <Button
-                        size="sm"
-                        color="secondary"
-                        variant='light'
-                        className='rounded-medium'
-                        startContent={<Send size={14} />}
-                        onPress={handleSubmit}
-                        isLoading={isSubmitting}
-                        isDisabled={isLoading}
-                    >
-                        Send Request
+                <div className="p-3 w-full flex justify-end gap-2 bg-default-50 border-t border-default-200">
+                    <Button size="sm" variant="light" onPress={() => setIsOpen(false)}>Close</Button>
+                    <Button size="sm" color="secondary" onPress={handleSubmit}>
+                        Update Request
                     </Button>
                 </div>
             </PopoverContent>
