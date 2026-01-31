@@ -34,6 +34,7 @@ import ExportButton, { ExportType } from './ExportButton'
 import { BusinessUser } from '@/app/generated/business/prisma'
 import { updateTemplateApprovers } from '@/features/templates/templatesSlice'
 import { ApproverWithUser } from '@/types/approver'
+import { useUser } from '../providers/UserProvider'
 
 interface ApiResponse {
     users: BusinessUser[];
@@ -100,6 +101,7 @@ const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: (ids: string[])
     const [isSubmitting, setIsSubmitting] = useState(false)
 
     const approvers = config?.currentApprovers || []
+    const user = useUser()
 
     // Derived state for the hook
     const hasMore = page < totalPages
@@ -228,7 +230,7 @@ const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: (ids: string[])
         setSearchQuery("")
     }
 
-    const visibleItems = items.filter(item => !selectedUsers.find(sel => sel.userId === item.id))
+    const visibleItems = items.filter(item => item.id !== user.currentBusinessProfile?.id && !selectedUsers.find(sel => sel.userId === item.id))
 
     return (
         <Popover
@@ -283,7 +285,7 @@ const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: (ids: string[])
                 {/* Header */}
                 <div className="p-4 w-full bg-white">
                     <div className="mb-2 font-bold text-small">
-                        {approvers.length > 0 ? "Add More Approvers" : "Request Approval"}
+                        {approvers.length > 0 ? "Add / Remove Approvers" : "Request Approval"}
                     </div>
 
                     {/* Chips */}
