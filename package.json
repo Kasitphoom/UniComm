@@ -1,12 +1,15 @@
 {
   "name": "unicomm",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "scripts": {
     "dev": "next dev --port 4100",
     "build": "next build",
     "start": "next start --port 4100",
-    "prisma-generate": "npx prisma generate --schema=prisma/main.schema.prisma && npx prisma generate "
+    "prisma-generate": "npx prisma generate --schema=prisma/main.schema.prisma && npx prisma generate ",
+    "migrate:db": "tsx scripts/migrations/run.ts --db=both",
+    "migrate:db:main": "tsx scripts/migrations/run.ts --db=main",
+    "migrate:db:business": "tsx scripts/migrations/run.ts --db=business"
   },
   "dependencies": {
     "@heroui/react": "^2.8.6",

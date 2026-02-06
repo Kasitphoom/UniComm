@@ -91,14 +91,12 @@ const Editor: React.FC<EditorProps> = ({ id, resource = 'template', draftKeyPref
     // Debounced push of template updates to the store/API
     const handleDesignerChange = useCallback(
         async (updated: Template) => {
-            console.log(updated)
-            latestTemplateRef.current = updated
             latestTemplateRef.current = updated
             lastDraftTplRef.current = updated
             await saveTemplateDraft(draftId, updated) // fast local autosave
             scheduleIdleUpload()
         },
-        [dispatch, draftId]
+        [draftId, dispatch]
     )
 
     useEffect(() => {

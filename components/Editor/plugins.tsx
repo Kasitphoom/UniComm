@@ -13,10 +13,11 @@ import {
     select,
 } from "@pdfme/schemas"
 import ComponentBlocks from "@/lib/template/plugins/componentBlocks/ComponentBlocks"
+import { TextWithVariables } from "@/lib/template/plugins/textWithVariables"
 
 export const plugins = {
     text,
-    multiVariableText,
+    TextWithVariables,
     image,
     svg,
     table,

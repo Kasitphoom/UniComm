@@ -23,6 +23,7 @@ type FormValues = {
     orientation: Orientation
     widthCm: string
     heightCm: string
+    customerListId?: string
 }
 
 const schema: yup.ObjectSchema<FormValues> = yup
@@ -63,6 +64,9 @@ const schema: yup.ObjectSchema<FormValues> = yup
                 otherwise: (s) => s.defined(),
             })
             .defined(),
+        customerListId: yup
+            .string()
+            .optional(),
     })
     .required()
 

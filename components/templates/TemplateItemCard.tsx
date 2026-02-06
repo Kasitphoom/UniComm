@@ -2,14 +2,14 @@
 import { deleteTemplate, fetchTemplates, fetchUserTemplates } from '@/features/templates/templatesSlice'
 import { setSidebarOpen } from '@/features/ui/uiSlice'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
-import { TemplateWithUser } from '@/types/template'
+import { TemplateListItem } from '@/types/template'
 import { timeDifferenceFormatter } from '@/utils/DateFormatter'
-import { Button, Card, CardBody, CardFooter, Dropdown, DropdownMenu, DropdownTrigger, DropdownItem, Skeleton, User, addToast, Spinner } from '@heroui/react'
-import { Dot, EllipsisVertical, TrashIcon } from 'lucide-react'
+import { Button, Card, CardBody, CardFooter, Dropdown, DropdownMenu, DropdownTrigger, DropdownItem, Skeleton, User, addToast, Spinner, cn, Chip } from '@heroui/react'
+import { Clock, Dot, EllipsisVertical, FileText, TrashIcon } from 'lucide-react'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import React, { Key, useEffect, useState } from 'react'
+import React, { Key, useEffect, useMemo, useState } from 'react'
 import { clientFetchParsedTemplate } from '@/utils/template/utils'
 import { generatePdfPreview } from './TemplateExportBar'
 import { Template } from '@pdfme/common'
@@ -22,7 +22,7 @@ const PdfViewer = dynamic(() => import('@/components/PdfViewer'), {
     loading: () => <div className='w-full h-full flex justify-center items-center'><Spinner color='secondary'/></div>, 
 })
 
-const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
+const TemplateItemCard = ({ template }: { template: TemplateListItem }) => {
     const dispatch = useAppDispatch()
     const router = useRouter()
     const pathname = usePathname()
@@ -37,6 +37,20 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
     // Check if user has permission to delete (owner of template OR system admin/owner)
     const isTemplateOwner = template.userId === currentUser.currentBusinessProfile?.id
     const canDelete = canDeleteResource(isTemplateOwner, currentUser.role)
+    type ApprovalStatus = {
+        status: 'Approved' | 'Rejected' | 'Awaiting Approval'
+        color: 'success' | 'danger' | 'warning'
+    }
+
+    const approvedStatus = useMemo<ApprovalStatus | null>(() => {
+        const approver = template.approvers?.find(a => a.userId === currentUser.currentBusinessProfile?.id)
+        if (!approver) return null
+
+        return {
+            status: approver.status === 'APPROVED' ? 'Approved' : approver.status === 'REJECTED' ? 'Rejected' : 'Awaiting Approval',
+            color: approver.status === 'APPROVED' ? 'success' : approver.status === 'REJECTED' ? 'danger' : 'warning',
+        }
+    }, [template.approvers])
 
     useEffect(() => {
         if (viewMode !== 'grid') return
@@ -111,81 +125,157 @@ const TemplateItemCard = ({ template }: { template: TemplateWithUser }) => {
         }
     }
 
+    const ActionMenu = ({ onAction } : { onAction: (key: Key) => Promise<void> }) => (
+        <Dropdown placement="bottom-end">
+            <DropdownTrigger>
+                <Button isIconOnly size="sm" variant="light" className="text-default-400 min-w-unit-8 w-8 h-8">
+                    <EllipsisVertical size={16} />
+                </Button>
+            </DropdownTrigger>
+            <DropdownMenu onAction={onAction} aria-label="Template Actions">
+                <DropdownItem 
+                    key="Delete" 
+                    color="danger" 
+                    className="text-danger" 
+                    startContent={<TrashIcon size={16} />}
+                >
+                    Delete Template
+                </DropdownItem>
+            </DropdownMenu>
+        </Dropdown>
+    );
+
     return (
-        <Card className={viewMode === "grid" ? 'h-70' : ""} shadow={viewMode === "grid" ? 'sm' : "none"} isPressable onPress={onCardClick}>
-            <CardBody>
-                {
-                    viewMode === 'grid' ? (
-                        <div className='w-full h-full overflow-hidden rounded-md bg-default-100'>
-                            {isPreviewLoading && !previewUrl && (
-                                <Skeleton className='w-full h-full rounded-md' />
-                            )}
-                            {previewTemplate ? (
-                                <PdfViewer template={previewTemplate} className={'overflow-hidden w-full h-full rounded-md'} customViewerOptions={{ showToolbar: false, scroll: false }} />
-                            ) : (!isPreviewLoading && (
-                                <div className='flex items-center justify-center text-xs text-default-400'>
-                                    {previewError || 'Preview unavailable'}
-                                </div>
-                            ))}
+        <Card 
+            isPressable 
+            onPress={onCardClick}
+            className={cn(
+                "group transition-all duration-300 shadow-none",
+                viewMode === "grid" 
+                    ? "border border-default-100 hover:border-secondary-300 hover:shadow-xl hover:shadow-default-200/50" 
+                    : "hover:bg-default-100/50 border border-default-100 hover:border-secondary-300"
+            )}
+        >
+            <CardBody className={cn("p-0 overflow-visible", viewMode === 'list' && "px-4 py-3")}>
+                {viewMode === 'grid' ? (
+                    <div className="relative w-full aspect-video overflow-hidden rounded-t-xl bg-default-50 border-b border-default-100">
+                        {/* Status Badge Overlay */}
+                        {template.requireUserApproval && (
+                            <div className="absolute top-2 left-2 z-20">
+                                <Chip 
+                                    size="sm" 
+                                    color={approvedStatus?.color || 'default'} 
+                                    variant="shadow" 
+                                    className="text-[10px] font-bold shadow-sm"
+                                >
+                                    {
+                                        approvedStatus?.status
+                                    }
+                                </Chip>
+                            </div>
+                        )}
+
+                        {/* Interactive Hover Overlay */}
+                        <div className="absolute inset-0 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-black/5 flex items-center justify-center backdrop-blur-[2px]">
+                            <Button size="sm" variant="flat" className="bg-white/90 font-bold shadow-sm" onPress={onCardClick}>Edit Template</Button>
                         </div>
-                    ) : (
-                        <div className='flex items-center justify-between w-full'>
-                            <p className='line-clamp-2 text-ellipsis overflow-hidden'>{ template.title }</p>
-                            <div className='flex md:gap-2 items-center flex-wrap'>
-                                <User
-                                    name={ template.user.displayName }
-                                    avatarProps={{ 
-                                        name: template.user.displayName?.toUpperCase(),
-                                        size: 'sm',
-                                        className: "h-6 w-6 text-[10px]"
-                                    }}
-                                    classNames={{
-                                        name: "hidden md:inline-block",
-                                    }}
+
+                        {isPreviewLoading && (
+                            <Skeleton className="w-full h-full" />
+                        )}
+                        
+                        {previewTemplate ? (
+                            <div className="w-full h-full pointer-events-none origin-top scale-[1.01]">
+                                <PdfViewer 
+                                    template={previewTemplate} 
+                                    className="w-full h-full object-cover" 
+                                    customViewerOptions={{ showToolbar: false, scroll: false }}
                                 />
-                                <Dot size={12} className='hidden md:block text-default-400' />
-                                <p className='text-xs text-default-400' suppressHydrationWarning>
-                                    { timeDifferenceFormatter(new Date(template.updatedAt)) }
+                            </div>
+                        ) : (!isPreviewLoading && (
+                            <div className="flex flex-col items-center justify-center h-full text-default-300 gap-2">
+                                <FileText size={28} strokeWidth={1.5} />
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-default-400">
+                                    {previewError || 'Preview Unavailable'}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    /* --- LIST VIEW ROW --- */
+                    <div className="flex items-center justify-between w-full gap-4">
+                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                            <div className="p-2 rounded-lg bg-secondary-50 text-secondary shrink-0">
+                                <FileText size={18} />
+                            </div>
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                                <p className="font-semibold text-small truncate">
+                                    {template.title}
                                 </p>
+                                {/* Status Chip for List View */}
+                                {template.requireUserApproval && (
+                                    <Chip
+                                        size="sm"
+                                        color={approvedStatus?.color || 'default'}
+                                        variant="flat"
+                                        className="text-[10px] h-5 font-bold shrink-0"
+                                    >
+                                        {approvedStatus?.status}
+                                    </Chip>
+                                )}
                             </div>
                         </div>
-                    ) 
-                }
-            </CardBody>
-            {
-                viewMode === 'grid' && (
-                    <CardFooter className='relative flex shrink-0 flex-col gap-2 items-start justify-between'>
-                        <p className='line-clamp-2 text-ellipsis overflow-hidden'>{ template.title }</p>
-                        <div className='flex gap-2 items-center flex-wrap'>
+
+                        <div className="flex items-center gap-6 shrink-0">
                             <User
-                                name={ template.user.displayName }
-                                avatarProps={{ 
+                                name={template.user.displayName}
+                                avatarProps={{
                                     name: template.user.displayName?.toUpperCase(),
-                                    size: 'sm'
+                                    size: 'sm',
+                                    className: "h-7 w-7 text-[10px] bg-secondary-100 text-secondary"
                                 }}
+                                classNames={{ name: "hidden md:block text-tiny font-medium" }}
                             />
-                            <Dot size={12} className='text-default-400' />
-                            <p className='text-xs text-default-400' suppressHydrationWarning>
-                                { timeDifferenceFormatter(new Date(template.updatedAt)) }
-                            </p>
+                            <div className="hidden sm:flex items-center gap-1.5 text-default-400">
+                                <Clock size={14} />
+                                <p className="text-tiny whitespace-nowrap">
+                                    {timeDifferenceFormatter(new Date(template.updatedAt))}
+                                </p>
+                            </div>
+                            {canDelete && (
+                                <ActionMenu onAction={onAction} />
+                            )}
                         </div>
-                        {canDelete && (
-                            <Dropdown>
-                                <DropdownTrigger>
-                                    <div className='absolute top-2 right-2 w-fit hover:cursor-pointer hover:bg-default-200 p-2 rounded-full transition-background'>
-                                        <EllipsisVertical size={16} />
-                                    </div>
-                                </DropdownTrigger>
-                                <DropdownMenu onAction={onAction}>
-                                    <DropdownItem key="Delete" color="danger" className='text-danger' startContent={<TrashIcon size={16} />}>
-                                        Delete
-                                    </DropdownItem>
-                                </DropdownMenu>
-                            </Dropdown>
-                        )}
-                    </CardFooter>
-                )
-            }
+                    </div>
+                )}
+            </CardBody>
+
+            {viewMode === 'grid' && (
+                <CardFooter className="flex flex-col items-start gap-3 p-4">
+                    <div className="flex justify-between items-start w-full gap-2">
+                        <h3 className="text-small text-left font-bold leading-tight line-clamp-2 min-h-10 flex-1">
+                            {template.title}
+                        </h3>
+                        {canDelete && <ActionMenu onAction={onAction} />}
+                    </div>
+
+                    <div className="flex items-center justify-between w-full border-t border-default-50 pt-3">
+                        <User
+                            name={template.user.displayName}
+                            description={timeDifferenceFormatter(new Date(template.updatedAt))}
+                            avatarProps={{ 
+                                name: template.user.displayName?.toUpperCase(),
+                                size: 'sm',
+                                className: "h-6 w-6 text-[10px]"
+                            }}
+                            classNames={{
+                                name: "text-[11px] font-semibold leading-none",
+                                description: "text-[10px] text-default-400 mt-0.5"
+                            }}
+                        />
+                    </div>
+                </CardFooter>
+            )}
         </Card>
     )
 }

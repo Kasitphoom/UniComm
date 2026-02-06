@@ -1,46 +1,70 @@
-import { NextResponse } from "next/server"
-import { getBusinessPrisma, getBusinessPrismaByCookie } from "@/lib/prisma-business"
+import { NextRequest, NextResponse } from "next/server"
+import {
+    getBusinessPrisma,
+    getBusinessPrismaByCookie,
+} from "@/lib/prisma-business"
 import { Template } from "@pdfme/common"
 import { transformTemplateToXml } from "@/utils/template/xml-pdf-transformer"
-import { requireAuth } from '@/lib/api-auth'
+import { requireAuth } from "@/lib/api-auth"
 import { getStorageService } from "@/utils/upload/modules"
 import { hashTemplate } from "@/lib/draftStore"
 import { hasRolePermission, RolePermissions } from "@/lib/role-permissions"
 import { UserRole } from "@/app/generated/business/prisma"
+import { userHasPermissionAPI } from "@/utils/permissions"
 
 export async function GET(
-    _req: Request,
-    context: { params: Promise<{ id: string }> }
+    _req: NextRequest,
+    context: { params: Promise<{ id: string }> },
 ) {
     try {
         const auth = await requireAuth(_req)
         if (!auth.ok) return auth.response
 
         const { id } = await context.params
-        
+
         const prisma = await getBusinessPrisma(auth.businessId!)
         const tpl = await prisma.templates.findUnique({
             where: { id },
-            include: { user: true },
+            include: {
+                user: true,
+                versions: true,
+                contactList: true,
+                approvers: { include: { user: true } },
+            },
         })
         if (!tpl)
             return NextResponse.json({ error: "Not found" }, { status: 404 })
-        return NextResponse.json(tpl)
+
+        const templateWithApprovalFlag = {
+            ...tpl,
+            requireUserApproval: tpl.approvers.some(
+                (approver) => approver.userId === auth.userId,
+            ),
+        }
+
+        return NextResponse.json(templateWithApprovalFlag)
     } catch (err: any) {
         return NextResponse.json(
             { error: err?.message || "Failed to fetch template" },
-            { status: 500 }
+            { status: 500 },
         )
     }
 }
 
 export async function PATCH(
-    req: Request,
-    context: { params: Promise<{ id: string }> }
+    req: NextRequest,
+    context: { params: Promise<{ id: string }> },
 ) {
     try {
         const auth = await requireAuth(req)
         if (!auth.ok) return auth.response
+
+        const userHasPermission = await userHasPermissionAPI(req, [
+            UserRole.OWNER,
+            UserRole.ADMIN,
+            UserRole.MEMBER,
+        ])
+
         const { id } = await context.params
         const prisma = await getBusinessPrisma(auth.businessId!)
         const body: Template = await req.json()
@@ -51,26 +75,26 @@ export async function PATCH(
         if (!existingTemplate) {
             return NextResponse.json(
                 { error: "Template not found" },
-                { status: 404 }
+                { status: 404 },
             )
         }
 
         const isTemplateOwner = existingTemplate.userId === auth.userId
-        if (!isTemplateOwner) {
+        if (!isTemplateOwner || !userHasPermission) {
             return NextResponse.json(
                 { error: "You do not have permission to update this template" },
-                { status: 403 }
+                { status: 403 },
             )
         }
 
         const hashedTemplate = await hashTemplate(body)
         const xmlContent = await transformTemplateToXml(body)
-        
+
         const storageService = getStorageService()
         if (!storageService) {
             return NextResponse.json(
                 { error: "Storage service not configured" },
-                { status: 500 }
+                { status: 500 },
             )
         }
 
@@ -78,7 +102,7 @@ export async function PATCH(
 
         const existingVersions = await prisma.templateVersion.findMany({
             where: { templateId: id, version: hashedTemplate },
-            orderBy: { version: 'desc' },
+            orderBy: { version: "desc" },
             take: 1,
         })
 
@@ -93,16 +117,22 @@ export async function PATCH(
                         where: {
                             version: hashedTemplate,
                         },
-                        orderBy: { createdAt: 'desc' },
+                        orderBy: { createdAt: "desc" },
                         take: 1,
-                    }
-                }
+                    },
+                },
             })
 
-            return NextResponse.json({ updated, xmlPreview: xmlContent.slice(0, 500) })
+            return NextResponse.json({
+                updated,
+                xmlPreview: xmlContent.slice(0, 500),
+            })
         }
 
-        const newUrl = await storageService.uploadFile(Buffer.from(xmlContent, 'utf8'), fileKey)
+        const newUrl = await storageService.uploadFile(
+            Buffer.from(xmlContent, "utf8"),
+            fileKey,
+        )
 
         const updated = await prisma.templates.update({
             where: { id },
@@ -117,24 +147,27 @@ export async function PATCH(
             },
             include: {
                 versions: {
-                    orderBy: { createdAt: 'desc' },
+                    orderBy: { createdAt: "desc" },
                     take: 1,
-                }
-            }
+                },
+            },
         })
 
-        return NextResponse.json({ updated, xmlPreview: xmlContent.slice(0, 500) })
+        return NextResponse.json({
+            updated,
+            xmlPreview: xmlContent.slice(0, 500),
+        })
     } catch (err: any) {
         return NextResponse.json(
             { error: err?.message || "Failed to update template" },
-            { status: 500 }
+            { status: 500 },
         )
     }
 }
 
 export const DELETE = async (
     req: Request,
-    context: { params: Promise<{ id: string }> }
+    context: { params: Promise<{ id: string }> },
 ) => {
     try {
         const auth = await requireAuth(req)
@@ -146,34 +179,37 @@ export const DELETE = async (
             where: { id },
             include: {
                 versions: true,
-            }
+            },
         })
         if (!existingTemplate) {
             return NextResponse.json(
                 { error: "Template not found" },
-                { status: 404 }
+                { status: 404 },
             )
         }
 
         // Permission check: Get current user's role
-        const currentUser = await prisma.businessUser.findUnique({ 
-            where: { id: auth.userId! } 
+        const currentUser = await prisma.businessUser.findUnique({
+            where: { id: auth.userId! },
         })
         if (!currentUser) {
             return NextResponse.json(
                 { error: "User not found" },
-                { status: 401 }
+                { status: 401 },
             )
         }
 
         // Check if user is owner of the template OR has ADMIN/OWNER role
         const isTemplateOwner = existingTemplate.userId === auth.userId
-        const hasAdminAccess = hasRolePermission(currentUser.role, RolePermissions.ADMIN_AND_OWNER)
+        const hasAdminAccess = hasRolePermission(
+            currentUser.role,
+            RolePermissions.ADMIN_AND_OWNER,
+        )
 
         if (!isTemplateOwner && !hasAdminAccess) {
             return NextResponse.json(
                 { error: "You do not have permission to delete this template" },
-                { status: 403 }
+                { status: 403 },
             )
         }
 
@@ -194,7 +230,7 @@ export const DELETE = async (
         console.log(err)
         return NextResponse.json(
             { error: err?.message || "Failed to delete template" },
-            { status: 500 }
+            { status: 500 },
         )
     }
 }
