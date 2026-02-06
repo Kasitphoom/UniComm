@@ -9,7 +9,7 @@ import { Clock, Dot, EllipsisVertical, FileText, TrashIcon } from 'lucide-react'
 import Image from 'next/image'
 import dynamic from 'next/dynamic'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import React, { Key, useEffect, useState } from 'react'
+import React, { Key, useEffect, useMemo, useState } from 'react'
 import { clientFetchParsedTemplate } from '@/utils/template/utils'
 import { generatePdfPreview } from './TemplateExportBar'
 import { Template } from '@pdfme/common'
@@ -37,6 +37,20 @@ const TemplateItemCard = ({ template }: { template: TemplateListItem }) => {
     // Check if user has permission to delete (owner of template OR system admin/owner)
     const isTemplateOwner = template.userId === currentUser.currentBusinessProfile?.id
     const canDelete = canDeleteResource(isTemplateOwner, currentUser.role)
+    type ApprovalStatus = {
+        status: 'Approved' | 'Rejected' | 'Awaiting Approval'
+        color: 'success' | 'danger' | 'warning'
+    }
+
+    const approvedStatus = useMemo<ApprovalStatus | null>(() => {
+        const approver = template.approvers?.find(a => a.userId === currentUser.currentBusinessProfile?.id)
+        if (!approver) return null
+
+        return {
+            status: approver.status === 'APPROVED' ? 'Approved' : approver.status === 'REJECTED' ? 'Rejected' : 'Awaiting Approval',
+            color: approver.status === 'APPROVED' ? 'success' : approver.status === 'REJECTED' ? 'danger' : 'warning',
+        }
+    }, [template.approvers])
 
     useEffect(() => {
         if (viewMode !== 'grid') return
@@ -136,10 +150,10 @@ const TemplateItemCard = ({ template }: { template: TemplateListItem }) => {
             isPressable 
             onPress={onCardClick}
             className={cn(
-                "group transition-all duration-300",
+                "group transition-all duration-300 shadow-none",
                 viewMode === "grid" 
-                    ? "border border-default-100 hover:border-secondary-300 shadow-none hover:shadow-xl hover:shadow-default-200/50" 
-                    : "border-none hover:bg-default-100/50"
+                    ? "border border-default-100 hover:border-secondary-300 hover:shadow-xl hover:shadow-default-200/50" 
+                    : "hover:bg-default-100/50 border border-default-100 hover:border-secondary-300"
             )}
         >
             <CardBody className={cn("p-0 overflow-visible", viewMode === 'list' && "px-4 py-3")}>
@@ -150,11 +164,13 @@ const TemplateItemCard = ({ template }: { template: TemplateListItem }) => {
                             <div className="absolute top-2 left-2 z-20">
                                 <Chip 
                                     size="sm" 
-                                    color="warning" 
+                                    color={approvedStatus?.color || 'default'} 
                                     variant="shadow" 
                                     className="text-[10px] font-bold shadow-sm"
                                 >
-                                    Awaiting Approval
+                                    {
+                                        approvedStatus?.status
+                                    }
                                 </Chip>
                             </div>
                         )}
