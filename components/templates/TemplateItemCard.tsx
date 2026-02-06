@@ -204,19 +204,32 @@ const TemplateItemCard = ({ template }: { template: TemplateListItem }) => {
                 ) : (
                     /* --- LIST VIEW ROW --- */
                     <div className="flex items-center justify-between w-full gap-4">
-                        <div className="flex items-center gap-4 flex-1">
-                             <div className="p-2 rounded-lg bg-secondary-50 text-secondary">
+                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                            <div className="p-2 rounded-lg bg-secondary-50 text-secondary shrink-0">
                                 <FileText size={18} />
-                             </div>
-                             <p className="font-semibold text-small line-clamp-1 truncate flex-1">
-                                {template.title}
-                             </p>
+                            </div>
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                                <p className="font-semibold text-small truncate">
+                                    {template.title}
+                                </p>
+                                {/* Status Chip for List View */}
+                                {template.requireUserApproval && (
+                                    <Chip
+                                        size="sm"
+                                        color={approvedStatus?.color || 'default'}
+                                        variant="flat"
+                                        className="text-[10px] h-5 font-bold shrink-0"
+                                    >
+                                        {approvedStatus?.status}
+                                    </Chip>
+                                )}
+                            </div>
                         </div>
 
-                        <div className="flex items-center gap-6">
+                        <div className="flex items-center gap-6 shrink-0">
                             <User
                                 name={template.user.displayName}
-                                avatarProps={{ 
+                                avatarProps={{
                                     name: template.user.displayName?.toUpperCase(),
                                     size: 'sm',
                                     className: "h-7 w-7 text-[10px] bg-secondary-100 text-secondary"
