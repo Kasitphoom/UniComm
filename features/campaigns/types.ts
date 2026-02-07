@@ -1,0 +1,21 @@
+import type { CampaignWithRelations } from "@/types/campaign"
+import type { FILE_STATUS, SCHEDULE_STATUS } from "@/app/generated/business/prisma"
+
+export type RequestStatus = "idle" | "loading" | "succeeded" | "failed"
+
+export interface CampaignsListState {
+    items: CampaignWithRelations[]
+    status: RequestStatus
+    error: string | null
+    query: string
+    currentPage: number
+    totalPages: number
+    totalCount: number
+    perPage: number
+    statusFilters: FILE_STATUS[]
+    scheduleStatusFilters: SCHEDULE_STATUS[]
+}
+
+export interface CampaignsState {
+    list: CampaignsListState
+}

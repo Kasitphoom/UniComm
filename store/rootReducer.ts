@@ -5,6 +5,7 @@ import componentBlocksReducer from '@/features/componentBlocks/componentBlocksSl
 import usersReducer from '@/features/users/usersSlice'
 import customerListsReducer from '@/features/customers/customerListsSlice'
 import listCustomersReducer from '@/features/customers/listCustomersSlice'
+import campaignsReducer from '@/features/campaigns/campaignsSlice'
 
 export const rootReducer = combineReducers({
   ui: uiReducer,
@@ -13,6 +14,7 @@ export const rootReducer = combineReducers({
   users: usersReducer,
   customerLists: customerListsReducer,
   listCustomers: listCustomersReducer,
+  campaigns: campaignsReducer,
 })
 
 export default rootReducer
