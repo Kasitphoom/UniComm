@@ -78,10 +78,9 @@ const CampaignControlBar = () => {
     };
 
     return (
-        <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between w-full animate-in fade-in duration-500'>
-            <div className='flex-1 max-w-md'>
-                <SearchBar />
-            </div>
+        <div className='flex flex-col md:flex-row gap-3 justify-end w-full animate-in fade-in duration-500'>
+
+            <SearchBar />
 
             <div className='flex flex-wrap items-center gap-2'>
                 <ButtonGroup variant="flat" color="secondary">

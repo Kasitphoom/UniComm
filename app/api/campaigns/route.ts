@@ -9,6 +9,11 @@ const DEFAULT_PER_PAGE = 10
 
 type EnumLike = string
 
+type DateRange = {
+    start: Date
+    end: Date
+}
+
 function parseEnumFilters<T extends EnumLike>(
     rawValues: string[],
     allowedValues: readonly T[],
@@ -30,6 +35,62 @@ function parseEnumFilters<T extends EnumLike>(
         })
 
     return Array.from(deduped)
+}
+
+function startOfDayUTC(date: Date) {
+    const adjusted = new Date(date)
+    adjusted.setUTCHours(0, 0, 0, 0)
+    return adjusted
+}
+
+function endOfDayUTC(date: Date) {
+    const adjusted = new Date(date)
+    adjusted.setUTCHours(23, 59, 59, 999)
+    return adjusted
+}
+
+function toDate(value: string | null): Date | null {
+    if (!value) return null
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function resolveDateRange(
+    rangeValue: string | null,
+    startDateParam: string | null,
+    endDateParam: string | null,
+): DateRange | null {
+    const normalizedRange = (rangeValue || "ALL").toUpperCase()
+    const nowUtc = new Date()
+
+    switch (normalizedRange) {
+        case "TODAY":
+            return {
+                start: startOfDayUTC(nowUtc),
+                end: endOfDayUTC(nowUtc),
+            }
+        case "LAST_7_DAYS": {
+            const end = endOfDayUTC(nowUtc)
+            const start = startOfDayUTC(new Date(end))
+            start.setUTCDate(start.getUTCDate() - 6)
+            return { start, end }
+        }
+        case "THIS_MONTH": {
+            const year = nowUtc.getUTCFullYear()
+            const month = nowUtc.getUTCMonth()
+            const start = startOfDayUTC(new Date(Date.UTC(year, month, 1)))
+            const end = endOfDayUTC(new Date(Date.UTC(year, month + 1, 0)))
+            return { start, end }
+        }
+        case "CUSTOM": {
+            const start = toDate(startDateParam)
+            const end = toDate(endDateParam)
+            if (!start || !end || start > end) return null
+            return { start, end }
+        }
+        default:
+            return null
+    }
 }
 
 export async function GET(req: Request) {
@@ -61,12 +122,17 @@ export async function GET(req: Request) {
         )
 
         const fileStatusFilters = parseEnumFilters<FILE_STATUS>(
-            searchParams.getAll("status"),
+            searchParams.getAll("fileStatus"),
             Object.values(FILE_STATUS) as FILE_STATUS[],
         )
         const scheduleStatusFilters = parseEnumFilters<SCHEDULE_STATUS>(
             searchParams.getAll("scheduleStatus"),
             Object.values(SCHEDULE_STATUS) as SCHEDULE_STATUS[],
+        )
+        const dateRangeFilter = resolveDateRange(
+            searchParams.get("range"),
+            searchParams.get("startDate"),
+            searchParams.get("endDate"),
         )
 
         const prisma = await getBusinessPrisma(auth.businessId)
@@ -109,6 +175,15 @@ export async function GET(req: Request) {
             whereClauses.push({
                 scheduleStatus: {
                     in: scheduleStatusFilters,
+                },
+            })
+        }
+
+        if (dateRangeFilter) {
+            whereClauses.push({
+                scheduledAt: {
+                    gte: dateRangeFilter.start,
+                    lte: dateRangeFilter.end,
                 },
             })
         }

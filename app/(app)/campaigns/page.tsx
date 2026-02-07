@@ -1,4 +1,5 @@
 import CampaignControlBar from '@/components/campaigns/CampaignControlBar'
+import { CampaignTable } from '@/components/campaigns/CampaignTable'
 import { Suspense } from 'react'
 
 const CampaignPage = () => {
@@ -10,6 +11,7 @@ const CampaignPage = () => {
                     <p className="text-default-400 text-small">Schedule and track bulk PDF generation tasks</p>
                 </div>
                 <CampaignControlBar />
+                <CampaignTable />
             </div>
         </Suspense>
     )

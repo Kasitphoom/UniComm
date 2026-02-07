@@ -11,8 +11,11 @@ export type FetchCampaignsParams = {
     query?: string
     page?: number
     perPage?: number
-    status?: FILE_STATUS[]
+    fileStatus?: FILE_STATUS[]
     scheduleStatus?: SCHEDULE_STATUS[]
+    range?: "ALL" | "TODAY" | "LAST_7_DAYS" | "THIS_MONTH" | "CUSTOM"
+    startDate?: string
+    endDate?: string
 }
 
 export const fetchCampaigns = createAsyncThunk(
@@ -24,10 +27,17 @@ export const fetchCampaigns = createAsyncThunk(
         if (params.page && params.page > 1)
             search.set("page", String(params.page))
         if (params.perPage) search.set("perPage", String(params.perPage))
-        params.status?.forEach((status) => search.append("status", status))
+        params.fileStatus?.forEach((status) =>
+            search.append("fileStatus", status),
+        )
         params.scheduleStatus?.forEach((status) =>
             search.append("scheduleStatus", status),
         )
+        if (params.range && params.range !== "ALL") {
+            search.set("range", params.range)
+        }
+        if (params.startDate) search.set("startDate", params.startDate)
+        if (params.endDate) search.set("endDate", params.endDate)
 
         const qs = search.toString()
         const res = await fetch(`/api/campaigns${qs ? `?${qs}` : ""}`, {
