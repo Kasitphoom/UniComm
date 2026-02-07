@@ -374,6 +374,7 @@ const templatesSlice = createSlice({
                             versions: action.payload.versions as any,
                             approvers: action.payload.approvers as any,
                             requireUserApproval: false,
+                            requiredFields: action.payload.requiredFields as any,
                         },
                         ...state.list.items,
                     ]

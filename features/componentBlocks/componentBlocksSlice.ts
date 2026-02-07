@@ -246,6 +246,8 @@ const componentBlocksSlice = createSlice({
                             userId: action.payload.userId as string,
                             user: action.payload.user as any,
                             versions: action.payload.versions as any,
+                            requiredFields: action.payload.requiredFields as any,
+                            contactListId: action.payload.contactListId as string | null,
                         },
                         ...state.list.items,
                     ]
