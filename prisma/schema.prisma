@@ -155,6 +155,7 @@ model ContactList {
   updatedAt       DateTime         @updatedAt
   templates       Templates[]
   componentBlocks ComponentBlock[]
+  campaigns       Campaign[]
 }
 
 model Customer {
@@ -190,7 +191,9 @@ model Campaign {
   id   String @id @default(auto()) @map("_id") @db.ObjectId
   name String @unique
 
-  templates CampaignTemplate[]
+  templates      CampaignTemplate[]
+  contactlist   ContactList        @relation(fields: [contactListId], references: [id])
+  contactListId String             @db.ObjectId
 
   scheduledAt    DateTime
   scheduleStatus SCHEDULE_STATUS @default(PENDING)

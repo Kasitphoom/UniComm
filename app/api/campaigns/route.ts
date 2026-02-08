@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server"
-import { Prisma, FILE_STATUS, SCHEDULE_STATUS } from "@/app/generated/business/prisma"
+import { NextRequest, NextResponse } from "next/server"
+import { Prisma, FILE_STATUS, SCHEDULE_STATUS, UserRole } from "@/app/generated/business/prisma"
 import { requireAuth } from "@/lib/api-auth"
 import { getBusinessPrisma } from "@/lib/prisma-business"
 import { sanitizeQuery } from "@/utils/sanitizer"
+import { userHasPermissionAPI } from "@/utils/permissions"
 
 const MAX_PER_PAGE = 50
 const DEFAULT_PER_PAGE = 10
@@ -35,6 +36,18 @@ function parseEnumFilters<T extends EnumLike>(
         })
 
     return Array.from(deduped)
+}
+
+function normalizeEnumValue<T extends EnumLike>(
+    value: string | null | undefined,
+    allowedValues: readonly T[],
+): T | null {
+    if (!value || typeof value !== "string") return null
+    const normalized = value.toUpperCase()
+    const map = new Map<string, T>(
+        allowedValues.map((current) => [current.toUpperCase(), current]),
+    )
+    return map.get(normalized) ?? null
 }
 
 function startOfDayUTC(date: Date) {
@@ -224,6 +237,140 @@ export async function GET(req: Request) {
     } catch (error: any) {
         return NextResponse.json(
             { error: error?.message || "Failed to fetch campaigns" },
+            { status: 500 },
+        )
+    }
+}
+
+export async function POST(req: NextRequest) {
+    try {
+        const auth = await requireAuth(req)
+        if (!auth.ok) return auth.response
+        if (!auth.businessId) {
+            return NextResponse.json(
+                { error: "No active business selected" },
+                { status: 400 },
+            )
+        }
+
+        const hasPermission = await userHasPermissionAPI(req, [
+            UserRole.OWNER,
+            UserRole.ADMIN,
+            UserRole.MEMBER,
+        ])
+        if (!hasPermission) {
+            return NextResponse.json(
+                { error: "Insufficient permissions" },
+                { status: 403 },
+            )
+        }
+
+        const body = await req.json().catch(() => null)
+        const {
+            name,
+            scheduledAt,
+            templateIds,
+            customerListId,
+        } = body || {}
+
+        if (typeof name !== "string" || !name.trim()) {
+            return NextResponse.json(
+                { error: "Campaign name is required" },
+                { status: 400 },
+            )
+        }
+
+        const scheduledDate = new Date(scheduledAt)
+        if (!scheduledAt || Number.isNaN(scheduledDate.getTime())) {
+            return NextResponse.json(
+                { error: "A valid scheduledAt datetime is required" },
+                { status: 400 },
+            )
+        }
+
+        const templateIdList: string[] = Array.isArray(templateIds)
+            ? Array.from(
+                  new Set(
+                      templateIds
+                          .filter((id): id is string => typeof id === "string")
+                          .map((id) => id.trim())
+                          .filter(Boolean),
+                  ),
+              )
+            : []
+
+        const prisma = await getBusinessPrisma(auth.businessId)
+
+        const existingByName = await prisma.campaign.findUnique({
+            where: { name: name.trim() },
+        })
+        if (existingByName) {
+            return NextResponse.json(
+                { error: "A campaign with this name already exists" },
+                { status: 409 },
+            )
+        }
+
+        if (templateIdList.length) {
+            const templates = await prisma.templates.findMany({
+                where: { id: { in: templateIdList } },
+                select: { id: true },
+            })
+            const existingIds = new Set(templates.map((tpl) => tpl.id))
+            const missing = templateIdList.filter((id) => !existingIds.has(id))
+            if (missing.length) {
+                return NextResponse.json(
+                    { error: "Some templates were not found", missing },
+                    { status: 404 },
+                )
+            }
+        }
+
+        const totalCustomerRecords = await prisma.contactList.findUnique({
+            where: { id: customerListId },
+            include: { 
+                _count: { 
+                    select: { 
+                        customers: true 
+                    } 
+                } 
+            },
+        })
+
+        const totalRecordsSafe = totalCustomerRecords?._count.customers || 0
+
+        const created = await prisma.campaign.create({
+            data: {
+                name: name.trim(),
+                scheduledAt: scheduledDate,
+                totalRecords: totalRecordsSafe,
+                contactListId: customerListId,
+                templates: templateIdList.length
+                    ? {
+                          create: templateIdList.map((templateId) => ({
+                              template: { connect: { id: templateId } },
+                          })),
+                      }
+                    : undefined,
+            },
+            include: {
+                templates: {
+                    include: {
+                        template: true,
+                    },
+                    orderBy: { createdAt: "asc" },
+                },
+                logs: {
+                    orderBy: { createdAt: "desc" },
+                    take: 5,
+                },
+            },
+        })
+
+        return NextResponse.json(created, { status: 201 })
+    } catch (error: any) {
+        return NextResponse.json(
+            { error: error?.message || "Failed to create campaign" },
             { status: 500 },
         )
     }
