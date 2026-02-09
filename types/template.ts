@@ -28,15 +28,6 @@ export type TemplateWithUser = TemplateAPIResponse & {
   requireUserApproval?: boolean
 }
 
-// Lightweight shapes commonly used in UI lists
-export type TemplateListItem = TemplateAPIResponse & {
-  userId: string
-  user: TemplateUser
-  versions: TemplateVersion[]
-  approvers?: ApproverWithUser[]
-  requireUserApproval: boolean
-}
-
 export type TemplateQuery = {
   // Free-text search mapped to title or other fields in your query layer
   query?: string
@@ -46,7 +37,7 @@ export type TemplateQuery = {
 }
 
 export type TemplateListResult = {
-  templates: TemplateListItem[]
+  templates: TemplateWithUser[]
   currentPage: number
   total: number // total pages
 }
