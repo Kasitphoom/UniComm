@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import SearchBar from "../SearchBar";
 import type { RangeValue } from "@react-types/shared";
@@ -8,6 +8,9 @@ import type { DateValue } from "@internationalized/date";
 import { parseDate } from "@internationalized/date";
 import CampaignFilters from "./CampaignFilters";
 import NewCampaignButton from "./NewCampaignButton";
+import { useAppDispatch, useAppSelector } from "@/store/hooks";
+import { fetchTemplates } from "@/features/templates/templatesSlice";
+import { fetchCustomerLists } from "@/features/customers/customerListsSlice";
 
 const CampaignControlBar = () => {
     const router = useRouter();

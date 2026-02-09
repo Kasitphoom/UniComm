@@ -29,7 +29,7 @@ export type TemplateWithUser = TemplateAPIResponse & {
 }
 
 // Lightweight shapes commonly used in UI lists
-export type TemplateListItem = Template & {
+export type TemplateListItem = TemplateAPIResponse & {
   userId: string
   user: TemplateUser
   versions: TemplateVersion[]
