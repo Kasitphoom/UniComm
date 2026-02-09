@@ -1,14 +1,16 @@
 "use client"
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { 
-    Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, 
-    Button, useDisclosure, Input, ScrollShadow, Checkbox, 
+import {
+    Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
+    Button, useDisclosure, Input, ScrollShadow, Checkbox,
     User, Chip, Divider, Badge,
-    Spinner
+    Spinner,
+    DatePicker,
+    DateValue
 } from '@heroui/react'
 import { Controller, useForm } from 'react-hook-form'
-import { PlusIcon, Search, Layout, Users, Calendar, Send, CheckCircle2 } from 'lucide-react'
+import { PlusIcon, Search, Layout, Users, Calendar, Send, CheckCircle2, Clock, ArrowRight, Info } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { TemplateWithUser } from '@/types/template'
 import { clientFetchParsedTemplate } from '@/utils/template/utils'
@@ -18,6 +20,7 @@ import { fetchTemplates } from '@/features/templates/templatesSlice'
 import { fetchCustomerLists } from '@/features/customers/customerListsSlice'
 import { useInfiniteScroll } from '@heroui/use-infinite-scroll'
 import { CustomerListSelectorStep } from './CampaignCustomerListSelectorStep'
+import { getLocalTimeZone, now } from '@internationalized/date'
 
 // Dynamically import the viewer to keep the modal light
 const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { ssr: false })
@@ -62,9 +65,9 @@ export const TemplateSelectionCard = ({ template, isSelected, onToggle }: {
             {/* Minimalist PDF Preview */}
             <div className="aspect-video w-full bg-default-50 border-b border-default-100 relative">
                 {parsedTemplate ? (
-                    <PdfViewer 
-                        template={parsedTemplate} 
-                        className="w-full h-full object-cover" 
+                    <PdfViewer
+                        template={parsedTemplate}
+                        className="w-full h-full object-cover"
                         customViewerOptions={{ showToolbar: false, scroll: false }}
                     />
                 ) : (
@@ -97,12 +100,13 @@ type CampaignFormValues = {
     campaignName: string
     templateId: string | null
     customerListId: string | null
+    scheduleDate: DateValue | null
 }
 
-const StepIndicator = ({ 
-    current, 
-    labels, 
-    onStepClick 
+const StepIndicator = ({
+    current,
+    labels,
+    onStepClick
 }: {
     current: number,
     labels: string[],
@@ -115,7 +119,7 @@ const StepIndicator = ({
             const isActive = stepNumber === current
 
             return (
-                <div 
+                <div
                     key={`${label}-${stepNumber}`}
                     onClick={() => isReachable && onStepClick(stepNumber)}
                     className={`
@@ -126,13 +130,13 @@ const StepIndicator = ({
                 >
                     <div className={`
                         w-6 h-6 rounded-full flex items-center justify-center text-[10px] border-1 transition-colors
-                        ${isActive 
-                            ? 'border-secondary bg-secondary text-white font-bold' 
+                        ${isActive
+                            ? 'border-secondary bg-secondary text-white font-bold'
                             : 'border-default-300 group-hover:border-secondary group-hover:text-secondary'}
                     `}>
                         {stepNumber}
                     </div>
-                    
+
                     <span className={`text-tiny font-bold uppercase tracking-wider ${isReachable && 'group-hover:text-secondary'}`}>
                         {label}
                     </span>
@@ -148,7 +152,7 @@ const NewCampaignButton = () => {
     const dispatch = useAppDispatch();
     const { isOpen, onOpen, onOpenChange } = useDisclosure()
     const [step, setStep] = useState(1)
-    
+
     // Pagination & Search State
     const [page, setPage] = useState(1)
     const [searchQuery, setSearchQuery] = useState("")
@@ -169,6 +173,7 @@ const NewCampaignButton = () => {
             campaignName: '',
             templateId: null,
             customerListId: null,
+            scheduleDate: now(getLocalTimeZone()).add({ minutes: 5 }),
         },
     })
 
@@ -216,7 +221,7 @@ const NewCampaignButton = () => {
     const [, scrollerRef] = useInfiniteScroll({
         hasMore: page < totalPages,
         isEnabled: isOpen && step === 2,
-        shouldUseLoader: false, 
+        shouldUseLoader: false,
         onLoadMore: loadMore,
     });
 
@@ -281,10 +286,10 @@ const NewCampaignButton = () => {
 
     return (
         <>
-            <Button 
-                color='secondary' 
-                onPress={onOpen} 
-                startContent={<PlusIcon size={16} />} 
+            <Button
+                color='secondary'
+                onPress={onOpen}
+                startContent={<PlusIcon size={16} />}
             >
                 Create Campaign
             </Button>
@@ -298,10 +303,10 @@ const NewCampaignButton = () => {
                                     <Send size={18} />
                                     <span className="font-bold">Campaign Automation Wizard</span>
                                 </div>
-                                <StepIndicator 
-                                    current={step} 
-                                    labels={["Basic Info", "Templates", "Customers", "Schedule"]} 
-                                    onStepClick={onStepClick} 
+                                <StepIndicator
+                                    current={step}
+                                    labels={["Basic Info", "Templates", "Customers", "Schedule"]}
+                                    onStepClick={onStepClick}
                                 />
                             </ModalHeader>
 
@@ -309,16 +314,16 @@ const NewCampaignButton = () => {
                                 <form id="campaignForm" onSubmit={handleSubmit(onSubmit)} className="space-y-6">
                                     {step === 1 && (
                                         <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-                                            <Controller 
+                                            <Controller
                                                 name="campaignName"
                                                 control={control}
                                                 rules={{ required: true }}
                                                 render={({ field }) => (
-                                                    <Input 
+                                                    <Input
                                                         {...field}
-                                                        label="Campaign Name" 
-                                                        placeholder="Monthly Statements - Feb 2026" 
-                                                        variant="bordered" 
+                                                        label="Campaign Name"
+                                                        placeholder="Monthly Statements - Feb 2026"
+                                                        variant="bordered"
                                                         labelPlacement="outside"
                                                         value={field.value}
                                                         onValueChange={field.onChange}
@@ -334,26 +339,26 @@ const NewCampaignButton = () => {
                                                 <p className="text-small font-bold text-default-600">
                                                     Select Template ({selectedTemplateId ? 1 : 0}/1)
                                                 </p>
-                                                <Input 
-                                                    placeholder="Search templates..." 
-                                                    size="sm" 
+                                                <Input
+                                                    placeholder="Search templates..."
+                                                    size="sm"
                                                     variant="bordered"
                                                     className="max-w-xs"
-                                                    startContent={<Search size={14} className="text-default-400"/>}
+                                                    startContent={<Search size={14} className="text-default-400" />}
                                                     value={searchQuery}
                                                     onValueChange={setSearchQuery}
                                                 />
                                             </div>
 
-                                            <ScrollShadow 
-                                                ref={scrollerRef} 
+                                            <ScrollShadow
+                                                ref={scrollerRef}
                                                 className="h-112.5 p-1 overflow-y-auto"
                                             >
                                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                                     {templates.map((template) => (
-                                                        <TemplateSelectionCard 
-                                                            key={template.id} 
-                                                            template={template} 
+                                                        <TemplateSelectionCard
+                                                            key={template.id}
+                                                            template={template}
                                                             isSelected={selectedTemplateId === template.id}
                                                             onToggle={() => handleTemplateToggle(template.id)}
                                                         />
@@ -370,41 +375,91 @@ const NewCampaignButton = () => {
                                     )}
 
                                     {step === 3 && (
-                                        <CustomerListSelectorStep 
-                                            templateId={selectedTemplateId} 
+                                        <CustomerListSelectorStep
+                                            templateId={selectedTemplateId}
                                             selectedCustomerListId={selectedCustomerListId}
                                             onCustomerListChange={handleCustomerListChange}
                                             onCompatibilityChange={handleCompatibilityChange}
                                         />
                                     )}
-                                    </form>
-                                </ModalBody>
 
-                                <ModalFooter className="bg-default-50 border-t border-default-100">
-                                    <Button 
-                                        type="button"
-                                        variant="light" 
-                                        onPress={step === 1 ? onClose : () => setStep(s => Math.max(s - 1, 1))}
-                                    >
-                                        {step === 1 ? 'Cancel' : 'Back'}
-                                    </Button>
-                                    <Button 
-                                        color="secondary" 
-                                        className="font-bold" 
-                                        type={step === 4 ? 'submit' : 'button'}
-                                        form={step === 4 ? 'campaignForm' : undefined}
-                                        onPress={step === 4 ? undefined : handleNextStep}
-                                        isDisabled={isNextDisabled}
-                                    >
-                                        {step === 4 ? 'Launch Campaign' : 'Next Step'}
-                                    </Button>
-                                </ModalFooter>
-                            </>
-                        )}
-                    </ModalContent>
-                </Modal>
-            </>
-        )
-    }
+                                    {step === 4 && (
+                                        <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
+                                            <Controller
+                                                name="scheduleDate"
+                                                control={control}
+                                                rules={{ required: true }}
+                                                render={({ field }) => (
+                                                    <div className="space-y-4">
+                                                        <DatePicker
+                                                            {...field}
+                                                            label="Schedule Date & Time"
+                                                            variant="bordered"
+                                                            labelPlacement="outside"
+                                                            granularity="minute" // Ensures minute-level precision
+                                                            hideTimeZone
+                                                            value={field.value}
+                                                            onChange={field.onChange}
+                                                            defaultValue={now(getLocalTimeZone())}
+                                                            color="secondary"
+                                                            hourCycle={24}
+                                                        />
+
+                                                        {/* DYNAMIC REMARK */}
+                                                        {field.value && (
+                                                            <div className="mt-4 px-1 animate-in fade-in slide-in-from-top-1">
+                                                                {/* The Range: Single line, no icons, secondary color only for the numbers */}
+                                                                <div className="flex items-center gap-2 text-small text-default-600 font-medium">
+                                                                    <span>Execution:</span>
+                                                                    <span className="text-secondary font-bold">
+                                                                        {field.value.toDate(getLocalTimeZone()).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                                                                    </span>
+                                                                    <ArrowRight size={12} className="text-default-300" />
+                                                                    <span className="text-secondary font-bold">
+                                                                        {field.value.add({ minutes: 1 }).toDate(getLocalTimeZone()).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                                                                    </span>
+                                                                </div>
+
+                                                                {/* The Permanent Note: Tiny, muted, and icon-free */}
+                                                                <p className="mt-1 text-[10px] text-default-400 leading-tight">
+                                                                    Batch processing starts at the top of the selected minute.
+                                                                    Small delays may occur based on list size.
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            />
+                                        </div>
+                                    )}
+                                </form>
+                            </ModalBody>
+
+                            <ModalFooter className="bg-default-50 border-t border-default-100">
+                                <Button
+                                    type="button"
+                                    variant="light"
+                                    onPress={step === 1 ? onClose : () => setStep(s => Math.max(s - 1, 1))}
+                                >
+                                    {step === 1 ? 'Cancel' : 'Back'}
+                                </Button>
+                                <Button
+                                    color="secondary"
+                                    className="font-bold"
+                                    type={step === 4 ? 'submit' : 'button'}
+                                    form={step === 4 ? 'campaignForm' : undefined}
+                                    onPress={step === 4 ? undefined : handleNextStep}
+                                    isDisabled={isNextDisabled}
+                                >
+                                    {step === 4 ? 'Launch Campaign' : 'Next Step'}
+                                </Button>
+                            </ModalFooter>
+                        </>
+                    )}
+                </ModalContent>
+            </Modal>
+        </>
+    )
+}
 
 export default NewCampaignButton
