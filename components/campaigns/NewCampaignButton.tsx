@@ -1,18 +1,18 @@
 "use client"
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { 
     Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, 
     Button, useDisclosure, Input, ScrollShadow, Checkbox, 
     User, Chip, Divider, Badge,
     Spinner
 } from '@heroui/react'
+import { Controller, useForm } from 'react-hook-form'
 import { PlusIcon, Search, Layout, Users, Calendar, Send, CheckCircle2 } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { TemplateWithUser } from '@/types/template'
 import { clientFetchParsedTemplate } from '@/utils/template/utils'
 import { Template } from '@pdfme/common'
-import { ContactListDTO } from '@/features/customers/types'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { fetchTemplates } from '@/features/templates/templatesSlice'
 import { fetchCustomerLists } from '@/features/customers/customerListsSlice'
@@ -50,8 +50,6 @@ export const TemplateSelectionCard = ({ template, isSelected, onToggle }: {
             isMounted = false
         }
     }, [template.id])
-
-    console.log(template.contactList)
 
     return (
         <div
@@ -93,6 +91,12 @@ export const TemplateSelectionCard = ({ template, isSelected, onToggle }: {
             </div>
         </div>
     )
+}
+
+type CampaignFormValues = {
+    campaignName: string
+    templateId: string | null
+    customerListId: string | null
 }
 
 const StepIndicator = ({ 
@@ -149,10 +153,28 @@ const NewCampaignButton = () => {
     const [page, setPage] = useState(1)
     const [searchQuery, setSearchQuery] = useState("")
     const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
-    
-    // Selection State
-    const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
-    const [campaignName, setCampaignName] = useState("")
+    const [isCustomerListCompatible, setIsCustomerListCompatible] = useState<boolean | null>(null)
+
+    const previousTemplateIdRef = useRef<string | null>(null)
+
+    const {
+        control,
+        handleSubmit,
+        watch,
+        setValue,
+        reset,
+    } = useForm<CampaignFormValues>({
+        mode: 'onChange',
+        defaultValues: {
+            campaignName: '',
+            templateId: null,
+            customerListId: null,
+        },
+    })
+
+    const campaignNameValue = watch('campaignName')
+    const selectedTemplateId = watch('templateId')
+    const selectedCustomerListId = watch('customerListId')
 
     // Redux State
     const { items: templates, status: templateStatus, totalPages } = useAppSelector((state) => state.templates.list);
@@ -198,16 +220,64 @@ const NewCampaignButton = () => {
         onLoadMore: loadMore,
     });
 
+    useEffect(() => {
+        if (!isOpen) {
+            setStep(1)
+            setPage(1)
+            setSearchQuery('')
+            setDebouncedSearchQuery('')
+            setIsCustomerListCompatible(null)
+            reset()
+        }
+    }, [isOpen, reset])
+
+    useEffect(() => {
+        if (previousTemplateIdRef.current === selectedTemplateId) return
+
+        previousTemplateIdRef.current = selectedTemplateId
+
+        if (selectedCustomerListId) {
+            setValue('customerListId', null, { shouldDirty: true })
+        }
+        setIsCustomerListCompatible(null)
+    }, [selectedCustomerListId, selectedTemplateId, setValue])
+
     const onStepClick = (newStep: number) => {
-        const hasSelectedTemplate = Boolean(selectedTemplateId)
-        if (newStep < step || (step === 1 && campaignName.trim() !== "") || (step === 2 && hasSelectedTemplate)) {
+        if (newStep < step) {
             setStep(newStep)
         }
     }
 
-    const onSelectionChange = (compatible: boolean) => {
-
+    const handleTemplateToggle = (templateId: string) => {
+        const nextValue = selectedTemplateId === templateId ? null : templateId
+        setValue('templateId', nextValue, { shouldDirty: true })
     }
+
+    const handleCustomerListChange = useCallback((listId: string | null) => {
+        setValue('customerListId', listId, { shouldDirty: true })
+    }, [setValue])
+
+    const handleCompatibilityChange = useCallback((compatible: boolean | null) => {
+        setIsCustomerListCompatible(compatible)
+    }, [])
+
+    const handleNextStep = () => {
+        setStep((prev) => Math.min(prev + 1, 4))
+    }
+
+    const onSubmit = (values: CampaignFormValues) => {
+        console.log('Campaign form values', values)
+    }
+
+    const hasCampaignName = Boolean(campaignNameValue.trim())
+    const hasTemplateSelected = Boolean(selectedTemplateId)
+    const hasCompatibleCustomerList = Boolean(selectedCustomerListId && isCustomerListCompatible)
+
+    const isNextDisabled = (
+        (step === 1 && !hasCampaignName) ||
+        (step === 2 && !hasTemplateSelected) ||
+        (step === 3 && !hasCompatibleCustomerList)
+    )
 
     return (
         <>
@@ -236,87 +306,105 @@ const NewCampaignButton = () => {
                             </ModalHeader>
 
                             <ModalBody className="py-6">
-                                {step === 1 && (
-                                    <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-                                        <Input 
-                                            label="Campaign Name" 
-                                            placeholder="Monthly Statements - Feb 2026" 
-                                            variant="bordered" 
-                                            labelPlacement="outside"
-                                            value={campaignName}
-                                            onValueChange={setCampaignName}
-                                        />
-                                    </div>
-                                )}
-
-                                {step === 2 && (
-                                    <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 h-111.5">
-                                        <div className="flex justify-between items-center px-1">
-                                            <p className="text-small font-bold text-default-600">
-                                                Select Template ({selectedTemplateId ? 1 : 0}/1)
-                                            </p>
-                                            <Input 
-                                                placeholder="Search templates..." 
-                                                size="sm" 
-                                                variant="bordered"
-                                                className="max-w-xs"
-                                                startContent={<Search size={14} className="text-default-400"/>}
-                                                value={searchQuery}
-                                                onValueChange={setSearchQuery}
+                                <form id="campaignForm" onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+                                    {step === 1 && (
+                                        <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
+                                            <Controller 
+                                                name="campaignName"
+                                                control={control}
+                                                rules={{ required: true }}
+                                                render={({ field }) => (
+                                                    <Input 
+                                                        {...field}
+                                                        label="Campaign Name" 
+                                                        placeholder="Monthly Statements - Feb 2026" 
+                                                        variant="bordered" 
+                                                        labelPlacement="outside"
+                                                        value={field.value}
+                                                        onValueChange={field.onChange}
+                                                    />
+                                                )}
                                             />
                                         </div>
+                                    )}
 
-                                        <ScrollShadow 
-                                            ref={scrollerRef} 
-                                            className="h-112.5 p-1 overflow-y-auto"
-                                        >
-                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                                {templates.map((template) => (
-                                                    <TemplateSelectionCard 
-                                                        key={template.id} 
-                                                        template={template} 
-                                                        isSelected={selectedTemplateId === template.id}
-                                                        onToggle={() => setSelectedTemplateId(prev => prev === template.id ? null : template.id)}
-                                                    />
-                                                ))}
+                                    {step === 2 && (
+                                        <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 h-111.5">
+                                            <div className="flex justify-between items-center px-1">
+                                                <p className="text-small font-bold text-default-600">
+                                                    Select Template ({selectedTemplateId ? 1 : 0}/1)
+                                                </p>
+                                                <Input 
+                                                    placeholder="Search templates..." 
+                                                    size="sm" 
+                                                    variant="bordered"
+                                                    className="max-w-xs"
+                                                    startContent={<Search size={14} className="text-default-400"/>}
+                                                    value={searchQuery}
+                                                    onValueChange={setSearchQuery}
+                                                />
                                             </div>
 
-                                            {/* Infinite Scroll Loader */}
-                                            {templateStatus === 'loading' && (
-                                                <div className="flex justify-center w-full py-6">
-                                                    <Spinner color="secondary" size="sm" label="Loading more templates..." />
+                                            <ScrollShadow 
+                                                ref={scrollerRef} 
+                                                className="h-112.5 p-1 overflow-y-auto"
+                                            >
+                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                    {templates.map((template) => (
+                                                        <TemplateSelectionCard 
+                                                            key={template.id} 
+                                                            template={template} 
+                                                            isSelected={selectedTemplateId === template.id}
+                                                            onToggle={() => handleTemplateToggle(template.id)}
+                                                        />
+                                                    ))}
                                                 </div>
-                                            )}
-                                        </ScrollShadow>
-                                    </div>
-                                )}
-                                {step === 3 && (
-                                    <CustomerListSelectorStep 
-                                        templateId={selectedTemplateId} 
-                                        onSelectionChange={onSelectionChange}
-                                    />
-                                )}
-                            </ModalBody>
 
-                            <ModalFooter className="bg-default-50 border-t border-default-100">
-                                <Button variant="light" onPress={step === 1 ? onClose : () => setStep(s => s - 1)}>
-                                    {step === 1 ? 'Cancel' : 'Back'}
-                                </Button>
-                                <Button 
-                                    color="secondary" 
-                                    className="font-bold" 
-                                    onPress={() => setStep(s => s + 1)}
-                                    isDisabled={step === 2 && !selectedTemplateId}
-                                >
-                                    {step === 4 ? 'Launch Campaign' : 'Next Step'}
-                                </Button>
-                            </ModalFooter>
-                        </>
-                    )}
-                </ModalContent>
-            </Modal>
-        </>
-    )
-}
+                                                {templateStatus === 'loading' && (
+                                                    <div className="flex justify-center w-full py-6">
+                                                        <Spinner color="secondary" size="sm" label="Loading more templates..." />
+                                                    </div>
+                                                )}
+                                            </ScrollShadow>
+                                        </div>
+                                    )}
+
+                                    {step === 3 && (
+                                        <CustomerListSelectorStep 
+                                            templateId={selectedTemplateId} 
+                                            selectedCustomerListId={selectedCustomerListId}
+                                            onCustomerListChange={handleCustomerListChange}
+                                            onCompatibilityChange={handleCompatibilityChange}
+                                        />
+                                    )}
+                                    </form>
+                                </ModalBody>
+
+                                <ModalFooter className="bg-default-50 border-t border-default-100">
+                                    <Button 
+                                        type="button"
+                                        variant="light" 
+                                        onPress={step === 1 ? onClose : () => setStep(s => Math.max(s - 1, 1))}
+                                    >
+                                        {step === 1 ? 'Cancel' : 'Back'}
+                                    </Button>
+                                    <Button 
+                                        color="secondary" 
+                                        className="font-bold" 
+                                        type={step === 4 ? 'submit' : 'button'}
+                                        form={step === 4 ? 'campaignForm' : undefined}
+                                        onPress={step === 4 ? undefined : handleNextStep}
+                                        isDisabled={isNextDisabled}
+                                    >
+                                        {step === 4 ? 'Launch Campaign' : 'Next Step'}
+                                    </Button>
+                                </ModalFooter>
+                            </>
+                        )}
+                    </ModalContent>
+                </Modal>
+            </>
+        )
+    }
 
 export default NewCampaignButton

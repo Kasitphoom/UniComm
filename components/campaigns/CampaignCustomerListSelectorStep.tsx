@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { Select, SelectItem, Card, CardBody, Chip } from '@heroui/react'
 import { Users, FileText, ArrowDown, CheckCircle2, AlertTriangle, Link2 } from 'lucide-react'
 import { useAppSelector } from '@/store/hooks';
@@ -11,7 +11,9 @@ import type { Selection } from '@react-types/shared'
 
 interface Props {
     templateId: string | null;
-    onSelectionChange: (isCompatible: boolean) => void;
+    selectedCustomerListId: string | null;
+    onCustomerListChange: (listId: string | null) => void;
+    onCompatibilityChange: (isCompatible: boolean | null) => void;
 }
 
 const isListField = (value: unknown): value is { field: string; type: string } => {
@@ -43,27 +45,33 @@ const getRequiredFieldNames = (fields: unknown): string[] => {
         .map(normalizeFieldName)
 }
 
-export const CustomerListSelectorStep = ({ templateId, onSelectionChange }: Props) => {
-    const [internalListId, setInternalListId] = useState<string | null>(null);
+export const CustomerListSelectorStep = ({ 
+    templateId, 
+    selectedCustomerListId, 
+    onCustomerListChange,
+    onCompatibilityChange,
+}: Props) => {
     const [isCompatible, setIsCompatible] = useState<boolean | null>(null);
     const {items: customerLists, status, error} = useAppSelector(state => state.customerLists.list)
     const [template, setTemplate] = useState<TemplateWithUser | null>(null)
     const [isTemplateLoading, setIsTemplateLoading] = useState(false);
     const [selectedKeys, setSelectedKeys] = useState<Selection>(new Set([]));
 
-    const handleSelection = (keys: Selection) => {
-        
+    const handleSelection = useCallback((keys: Selection) => {
+        if (keys === 'all') return;
+
         setSelectedKeys(keys);
         const id = Array.from(keys)[0] as string | undefined;
-        setInternalListId(id ?? null);
+        const normalizedId = id ?? null;
+        onCustomerListChange(normalizedId);
 
-        if (!template || !id) {
+        if (!template || !normalizedId) {
             setIsCompatible(null)
-            onSelectionChange(false)
+            onCompatibilityChange(null)
             return
         }
 
-        const selectedList = customerLists.find(list => list.id === id)
+        const selectedList = customerLists.find(list => list.id === normalizedId)
         const listFields = Array.isArray(selectedList?.fields)
             ? selectedList.fields.filter(isListField).map((field) => normalizeFieldName(field.field))
             : []
@@ -75,8 +83,8 @@ export const CustomerListSelectorStep = ({ templateId, onSelectionChange }: Prop
         )
         
         setIsCompatible(compatibilityResult);
-        onSelectionChange(compatibilityResult); // Notify the Modal
-    };
+        onCompatibilityChange(compatibilityResult);
+    }, [customerLists, onCompatibilityChange, onCustomerListChange, template])
 
     const fetchTemplateDetails = async (id: string) => {
         setIsTemplateLoading(true);
@@ -88,17 +96,29 @@ export const CustomerListSelectorStep = ({ templateId, onSelectionChange }: Prop
     useEffect(() => {
         if (!templateId) {
             setTemplate(null);
+            setSelectedKeys(new Set([]))
+            setIsCompatible(null)
+            onCompatibilityChange(null)
             return;
         } else {
             fetchTemplateDetails(templateId)
         }
-    }, [templateId]);
+    }, [templateId, onCompatibilityChange]);
 
     useEffect(() => {
         if (template?.contactListId) {
             handleSelection(new Set([template.contactListId]));
         }
-    }, [template?.contactListId])
+    }, [handleSelection, template?.contactListId])
+
+    useEffect(() => {
+        if (selectedCustomerListId) {
+            setSelectedKeys(new Set([selectedCustomerListId]))
+        } else {
+            setSelectedKeys(new Set([]))
+            setIsCompatible(null)
+        }
+    }, [selectedCustomerListId])
 
     const TemplateCardSkeleton = () => (
         <div className="relative flex flex-col rounded-xl border-2 border-default-100 bg-white overflow-hidden">
@@ -125,7 +145,7 @@ export const CustomerListSelectorStep = ({ templateId, onSelectionChange }: Prop
                 <Select 
                     label="Choose Customer List"
                     variant="bordered"
-                    color={internalListId ? (isCompatible ? "secondary" : "danger") : "default"}
+                    color={selectedCustomerListId ? (isCompatible ? "secondary" : "danger") : "default"}
                     onSelectionChange={handleSelection}
                     startContent={<Users size={16} className="text-default-400" />}
                     errorMessage={error}
@@ -149,12 +169,12 @@ export const CustomerListSelectorStep = ({ templateId, onSelectionChange }: Prop
             <div className="relative flex flex-col items-center w-full h-20 justify-center">
                 {/* The "Cable" */}
                 <div className={`w-1 h-full rounded-full transition-all duration-700 
-                    ${internalListId ? (isCompatible ? 'bg-secondary' : 'bg-danger') : 'bg-default-100'}`} 
+                    ${selectedCustomerListId ? (isCompatible ? 'bg-secondary' : 'bg-danger') : 'bg-default-100'}`} 
                 />
                 
                 {/* The "Logic Hub" */}
                 <div className="absolute top-1/2 -translate-y-1/2 z-10">
-                    {!internalListId ? (
+                    {!selectedCustomerListId ? (
                         <div className="bg-white p-2 rounded-full border-2 border-dashed border-default-200 text-default-300">
                             <Link2 size={20} />
                         </div>
