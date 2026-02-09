@@ -3,105 +3,21 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
     Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
-    Button, useDisclosure, Input, ScrollShadow, Checkbox,
-    User, Chip, Divider, Badge,
-    Spinner,
-    DatePicker,
-    DateValue
+    Button, useDisclosure,
 } from '@heroui/react'
-import { Controller, useForm } from 'react-hook-form'
-import { PlusIcon, Search, Layout, Users, Calendar, Send, CheckCircle2, Clock, ArrowRight, Info } from 'lucide-react'
-import dynamic from 'next/dynamic'
-import { TemplateWithUser } from '@/types/template'
-import { clientFetchParsedTemplate } from '@/utils/template/utils'
-import { Template } from '@pdfme/common'
+import { useForm } from 'react-hook-form'
+import { PlusIcon, Send } from 'lucide-react'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { fetchTemplates } from '@/features/templates/templatesSlice'
 import { fetchCustomerLists } from '@/features/customers/customerListsSlice'
 import { useInfiniteScroll } from '@heroui/use-infinite-scroll'
-import { CustomerListSelectorStep } from './CampaignCustomerListSelectorStep'
 import { getLocalTimeZone, now } from '@internationalized/date'
-
-// Dynamically import the viewer to keep the modal light
-const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { ssr: false })
-
-export const TemplateSelectionCard = ({ template, isSelected, onToggle }: {
-    template: TemplateWithUser,
-    isSelected: boolean,
-    onToggle: () => void
-}) => {
-    const [parsedTemplate, setParsedTemplate] = useState<Template | null>(null)
-
-    useEffect(() => {
-        let isMounted = true
-        setParsedTemplate(null)
-
-        // Fetch the parsed template once the card mounts to avoid passing a Promise to PdfViewer
-        clientFetchParsedTemplate(template.id)
-            .then((tpl) => {
-                if (isMounted) {
-                    setParsedTemplate(tpl)
-                }
-            })
-            .catch((error) => {
-                if (isMounted) {
-                    console.error('Failed to load template preview', error)
-                }
-            })
-
-        return () => {
-            isMounted = false
-        }
-    }, [template.id])
-
-    return (
-        <div
-            onClick={onToggle}
-            className={`
-                relative flex flex-col rounded-xl border-2 transition-all cursor-pointer group overflow-hidden
-                ${isSelected ? 'border-secondary bg-secondary-50/30' : 'border-default-100 bg-white hover:border-default-300'}
-            `}
-        >
-            {/* Minimalist PDF Preview */}
-            <div className="aspect-video w-full bg-default-50 border-b border-default-100 relative">
-                {parsedTemplate ? (
-                    <PdfViewer
-                        template={parsedTemplate}
-                        className="w-full h-full object-cover"
-                        customViewerOptions={{ showToolbar: false, scroll: false }}
-                    />
-                ) : (
-                    <div className="w-full h-full bg-default-100 animate-pulse" />
-                )}
-                {isSelected && (
-                    <div className="absolute inset-0 bg-secondary/10 flex items-center justify-center backdrop-blur-[1px]">
-                        <div className="bg-white rounded-full p-1 shadow-lg">
-                            <CheckCircle2 className="text-secondary" size={24} />
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Template Meta */}
-            <div className="p-3 space-y-2">
-                <p className="text-tiny font-bold truncate text-default-800">{template.title}</p>
-
-                {/* Linked Audience Display */}
-                <div className="flex items-center gap-1 text-[10px] text-default-400">
-                    <Users size={12} />
-                    <span className="truncate">{template.contactList?.name || 'No customer list linked'}</span>
-                </div>
-            </div>
-        </div>
-    )
-}
-
-type CampaignFormValues = {
-    campaignName: string
-    templateId: string | null
-    customerListId: string | null
-    scheduleDate: DateValue | null
-}
+import BasicInfoStep from './newCampaignSteps/BasicInfoStep'
+import TemplateSelectionStep from './newCampaignSteps/TemplateSelectionStep'
+import { CustomerListSelectorStep } from './newCampaignSteps/CustomerListSelectorStep'
+import ScheduleStep from './newCampaignSteps/ScheduleStep'
+import SummaryStep from './newCampaignSteps/SummaryStep'
+import type { CampaignFormValues } from './newCampaignSteps/types'
 
 const StepIndicator = ({
     current,
@@ -180,10 +96,14 @@ const NewCampaignButton = () => {
     const campaignNameValue = watch('campaignName')
     const selectedTemplateId = watch('templateId')
     const selectedCustomerListId = watch('customerListId')
+    const scheduleDateValue = watch('scheduleDate')
 
     // Redux State
     const { items: templates, status: templateStatus, totalPages } = useAppSelector((state) => state.templates.list);
-    const { status: contactListStatus } = useAppSelector((state) => state.customerLists.list);
+    const { items: customerLists, status: contactListStatus } = useAppSelector((state) => state.customerLists.list);
+
+    const selectedTemplate = templates.find((template) => template.id === selectedTemplateId) || null
+    const selectedCustomerList = customerLists.find((list) => list.id === selectedCustomerListId) || null
 
     // 1. Search Debounce Logic
     useEffect(() => {
@@ -267,7 +187,7 @@ const NewCampaignButton = () => {
     }, [])
 
     const handleNextStep = () => {
-        setStep((prev) => Math.min(prev + 1, 4))
+        setStep((prev) => Math.min(prev + 1, 5))
     }
 
     const onSubmit = (values: CampaignFormValues) => {
@@ -281,7 +201,8 @@ const NewCampaignButton = () => {
     const isNextDisabled = (
         (step === 1 && !hasCampaignName) ||
         (step === 2 && !hasTemplateSelected) ||
-        (step === 3 && !hasCompatibleCustomerList)
+        (step === 3 && !hasCompatibleCustomerList) ||
+        (step === 4 && !scheduleDateValue)
     )
 
     return (
@@ -305,7 +226,7 @@ const NewCampaignButton = () => {
                                 </div>
                                 <StepIndicator
                                     current={step}
-                                    labels={["Basic Info", "Templates", "Customers", "Schedule"]}
+                                    labels={["Basic Info", "Templates", "Customers", "Schedule", "Summary"]}
                                     onStepClick={onStepClick}
                                 />
                             </ModalHeader>
@@ -313,65 +234,19 @@ const NewCampaignButton = () => {
                             <ModalBody className="py-6">
                                 <form id="campaignForm" onSubmit={handleSubmit(onSubmit)} className="space-y-6">
                                     {step === 1 && (
-                                        <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-                                            <Controller
-                                                name="campaignName"
-                                                control={control}
-                                                rules={{ required: true }}
-                                                render={({ field }) => (
-                                                    <Input
-                                                        {...field}
-                                                        label="Campaign Name"
-                                                        placeholder="Monthly Statements - Feb 2026"
-                                                        variant="bordered"
-                                                        labelPlacement="outside"
-                                                        value={field.value}
-                                                        onValueChange={field.onChange}
-                                                    />
-                                                )}
-                                            />
-                                        </div>
+                                        <BasicInfoStep control={control} />
                                     )}
 
                                     {step === 2 && (
-                                        <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 h-111.5">
-                                            <div className="flex justify-between items-center px-1">
-                                                <p className="text-small font-bold text-default-600">
-                                                    Select Template ({selectedTemplateId ? 1 : 0}/1)
-                                                </p>
-                                                <Input
-                                                    placeholder="Search templates..."
-                                                    size="sm"
-                                                    variant="bordered"
-                                                    className="max-w-xs"
-                                                    startContent={<Search size={14} className="text-default-400" />}
-                                                    value={searchQuery}
-                                                    onValueChange={setSearchQuery}
-                                                />
-                                            </div>
-
-                                            <ScrollShadow
-                                                ref={scrollerRef}
-                                                className="h-112.5 p-1 overflow-y-auto"
-                                            >
-                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                                    {templates.map((template) => (
-                                                        <TemplateSelectionCard
-                                                            key={template.id}
-                                                            template={template}
-                                                            isSelected={selectedTemplateId === template.id}
-                                                            onToggle={() => handleTemplateToggle(template.id)}
-                                                        />
-                                                    ))}
-                                                </div>
-
-                                                {templateStatus === 'loading' && (
-                                                    <div className="flex justify-center w-full py-6">
-                                                        <Spinner color="secondary" size="sm" label="Loading more templates..." />
-                                                    </div>
-                                                )}
-                                            </ScrollShadow>
-                                        </div>
+                                        <TemplateSelectionStep
+                                            templates={templates}
+                                            selectedTemplateId={selectedTemplateId}
+                                            searchQuery={searchQuery}
+                                            onSearchChange={setSearchQuery}
+                                            onTemplateToggle={handleTemplateToggle}
+                                            scrollerRef={scrollerRef}
+                                            isLoading={templateStatus === 'loading'}
+                                        />
                                     )}
 
                                     {step === 3 && (
@@ -384,53 +259,17 @@ const NewCampaignButton = () => {
                                     )}
 
                                     {step === 4 && (
-                                        <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
-                                            <Controller
-                                                name="scheduleDate"
-                                                control={control}
-                                                rules={{ required: true }}
-                                                render={({ field }) => (
-                                                    <div className="space-y-4">
-                                                        <DatePicker
-                                                            {...field}
-                                                            label="Schedule Date & Time"
-                                                            variant="bordered"
-                                                            labelPlacement="outside"
-                                                            granularity="minute" // Ensures minute-level precision
-                                                            hideTimeZone
-                                                            value={field.value}
-                                                            onChange={field.onChange}
-                                                            defaultValue={now(getLocalTimeZone())}
-                                                            color="secondary"
-                                                            hourCycle={24}
-                                                        />
+                                        <ScheduleStep control={control} />
+                                    )}
 
-                                                        {/* DYNAMIC REMARK */}
-                                                        {field.value && (
-                                                            <div className="mt-4 px-1 animate-in fade-in slide-in-from-top-1">
-                                                                {/* The Range: Single line, no icons, secondary color only for the numbers */}
-                                                                <div className="flex items-center gap-2 text-small text-default-600 font-medium">
-                                                                    <span>Execution:</span>
-                                                                    <span className="text-secondary font-bold">
-                                                                        {field.value.toDate(getLocalTimeZone()).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
-                                                                    </span>
-                                                                    <ArrowRight size={12} className="text-default-300" />
-                                                                    <span className="text-secondary font-bold">
-                                                                        {field.value.add({ minutes: 1 }).toDate(getLocalTimeZone()).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
-                                                                    </span>
-                                                                </div>
-
-                                                                {/* The Permanent Note: Tiny, muted, and icon-free */}
-                                                                <p className="mt-1 text-[10px] text-default-400 leading-tight">
-                                                                    Batch processing starts at the top of the selected minute.
-                                                                    Small delays may occur based on list size.
-                                                                </p>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            />
-                                        </div>
+                                    {step === 5 && (
+                                        <SummaryStep
+                                            campaignName={campaignNameValue}
+                                            template={selectedTemplate}
+                                            customerList={selectedCustomerList}
+                                            scheduleDate={scheduleDateValue}
+                                            isCustomerListCompatible={isCustomerListCompatible}
+                                        />
                                     )}
                                 </form>
                             </ModalBody>
@@ -446,12 +285,12 @@ const NewCampaignButton = () => {
                                 <Button
                                     color="secondary"
                                     className="font-bold"
-                                    type={step === 4 ? 'submit' : 'button'}
-                                    form={step === 4 ? 'campaignForm' : undefined}
-                                    onPress={step === 4 ? undefined : handleNextStep}
+                                    type={step === 5 ? 'submit' : 'button'}
+                                    form={step === 5 ? 'campaignForm' : undefined}
+                                    onPress={step === 5 ? undefined : handleNextStep}
                                     isDisabled={isNextDisabled}
                                 >
-                                    {step === 4 ? 'Launch Campaign' : 'Next Step'}
+                                    {step === 5 ? 'Launch Campaign' : 'Next Step'}
                                 </Button>
                             </ModalFooter>
                         </>
