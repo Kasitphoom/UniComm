@@ -9,7 +9,7 @@ import {
 } from '@heroui/react'
 import { PlusIcon, Search, Layout, Users, Calendar, Send, CheckCircle2 } from 'lucide-react'
 import dynamic from 'next/dynamic'
-import { TemplateListItem } from '@/types/template'
+import { TemplateWithUser } from '@/types/template'
 import { clientFetchParsedTemplate } from '@/utils/template/utils'
 import { Template } from '@pdfme/common'
 import { ContactListDTO } from '@/features/customers/types'
@@ -17,12 +17,13 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { fetchTemplates } from '@/features/templates/templatesSlice'
 import { fetchCustomerLists } from '@/features/customers/customerListsSlice'
 import { useInfiniteScroll } from '@heroui/use-infinite-scroll'
+import { CustomerListSelectorStep } from './CampaignCustomerListSelectorStep'
 
 // Dynamically import the viewer to keep the modal light
 const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { ssr: false })
 
-const TemplateSelectionCard = ({ template, isSelected, onToggle }: {
-    template: TemplateListItem,
+export const TemplateSelectionCard = ({ template, isSelected, onToggle }: {
+    template: TemplateWithUser,
     isSelected: boolean,
     onToggle: () => void
 }) => {
@@ -96,44 +97,48 @@ const TemplateSelectionCard = ({ template, isSelected, onToggle }: {
 
 const StepIndicator = ({ 
     current, 
-    step, 
-    label, 
+    labels, 
     onStepClick 
 }: {
     current: number,
-    step: number,
-    label: string,
+    labels: string[],
     onStepClick: (step: number) => void
-}) => {
-    // Determine if the step is "reachable" (already completed or current)
-    const isReachable = step <= current; 
+}) => (
+    <div className="flex gap-4 mt-2">
+        {labels.map((label, index) => {
+            const stepNumber = index + 1
+            const isReachable = stepNumber <= current
+            const isActive = stepNumber === current
 
-    return (
-        <div 
-            onClick={() => isReachable && onStepClick(step)}
-            className={`
-                flex items-center gap-2 transition-all duration-200
-                ${isReachable ? 'cursor-pointer group' : 'cursor-not-allowed opacity-50'}
-                ${current === step ? 'text-secondary' : 'text-default-400'}
-            `}
-        >
-            <div className={`
-                w-6 h-6 rounded-full flex items-center justify-center text-[10px] border-1 transition-colors
-                ${current === step 
-                    ? 'border-secondary bg-secondary text-white font-bold' 
-                    : 'border-default-300 group-hover:border-secondary group-hover:text-secondary'}
-            `}>
-                {step}
-            </div>
-            
-            <span className={`text-tiny font-bold uppercase tracking-wider ${isReachable && 'group-hover:text-secondary'}`}>
-                {label}
-            </span>
+            return (
+                <div 
+                    key={`${label}-${stepNumber}`}
+                    onClick={() => isReachable && onStepClick(stepNumber)}
+                    className={`
+                        flex items-center gap-2 transition-all duration-200
+                        ${isReachable ? 'cursor-pointer group' : 'cursor-not-allowed opacity-50'}
+                        ${isActive ? 'text-secondary' : 'text-default-400'}
+                    `}
+                >
+                    <div className={`
+                        w-6 h-6 rounded-full flex items-center justify-center text-[10px] border-1 transition-colors
+                        ${isActive 
+                            ? 'border-secondary bg-secondary text-white font-bold' 
+                            : 'border-default-300 group-hover:border-secondary group-hover:text-secondary'}
+                    `}>
+                        {stepNumber}
+                    </div>
+                    
+                    <span className={`text-tiny font-bold uppercase tracking-wider ${isReachable && 'group-hover:text-secondary'}`}>
+                        {label}
+                    </span>
 
-            {step < 3 && <div className="w-6 h-px bg-default-200 mx-1" />}
-        </div>
-    )
-}
+                    {index < labels.length - 1 && <div className="w-6 h-px bg-default-200 mx-1" />}
+                </div>
+            )
+        })}
+    </div>
+)
 
 const NewCampaignButton = () => {
     const dispatch = useAppDispatch();
@@ -146,7 +151,7 @@ const NewCampaignButton = () => {
     const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("")
     
     // Selection State
-    const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([])
+    const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
     const [campaignName, setCampaignName] = useState("")
 
     // Redux State
@@ -194,9 +199,14 @@ const NewCampaignButton = () => {
     });
 
     const onStepClick = (newStep: number) => {
-        if (newStep < step || (step === 1 && campaignName.trim() !== "") || (step === 2 && selectedTemplateIds.length > 0)) {
+        const hasSelectedTemplate = Boolean(selectedTemplateId)
+        if (newStep < step || (step === 1 && campaignName.trim() !== "") || (step === 2 && hasSelectedTemplate)) {
             setStep(newStep)
         }
+    }
+
+    const onSelectionChange = (compatible: boolean) => {
+
     }
 
     return (
@@ -218,11 +228,11 @@ const NewCampaignButton = () => {
                                     <Send size={18} />
                                     <span className="font-bold">Campaign Automation Wizard</span>
                                 </div>
-                                <div className="flex gap-4 mt-2">
-                                    <StepIndicator current={step} step={1} onStepClick={onStepClick} label="Basic Info" />
-                                    <StepIndicator current={step} step={2} onStepClick={onStepClick} label="Templates" />
-                                    <StepIndicator current={step} step={3} onStepClick={onStepClick} label="Schedule" />
-                                </div>
+                                <StepIndicator 
+                                    current={step} 
+                                    labels={["Basic Info", "Templates", "Customers", "Schedule"]} 
+                                    onStepClick={onStepClick} 
+                                />
                             </ModalHeader>
 
                             <ModalBody className="py-6">
@@ -243,7 +253,7 @@ const NewCampaignButton = () => {
                                     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 h-111.5">
                                         <div className="flex justify-between items-center px-1">
                                             <p className="text-small font-bold text-default-600">
-                                                Select Templates ({selectedTemplateIds.length})
+                                                Select Template ({selectedTemplateId ? 1 : 0}/1)
                                             </p>
                                             <Input 
                                                 placeholder="Search templates..." 
@@ -265,12 +275,8 @@ const NewCampaignButton = () => {
                                                     <TemplateSelectionCard 
                                                         key={template.id} 
                                                         template={template} 
-                                                        isSelected={selectedTemplateIds.includes(template.id)}
-                                                        onToggle={() => setSelectedTemplateIds(prev => 
-                                                            prev.includes(template.id) 
-                                                                ? prev.filter(id => id !== template.id) 
-                                                                : [...prev, template.id]
-                                                        )}
+                                                        isSelected={selectedTemplateId === template.id}
+                                                        onToggle={() => setSelectedTemplateId(prev => prev === template.id ? null : template.id)}
                                                     />
                                                 ))}
                                             </div>
@@ -284,7 +290,12 @@ const NewCampaignButton = () => {
                                         </ScrollShadow>
                                     </div>
                                 )}
-                                {/* Step 3 logic here... */}
+                                {step === 3 && (
+                                    <CustomerListSelectorStep 
+                                        templateId={selectedTemplateId} 
+                                        onSelectionChange={onSelectionChange}
+                                    />
+                                )}
                             </ModalBody>
 
                             <ModalFooter className="bg-default-50 border-t border-default-100">
@@ -295,9 +306,9 @@ const NewCampaignButton = () => {
                                     color="secondary" 
                                     className="font-bold" 
                                     onPress={() => setStep(s => s + 1)}
-                                    isDisabled={step === 2 && selectedTemplateIds.length === 0}
+                                    isDisabled={step === 2 && !selectedTemplateId}
                                 >
-                                    {step === 3 ? 'Launch Campaign' : 'Next Step'}
+                                    {step === 4 ? 'Launch Campaign' : 'Next Step'}
                                 </Button>
                             </ModalFooter>
                         </>
