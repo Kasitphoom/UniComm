@@ -16,6 +16,12 @@ export interface CampaignsListState {
     scheduleStatusFilters: SCHEDULE_STATUS[]
 }
 
+export interface CampaignCreateState {
+    status: RequestStatus
+    error: string | null
+}
+
 export interface CampaignsState {
     list: CampaignsListState
+    create: CampaignCreateState
 }

@@ -5,7 +5,7 @@ import type {
     FILE_STATUS,
     SCHEDULE_STATUS,
 } from "@/app/generated/business/prisma"
-import type { CampaignListResponse } from "@/types/campaign"
+import type { CampaignListResponse, CampaignWithRelations } from "@/types/campaign"
 
 export type FetchCampaignsParams = {
     query?: string
@@ -52,6 +52,53 @@ export const fetchCampaigns = createAsyncThunk(
     },
 )
 
+export type CreateCampaignPayload = {
+    name: string
+    scheduledAt: string
+    templateId: string
+    customerListId: string
+}
+
+export const createCampaign = createAsyncThunk(
+    "campaigns/createCampaign",
+    async (payload: CreateCampaignPayload) => {
+        const response = await fetch("/api/campaigns", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify({
+                name: payload.name.trim(),
+                scheduledAt: payload.scheduledAt,
+                templateIds: [payload.templateId],
+                customerListId: payload.customerListId,
+            }),
+        })
+
+        let data: unknown = null
+        try {
+            data = await response.json()
+        } catch (error) {
+            // Ignore JSON parsing errors and fall back to generic messaging
+        }
+
+        if (!response.ok || !data) {
+            const errorMessage =
+                data &&
+                typeof data === "object" &&
+                data !== null &&
+                "error" in data &&
+                typeof (data as { error?: unknown }).error === "string"
+                    ? ((data as { error?: string }).error as string)
+                    : "Failed to create campaign"
+            throw new Error(errorMessage)
+        }
+
+        return data as CampaignWithRelations
+    },
+)
+
 const initialState: CampaignsState = {
     list: {
         items: [],
@@ -64,6 +111,10 @@ const initialState: CampaignsState = {
         perPage: 10,
         statusFilters: [],
         scheduleStatusFilters: [],
+    },
+    create: {
+        status: "idle",
+        error: null,
     },
 }
 
@@ -96,6 +147,14 @@ const campaignsSlice = createSlice({
             state.list = {
                 ...initialState.list,
             }
+            state.create = {
+                ...initialState.create,
+            }
+        },
+        resetCreateCampaign(state) {
+            state.create = {
+                ...initialState.create,
+            }
         },
     },
     extraReducers: (builder) => {
@@ -115,6 +174,19 @@ const campaignsSlice = createSlice({
                 state.list.status = "failed"
                 state.list.error = action.error.message || "Unknown error"
             })
+            .addCase(createCampaign.pending, (state) => {
+                state.create.status = "loading"
+                state.create.error = null
+            })
+            .addCase(createCampaign.fulfilled, (state, action) => {
+                state.create.status = "succeeded"
+                state.list.items.unshift(action.payload)
+                state.list.totalCount += 1
+            })
+            .addCase(createCampaign.rejected, (state, action) => {
+                state.create.status = "failed"
+                state.create.error = action.error.message || "Failed to create campaign"
+            })
     },
 })
 
@@ -125,6 +197,7 @@ export const {
     setCampaignStatusFilters,
     setCampaignScheduleStatusFilters,
     resetCampaigns,
+    resetCreateCampaign,
 } = campaignsSlice.actions
 
 export default campaignsSlice.reducer

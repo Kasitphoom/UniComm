@@ -10,6 +10,7 @@ import { PlusIcon, Send } from 'lucide-react'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { fetchTemplates } from '@/features/templates/templatesSlice'
 import { fetchCustomerLists } from '@/features/customers/customerListsSlice'
+import { createCampaign } from '@/features/campaigns/campaignsSlice'
 import { useInfiniteScroll } from '@heroui/use-infinite-scroll'
 import { getLocalTimeZone, now } from '@internationalized/date'
 import BasicInfoStep from './newCampaignSteps/BasicInfoStep'
@@ -66,7 +67,7 @@ const StepIndicator = ({
 
 const NewCampaignButton = () => {
     const dispatch = useAppDispatch();
-    const { isOpen, onOpen, onOpenChange } = useDisclosure()
+    const { isOpen, onOpen, onOpenChange, onClose } = useDisclosure()
     const [step, setStep] = useState(1)
 
     // Pagination & Search State
@@ -190,8 +191,26 @@ const NewCampaignButton = () => {
         setStep((prev) => Math.min(prev + 1, 5))
     }
 
-    const onSubmit = (values: CampaignFormValues) => {
-        console.log('Campaign form values', values)
+    const onSubmit = async (values: CampaignFormValues) => {
+        if (!values.templateId || !values.customerListId || !values.scheduleDate) {
+            return
+        }
+
+        const scheduledDate = values.scheduleDate.toDate(getLocalTimeZone())
+        if (!scheduledDate) return
+
+        try {
+            await dispatch(createCampaign({
+                name: values.campaignName.trim(),
+                scheduledAt: scheduledDate.toISOString(),
+                templateId: values.templateId,
+                customerListId: values.customerListId,
+            })).unwrap()
+
+            onClose()
+        } catch (error) {
+            console.error('Failed to launch campaign', error)
+        }
     }
 
     const hasCampaignName = Boolean(campaignNameValue.trim())
@@ -282,16 +301,29 @@ const NewCampaignButton = () => {
                                 >
                                     {step === 1 ? 'Cancel' : 'Back'}
                                 </Button>
-                                <Button
-                                    color="secondary"
-                                    className="font-bold"
-                                    type={step === 5 ? 'submit' : 'button'}
-                                    form={step === 5 ? 'campaignForm' : undefined}
-                                    onPress={step === 5 ? undefined : handleNextStep}
-                                    isDisabled={isNextDisabled}
-                                >
-                                    {step === 5 ? 'Launch Campaign' : 'Next Step'}
-                                </Button>
+                                {step < 5 ? (
+                                    <Button
+                                        key="campaign-next"
+                                        color="secondary"
+                                        className="font-bold"
+                                        type="button"
+                                        onPress={handleNextStep}
+                                        isDisabled={isNextDisabled}
+                                    >
+                                        Next Step
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        key="campaign-launch"
+                                        color="secondary"
+                                        className="font-bold"
+                                        type="submit"
+                                        form="campaignForm"
+                                        isDisabled={isNextDisabled}
+                                    >
+                                        Launch Campaign
+                                    </Button>
+                                )}
                             </ModalFooter>
                         </>
                     )}

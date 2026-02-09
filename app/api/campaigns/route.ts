@@ -106,6 +106,28 @@ function resolveDateRange(
     }
 }
 
+const normalizeFieldName = (value: string) => value.trim().toLowerCase()
+
+const extractFieldName = (value: unknown): string | null => {
+    if (typeof value === "string") return value
+    if (typeof value === "object" && value !== null) {
+        const candidate = value as Record<string, unknown>
+        if (typeof candidate.field === "string") return candidate.field
+        if (typeof candidate.name === "string") return candidate.name
+    }
+    return null
+}
+
+const toFieldNameSet = (values: unknown): Set<string> => {
+    if (!Array.isArray(values)) return new Set()
+    return new Set(
+        values
+            .map(extractFieldName)
+            .filter((field): field is string => Boolean(field))
+            .map((field) => normalizeFieldName(field)),
+    )
+}
+
 export async function GET(req: Request) {
     try {
         const auth = await requireAuth(req)
@@ -280,6 +302,8 @@ export async function POST(req: NextRequest) {
             )
         }
 
+        const trimmedName = name.trim()
+
         const scheduledDate = new Date(scheduledAt)
         if (!scheduledAt || Number.isNaN(scheduledDate.getTime())) {
             return NextResponse.json(
@@ -287,6 +311,15 @@ export async function POST(req: NextRequest) {
                 { status: 400 },
             )
         }
+
+        if (typeof customerListId !== "string" || !customerListId.trim()) {
+            return NextResponse.json(
+                { error: "A customer list must be selected" },
+                { status: 400 },
+            )
+        }
+
+        const normalizedCustomerListId = customerListId.trim()
 
         const templateIdList: string[] = Array.isArray(templateIds)
             ? Array.from(
@@ -299,10 +332,26 @@ export async function POST(req: NextRequest) {
               )
             : []
 
+        if (!templateIdList.length) {
+            return NextResponse.json(
+                { error: "Select a template before launching a campaign" },
+                { status: 400 },
+            )
+        }
+
+        if (templateIdList.length > 1) {
+            return NextResponse.json(
+                { error: "Only one template can be associated with a campaign at this time" },
+                { status: 400 },
+            )
+        }
+
+        const selectedTemplateId = templateIdList[0]
+
         const prisma = await getBusinessPrisma(auth.businessId)
 
         const existingByName = await prisma.campaign.findUnique({
-            where: { name: name.trim() },
+            where: { name: trimmedName },
         })
         if (existingByName) {
             return NextResponse.json(
@@ -311,40 +360,66 @@ export async function POST(req: NextRequest) {
             )
         }
 
-        if (templateIdList.length) {
-            const templates = await prisma.templates.findMany({
-                where: { id: { in: templateIdList } },
-                select: { id: true },
-            })
-            const existingIds = new Set(templates.map((tpl) => tpl.id))
-            const missing = templateIdList.filter((id) => !existingIds.has(id))
-            if (missing.length) {
-                return NextResponse.json(
-                    { error: "Some templates were not found", missing },
-                    { status: 404 },
-                )
-            }
-        }
-
-        const totalCustomerRecords = await prisma.contactList.findUnique({
-            where: { id: customerListId },
-            include: { 
-                _count: { 
-                    select: { 
-                        customers: true 
-                    } 
-                } 
+        const contactList = await prisma.contactList.findUnique({
+            where: { id: normalizedCustomerListId },
+            include: {
+                _count: {
+                    select: {
+                        customers: true,
+                    },
+                },
             },
         })
 
-        const totalRecordsSafe = totalCustomerRecords?._count.customers || 0
+        if (!contactList) {
+            return NextResponse.json(
+                { error: "Customer list not found" },
+                { status: 404 },
+            )
+        }
+
+        const templateRecord = await prisma.templates.findUnique({
+            where: { id: selectedTemplateId },
+            select: {
+                id: true,
+                title: true,
+                requiredFields: true,
+            },
+        })
+
+        if (!templateRecord) {
+            return NextResponse.json(
+                { error: "Selected template was not found" },
+                { status: 404 },
+            )
+        }
+
+        const normalizedCustomerFields = toFieldNameSet(contactList.fields)
+        const missingFields = Array.isArray(templateRecord.requiredFields)
+            ? templateRecord.requiredFields.filter((field) =>
+                  typeof field === "string" && !normalizedCustomerFields.has(normalizeFieldName(field)),
+              )
+            : []
+
+        if (missingFields.length) {
+            return NextResponse.json(
+                {
+                    error: "Customer list is missing required fields referenced by the selected template",
+                    missingFields,
+                    template: templateRecord.title,
+                },
+                { status: 400 },
+            )
+        }
+
+        const totalRecordsSafe = contactList._count?.customers ?? 0
 
         const created = await prisma.campaign.create({
             data: {
-                name: name.trim(),
+                name: trimmedName,
                 scheduledAt: scheduledDate,
                 totalRecords: totalRecordsSafe,
-                contactListId: customerListId,
+                contactListId: contactList.id,
                 templates: templateIdList.length
                     ? {
                           create: templateIdList.map((templateId) => ({
