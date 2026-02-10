@@ -62,9 +62,19 @@ function endOfDayUTC(date: Date) {
     return adjusted
 }
 
+function sanitizeDateInput(value: string): string | null {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    // Remove bracketed zone annotations like "[Europe/London]" which break Date parsing
+    const withoutZoneAnnotation = trimmed.replace(/\[[^\]]*\]$/, "")
+    return withoutZoneAnnotation || null
+}
+
 function toDate(value: string | null): Date | null {
     if (!value) return null
-    const parsed = new Date(value)
+    const sanitized = sanitizeDateInput(value)
+    if (!sanitized) return null
+    const parsed = new Date(sanitized)
     return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
@@ -73,7 +83,10 @@ function resolveDateRange(
     startDateParam: string | null,
     endDateParam: string | null,
 ): DateRange | null {
-    const normalizedRange = (rangeValue || "ALL").toUpperCase()
+    const normalizedRange = (
+        rangeValue ||
+        ((startDateParam || endDateParam) ? "CUSTOM" : "ALL")
+    ).toUpperCase()
     const nowUtc = new Date()
 
     switch (normalizedRange) {

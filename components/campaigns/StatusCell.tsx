@@ -20,7 +20,7 @@ export const StatusCell = ({ status, type }: { status: string, type: 'schedule' 
             color={config.color as any}
             variant="flat"
             size="sm"
-            className="capitalize font-bold border-1 border-current"
+            className="capitalize gap-1"
         >
             {config.label}
         </Chip>

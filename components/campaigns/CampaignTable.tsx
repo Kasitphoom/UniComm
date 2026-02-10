@@ -1,26 +1,16 @@
 "use client"
+
 import { useEffect, useMemo } from "react"
 import { useSearchParams } from "next/navigation"
 import {
-    Table,
-    TableHeader,
-    TableColumn,
-    TableBody,
-    TableRow,
-    TableCell,
-    Tooltip,
-    Spinner,
-    Pagination,
+    Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
+    Tooltip, Spinner, Pagination, Button,
+    PressEvent
 } from "@heroui/react"
+import { Edit2, Trash2, Play, MoreVertical } from "lucide-react"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import {
-    fetchCampaigns,
-    type FetchCampaignsParams,
-} from "@/features/campaigns/campaignsSlice"
-import type {
-    FILE_STATUS,
-    SCHEDULE_STATUS,
-} from "@/app/generated/business/prisma"
+import { fetchCampaigns, type FetchCampaignsParams } from "@/features/campaigns/campaignsSlice"
+import type { FILE_STATUS, SCHEDULE_STATUS } from "@/app/generated/business/prisma"
 import { StatusCell } from "./StatusCell"
 import { CampaignWithRelations } from "@/types/campaign"
 
@@ -35,35 +25,19 @@ export const CampaignTable = () => {
 
     const campaignParams = useMemo<FetchCampaignsParams>(() => {
         const params = new URLSearchParams(paramsString)
-
         const query = params.get("query") || undefined
         const page = Math.max(1, Number(params.get("page")) || 1)
-        const perPageParam = params.get("perPage")
-        const perPage = perPageParam ? Number(perPageParam) || undefined : undefined
-
-        const fileStatus = params
-            .getAll("fileStatus")
-            .filter(Boolean) as FILE_STATUS[]
-        const scheduleStatus = params
-            .getAll("scheduleStatus")
-            .filter(Boolean) as SCHEDULE_STATUS[]
-
-        const rawRange = (params.get("range") || "ALL").toUpperCase() as NonNullable<
-            FetchCampaignsParams["range"]
-        >
-        const range = rawRange === "ALL" ? undefined : rawRange
-        const startDate = params.get("startDate") || undefined
-        const endDate = params.get("endDate") || undefined
+        const perPage = Number(params.get("perPage")) || 10
 
         return {
             query,
             page,
             perPage,
-            fileStatus: fileStatus.length ? fileStatus : undefined,
-            scheduleStatus: scheduleStatus.length ? scheduleStatus : undefined,
-            range,
-            startDate,
-            endDate,
+            fileStatus: params.getAll("fileStatus") as FILE_STATUS[],
+            scheduleStatus: params.getAll("scheduleStatus") as SCHEDULE_STATUS[],
+            range: params.get("range") as any,
+            startDate: params.get("startDate") || undefined,
+            endDate: params.get("endDate") || undefined,
         }
     }, [paramsString])
 
@@ -71,41 +45,37 @@ export const CampaignTable = () => {
         dispatch(fetchCampaigns(campaignParams))
     }, [dispatch, campaignParams])
 
-    const onEdit = (campaign: CampaignWithRelations) => {}
-
-    const onPageChange = (page: number) => {
-        const params = new URLSearchParams(searchParams.toString())
-        if (page > 1) {
-            params.set("page", String(page))
-        } else {
-            params.delete("page")
-        }
-        const newSearch = params.toString()
-        const url = newSearch ? `?${newSearch}` : ""
-        window.history.pushState(null, "", url)
+    // Action Handlers
+    const handleAction = (e: PressEvent, type: string, campaign: CampaignWithRelations) => {
+        console.log(`${type} campaign:`, campaign.id);
     }
 
     return (
         <Table
             aria-label="Campaign List"
             removeWrapper
-            className="min-w-full"
-            classNames={{ th: "bg-default-50 text-default-500", td: "py-4" }}
+            classNames={{
+                base: "max-w-full overflow-x-auto",
+                th: "bg-transparent text-default-400 font-bold text-tiny border-b border-default-100",
+                td: "py-3 border-b border-default-50 last:border-none",
+            }}
             bottomContent={
-                <div className="flex w-full justify-center">
+                <div className="flex w-full justify-center py-4">
                     <Pagination
+                        isCompact
+                        showControls
                         color="secondary"
                         page={currentPage}
                         total={totalPages}
-                        onChange={onPageChange}
+                        onChange={(page) => window.history.pushState(null, "", `?page=${page}`)}
                     />
                 </div>
             }
         >
             <TableHeader>
-                <TableColumn>CAMPAIGN NAME</TableColumn>
+                <TableColumn>CAMPAIGN</TableColumn>
                 <TableColumn>TEMPLATES</TableColumn>
-                <TableColumn>EXECUTION TIME</TableColumn>
+                <TableColumn>SCHEDULED</TableColumn>
                 <TableColumn>RECORDS</TableColumn>
                 <TableColumn>STATUS</TableColumn>
                 <TableColumn>FILES</TableColumn>
@@ -114,59 +84,62 @@ export const CampaignTable = () => {
             <TableBody
                 items={campaigns}
                 isLoading={status === "loading"}
-                emptyContent={
-                    status === "loading" ? "" : "No campaigns to display"
-                }
-                loadingContent={<Spinner color="secondary" label="Loading campaigns..." />}
+                loadingContent={<Spinner color="secondary" size="sm" />}
             >
-                {(item: CampaignWithRelations) => (
-                    <TableRow
-                        key={item.id}
-                        className="hover:bg-default-50 transition-colors cursor-pointer"
-                        onClick={() => onEdit?.(item)}
+                {(item) => (
+                    <TableRow 
+                        key={item.id} 
+                        className="hover:bg-default-50/50 transition-colors cursor-pointer group"
+                        onClick={() => console.log("Edit row", item.id)}
                     >
                         <TableCell>
-                            <span className="font-bold text-default-700">{item.name}</span>
+                            <span className="text-small font-bold text-default-700">{item.name}</span>
                         </TableCell>
                         <TableCell>
-                            <div className="flex -space-x-2">
-                                {item.templates.map((ct) => (
+                            <div className="flex -space-x-1.5">
+                                {item.templates.slice(0, 3).map((ct) => (
                                     <Tooltip key={ct.id} content={ct.template.title}>
-                                        <div className="w-8 h-8 rounded-full bg-secondary-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-secondary">
+                                        <div className="w-7 h-7 rounded-full bg-secondary-50 border-2 border-white flex items-center justify-center text-[10px] font-bold text-secondary-400">
                                             {ct.template.title.charAt(0)}
                                         </div>
                                     </Tooltip>
                                 ))}
                                 {item.templates.length > 3 && (
-                                    <div className="w-8 h-8 rounded-full bg-default-200 border-2 border-white flex items-center justify-center text-[10px] font-bold">
+                                    <div className="w-7 h-7 rounded-full bg-default-100 border-2 border-white flex items-center justify-center text-[9px] font-bold text-default-500">
                                         +{item.templates.length - 3}
                                     </div>
                                 )}
                             </div>
                         </TableCell>
                         <TableCell>
-                            <div className="flex flex-col">
-                                <span className="text-small">
-                                    {new Date(item.scheduledAt).toLocaleDateString()}
-                                </span>
-                                <span className="text-tiny text-default-400">
-                                    {new Date(item.scheduledAt).toLocaleTimeString()}
-                                </span>
+                            <div className="flex flex-col text-tiny">
+                                <span className="font-medium">{new Date(item.scheduledAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
+                                <span className="text-default-400">{new Date(item.scheduledAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
                             </div>
                         </TableCell>
                         <TableCell>
-                            <span className="text-small font-medium">
-                                {item.totalRecords.toLocaleString()}
-                            </span>
+                            <span className="text-tiny font-mono text-default-500">{item.totalRecords.toLocaleString()}</span>
                         </TableCell>
+                        <TableCell><StatusCell status={item.scheduleStatus} type="schedule" /></TableCell>
+                        <TableCell><StatusCell status={item.fileStatus} type="file" /></TableCell>
                         <TableCell>
-                            <StatusCell status={item.scheduleStatus} type="schedule" />
-                        </TableCell>
-                        <TableCell>
-                            <StatusCell status={item.fileStatus} type="file" />
-                        </TableCell>
-                        <TableCell>
-                            <div></div>
+                            <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Tooltip content="Re-trigger" size="sm" color="secondary">
+                                    <Button isIconOnly size="sm" variant="light" color="secondary" onPress={(e) => handleAction(e, 'retrigger', item)}>
+                                        <Play size={14} fill="currentColor" />
+                                    </Button>
+                                </Tooltip>
+                                <Tooltip content="Edit" size="sm">
+                                    <Button isIconOnly size="sm" variant="light" className="text-default-400" onPress={(e) => handleAction(e, 'edit', item)}>
+                                        <Edit2 size={14} />
+                                    </Button>
+                                </Tooltip>
+                                <Tooltip content="Delete" size="sm" color="danger">
+                                    <Button isIconOnly size="sm" variant="light" color="danger" onPress={(e) => handleAction(e, 'delete', item)}>
+                                        <Trash2 size={14} />
+                                    </Button>
+                                </Tooltip>
+                            </div>
                         </TableCell>
                     </TableRow>
                 )}
