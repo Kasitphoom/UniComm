@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useCallback } from "react"
+import { useEffect, useMemo, useCallback, useState } from "react"
 import type { Key } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
@@ -20,10 +20,13 @@ import {
 } from "@heroui/react"
 import { Edit2, Trash2, Play, Calendar } from "lucide-react"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import { fetchCampaigns, type FetchCampaignsParams } from "@/features/campaigns/campaignsSlice"
+import { fetchCampaigns, type FetchCampaignsParams, updateCampaign } from "@/features/campaigns/campaignsSlice"
 import type { FILE_STATUS, SCHEDULE_STATUS } from "@/app/generated/business/prisma"
 import { StatusCell } from "./StatusCell"
 import { CampaignWithRelations } from "@/types/campaign"
+import CampaignWizardModal from "./CampaignWizardModal"
+import type { CampaignFormValues } from "./newCampaignSteps/types"
+import { getLocalTimeZone, parseAbsoluteToLocal, fromDate } from "@internationalized/date"
 
 export const CampaignTable = () => {
     const dispatch = useAppDispatch()
@@ -36,6 +39,10 @@ export const CampaignTable = () => {
         currentPage,
         error,
     } = useAppSelector((state) => state.campaigns.list)
+    const { status: updateStatus } = useAppSelector((state) => state.campaigns.update)
+
+    const [isWizardOpen, setWizardOpen] = useState(false)
+    const [editingCampaign, setEditingCampaign] = useState<CampaignWithRelations | null>(null)
 
     const paramsString = searchParams.toString()
     const sort = (searchParams.get("sort") || "desc") as "asc" | "desc"
@@ -59,8 +66,25 @@ export const CampaignTable = () => {
     }, [dispatch, campaignParams])
 
     const handleAction = useCallback((e: PressEvent, type: string, id: string) => {
-        e.stopPropagation()
         console.log(`${type} campaign:`, id)
+    }, [])
+
+    const handleWizardClose = useCallback(() => {
+        setWizardOpen(false)
+        setEditingCampaign(null)
+    }, [])
+
+    const handleWizardOpenChange = useCallback((open: boolean) => {
+        if (!open) {
+            handleWizardClose()
+            return
+        }
+        setWizardOpen(true)
+    }, [handleWizardClose])
+
+    const handleEditAction = useCallback((campaign: CampaignWithRelations) => {
+        setEditingCampaign(campaign)
+        setWizardOpen(true)
     }, [])
 
     const onPageChange = (newPage: number) => {
@@ -84,6 +108,39 @@ export const CampaignTable = () => {
             return sort === "asc" ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA)
         })
     }, [campaigns, sort])
+
+    const editInitialValues = useMemo<CampaignFormValues | undefined>(() => {
+        if (!editingCampaign) return undefined
+        const timeZone = getLocalTimeZone()
+        const scheduleDateValue = editingCampaign.scheduledAt instanceof Date
+            ? fromDate(editingCampaign.scheduledAt, timeZone)
+            : parseAbsoluteToLocal(editingCampaign.scheduledAt)
+        return {
+            campaignName: editingCampaign.name,
+            templateId: editingCampaign.templates[0]?.template?.id ?? null,
+            customerListId: editingCampaign.contactListId ?? null,
+            scheduleDate: scheduleDateValue,
+        }
+    }, [editingCampaign])
+
+    const handleEditSubmit = useCallback(async (values: CampaignFormValues) => {
+        if (!editingCampaign || !values.templateId || !values.customerListId || !values.scheduleDate) {
+            return
+        }
+
+        const scheduledDate = values.scheduleDate.toDate(getLocalTimeZone())
+        if (!scheduledDate) return
+
+        await dispatch(updateCampaign({
+            id: editingCampaign.id,
+            name: values.campaignName.trim(),
+            scheduledAt: scheduledDate.toISOString(),
+            templateId: values.templateId,
+            customerListId: values.customerListId,
+        })).unwrap()
+
+        handleWizardClose()
+    }, [dispatch, editingCampaign, handleWizardClose])
 
     const renderCell = useCallback((campaign: CampaignWithRelations, columnKey: Key) => {
         switch (columnKey) {
@@ -142,7 +199,15 @@ export const CampaignTable = () => {
                             </Button>
                         </Tooltip>
                         <Tooltip content="Edit" size="sm">
-                            <Button isIconOnly size="sm" variant="light" className="text-default-500" onPress={(e) => handleAction(e, "edit", campaign.id)}>
+                            <Button
+                                isIconOnly
+                                size="sm"
+                                variant="light"
+                                className="text-default-500"
+                                onPress={(e) => {
+                                    handleEditAction(campaign)
+                                }}
+                            >
                                 <Edit2 size={16} />
                             </Button>
                         </Tooltip>
@@ -254,7 +319,9 @@ export const CampaignTable = () => {
                         size="sm" 
                         variant="light" 
                         className="text-default-400" 
-                        onPress={(e) => handleAction(e, "edit", campaign.id)}
+                        onPress={(e) => {
+                            handleEditAction(campaign)
+                        }}
                     >
                         <Edit2 size={16} />
                     </Button>
@@ -332,6 +399,18 @@ export const CampaignTable = () => {
                     />
                 </div>
             )}
+
+            <CampaignWizardModal
+                isOpen={isWizardOpen && Boolean(editingCampaign)}
+                onOpenChange={handleWizardOpenChange}
+                onClose={handleWizardClose}
+                onSubmit={handleEditSubmit}
+                mode="edit"
+                initialValues={editInitialValues}
+                title="Edit Campaign"
+                submitLabel="Save Changes"
+                isSubmitting={updateStatus === "loading"}
+            />
         </div>
     )
 }

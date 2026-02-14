@@ -53,7 +53,7 @@ export async function PATCH(req: NextRequest, { params }: PatchContext) {
             )
         }
 
-        const campaignId = params.id?.trim()
+        const { id: campaignId } = await params
         if (!campaignId) {
             return NextResponse.json(
                 { error: "Campaign ID is required" },
