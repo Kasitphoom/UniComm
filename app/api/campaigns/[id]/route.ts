@@ -27,7 +27,7 @@ const toFieldNameSet = (values: unknown): Set<string> => {
 }
 
 type PatchContext = {
-    params: { id: string }
+    params: Promise<{ id: string }>
 }
 
 export async function PATCH(req: NextRequest, { params }: PatchContext) {
