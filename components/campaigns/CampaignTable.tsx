@@ -177,59 +177,95 @@ export const CampaignTable = () => {
 
     const MobileCampaignCard = ({ campaign }: { campaign: CampaignWithRelations }) => (
         <Card className="mb-3 shadow-sm border-none bg-white lg:hidden">
-            <CardBody className="p-4 space-y-4">
-                <div className="flex items-start justify-between">
-                    <div>
-                        <p className="text-sm font-semibold text-default-800">{campaign.name}</p>
-                        <p className="text-tiny text-default-400 font-mono">#{campaign.id.slice(-6)}</p>
+            <CardBody className="p-5 space-y-5">
+                {/* TOP: Identity & Status */}
+                <div className="flex items-start justify-between gap-2">
+                    <div className="flex flex-col gap-0.5">
+                        <p className="text-small font-bold text-default-800 leading-tight">
+                            {campaign.name}
+                        </p>
                     </div>
-                    <div className="flex gap-1">
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
                         <StatusCell status={campaign.scheduleStatus} type="schedule" />
                         <StatusCell status={campaign.fileStatus} type="file" />
                     </div>
                 </div>
-                <div className="flex flex-col gap-3">
-                    <div>
-                        <p className="text-[11px] uppercase text-default-300 tracking-wide">Templates</p>
-                        <div className="mt-2 flex -space-x-2">
+
+                {/* MIDDLE: Data Points (Grid for better use of space) */}
+                <div className="grid grid-cols-2 gap-4 py-1">
+                    {/* Templates Section */}
+                    <div className="space-y-2">
+                        <p className="text-[10px] uppercase text-default-300 font-bold tracking-widest">
+                            Templates
+                        </p>
+                        <div className="flex -space-x-2">
                             {campaign.templates.slice(0, 3).map((ct) => (
                                 <div
                                     key={ct.id}
-                                    className="w-8 h-8 rounded-full bg-secondary-50 border-2 border-white flex items-center justify-center text-[10px] font-bold text-secondary"
+                                    className="w-7 h-7 rounded-full bg-secondary-50 border-2 border-white flex items-center justify-center text-[10px] font-bold text-secondary-400"
                                 >
                                     {ct.template.title.charAt(0).toUpperCase()}
                                 </div>
                             ))}
                             {campaign.templates.length > 3 && (
-                                <div className="w-8 h-8 rounded-full bg-default-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-default-500">
+                                <div className="w-7 h-7 rounded-full bg-default-100 border-2 border-white flex items-center justify-center text-[9px] font-bold text-default-500">
                                     +{campaign.templates.length - 3}
                                 </div>
                             )}
                         </div>
                     </div>
-                    <div className="flex items-center justify-between text-tiny text-default-500">
-                        <div className="flex items-center gap-1 font-medium">
-                            <Calendar size={12} />
-                            <span>{new Date(campaign.scheduledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
-                        </div>
-                        <span className="text-secondary font-semibold">
-                            {new Date(campaign.scheduledAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+
+                    {/* Records Section */}
+                    <div className="space-y-2 text-right">
+                        <p className="text-[10px] uppercase text-default-300 font-bold tracking-widest">
+                            Records
+                        </p>
+                        <span className="text-tiny font-mono font-bold text-default-500 bg-default-50 px-2 py-0.5 rounded-md">
+                            {campaign.totalRecords.toLocaleString()}
                         </span>
                     </div>
-                    <div className="flex items-center justify-between text-tiny">
-                        <span className="text-default-400">Records</span>
-                        <span className="font-semibold text-default-500">{campaign.totalRecords.toLocaleString()}</span>
-                    </div>
                 </div>
-                <div className="flex items-center justify-end gap-3 pt-2 border-t border-divider">
-                    <Button isIconOnly size="sm" variant="light" color="secondary" aria-label="Re-trigger" onPress={(e) => handleAction(e, "retrigger", campaign.id)}>
-                        <Play size={18} fill="currentColor" />
+
+                {/* SCHEDULE: Minimalist Execution Window */}
+                <div className="flex items-center gap-2 py-2 px-3 bg-[#F4F4F5] rounded-xl text-tiny">
+                    <Calendar size={12} className="text-default-400" />
+                    <span className="text-default-500 font-medium">
+                        {new Date(campaign.scheduledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                    </span>
+                    <span className="text-default-300">·</span>
+                    <span className="text-default-500 font-medium">
+                        {new Date(campaign.scheduledAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                </div>
+
+                {/* BOTTOM: Actions */}
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-default-50">
+                    <Button 
+                        isIconOnly 
+                        size="sm" 
+                        variant="light" 
+                        color="secondary" 
+                        onPress={(e) => handleAction(e, "retrigger", campaign.id)}
+                    >
+                        <Play size={16} fill="currentColor" />
                     </Button>
-                    <Button isIconOnly size="sm" variant="light" aria-label="Edit" onPress={(e) => handleAction(e, "edit", campaign.id)}>
-                        <Edit2 size={18} />
+                    <Button 
+                        isIconOnly 
+                        size="sm" 
+                        variant="light" 
+                        className="text-default-400" 
+                        onPress={(e) => handleAction(e, "edit", campaign.id)}
+                    >
+                        <Edit2 size={16} />
                     </Button>
-                    <Button isIconOnly size="sm" variant="light" color="danger" aria-label="Delete" onPress={(e) => handleAction(e, "delete", campaign.id)}>
-                        <Trash2 size={18} />
+                    <Button 
+                        isIconOnly 
+                        size="sm" 
+                        variant="light" 
+                        color="danger" 
+                        onPress={(e) => handleAction(e, "delete", campaign.id)}
+                    >
+                        <Trash2 size={16} />
                     </Button>
                 </div>
             </CardBody>

@@ -63,7 +63,11 @@ const CampaignControlBar = () => {
     return (
         <div className='flex flex-col md:flex-row gap-3 justify-end w-full animate-in fade-in duration-500'>
 
-            <SearchBar />
+            <SearchBar props={{
+                classNames: {
+                    base: 'max-w-none! md:max-w-[300px]',
+                }
+            }} />
 
             <CampaignFilters
                 currentScheduleStatus={currentScheduleStatus}
