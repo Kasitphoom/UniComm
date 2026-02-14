@@ -1,13 +1,24 @@
 "use client"
 
-import { useEffect, useMemo } from "react"
-import { useSearchParams } from "next/navigation"
+import { useEffect, useMemo, useCallback } from "react"
+import type { Key } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
-    Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
-    Tooltip, Spinner, Pagination, Button,
-    PressEvent
+    Table,
+    TableHeader,
+    TableColumn,
+    TableBody,
+    TableRow,
+    TableCell,
+    Tooltip,
+    Spinner,
+    Pagination,
+    Button,
+    PressEvent,
+    Card,
+    CardBody,
 } from "@heroui/react"
-import { Edit2, Trash2, Play, MoreVertical } from "lucide-react"
+import { Edit2, Trash2, Play, Calendar } from "lucide-react"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import { fetchCampaigns, type FetchCampaignsParams } from "@/features/campaigns/campaignsSlice"
 import type { FILE_STATUS, SCHEDULE_STATUS } from "@/app/generated/business/prisma"
@@ -16,23 +27,25 @@ import { CampaignWithRelations } from "@/types/campaign"
 
 export const CampaignTable = () => {
     const dispatch = useAppDispatch()
+    const router = useRouter()
     const searchParams = useSearchParams()
-    const { items: campaigns, status, totalPages, currentPage } = useAppSelector(
-        (state) => state.campaigns.list,
-    )
+    const {
+        items: campaigns,
+        status,
+        totalPages,
+        currentPage,
+        error,
+    } = useAppSelector((state) => state.campaigns.list)
 
     const paramsString = searchParams.toString()
+    const sort = (searchParams.get("sort") || "desc") as "asc" | "desc"
 
     const campaignParams = useMemo<FetchCampaignsParams>(() => {
         const params = new URLSearchParams(paramsString)
-        const query = params.get("query") || undefined
-        const page = Math.max(1, Number(params.get("page")) || 1)
-        const perPage = Number(params.get("perPage")) || 10
-
         return {
-            query,
-            page,
-            perPage,
+            query: params.get("query") || undefined,
+            page: Math.max(1, Number(params.get("page")) || 1),
+            perPage: Number(params.get("perPage")) || 10,
             fileStatus: params.getAll("fileStatus") as FILE_STATUS[],
             scheduleStatus: params.getAll("scheduleStatus") as SCHEDULE_STATUS[],
             range: params.get("range") as any,
@@ -45,105 +58,244 @@ export const CampaignTable = () => {
         dispatch(fetchCampaigns(campaignParams))
     }, [dispatch, campaignParams])
 
-    // Action Handlers
-    const handleAction = (e: PressEvent, type: string, campaign: CampaignWithRelations) => {
-        console.log(`${type} campaign:`, campaign.id);
+    const handleAction = useCallback((e: PressEvent, type: string, id: string) => {
+        e.stopPropagation()
+        console.log(`${type} campaign:`, id)
+    }, [])
+
+    const onPageChange = (newPage: number) => {
+        const params = new URLSearchParams(searchParams.toString())
+        params.set("page", newPage.toString())
+        router.push(`?${params.toString()}`)
     }
 
+    const onSortChange = (descriptor: { column?: string | number; direction: "ascending" | "descending" }) => {
+        const params = new URLSearchParams(searchParams.toString())
+        params.set("sort", descriptor.direction === "ascending" ? "asc" : "desc")
+        params.set("page", "1")
+        router.push(`?${params.toString()}`)
+    }
+
+    const sortedCampaigns = useMemo(() => {
+        const cloned = [...campaigns]
+        return cloned.sort((a, b) => {
+            const nameA = a.name?.toLowerCase() || ""
+            const nameB = b.name?.toLowerCase() || ""
+            return sort === "asc" ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA)
+        })
+    }, [campaigns, sort])
+
+    const renderCell = useCallback((campaign: CampaignWithRelations, columnKey: Key) => {
+        switch (columnKey) {
+            case "name":
+                return (
+                    <div className="flex flex-col">
+                        <span className="text-small font-semibold text-default-800">{campaign.name}</span>
+                    </div>
+                )
+            case "templates":
+                return (
+                    <div className="flex -space-x-2">
+                        {campaign.templates.slice(0, 3).map((ct) => (
+                            <div
+                                key={ct.id}
+                                className="w-8 h-8 rounded-full bg-secondary-50 border-2 border-white flex items-center justify-center text-[10px] font-bold text-secondary"
+                            >
+                                {ct.template.title.charAt(0).toUpperCase()}
+                            </div>
+                        ))}
+                        {campaign.templates.length > 3 && (
+                            <div className="w-8 h-8 rounded-full bg-default-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-default-500">
+                                +{campaign.templates.length - 3}
+                            </div>
+                        )}
+                    </div>
+                )
+            case "scheduled":
+                return (
+                    <div className="flex flex-col text-tiny">
+                        <div className="flex items-center gap-1 font-semibold text-default-600">
+                            <Calendar size={12} />
+                            <span>{new Date(campaign.scheduledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                        </div>
+                    </div>
+                )
+            case "records":
+                return (
+                    <span className="text-tiny font-bold text-default-500">
+                        {campaign.totalRecords.toLocaleString()}
+                    </span>
+                )
+            case "status":
+                return (
+                    <div className="flex gap-2">
+                        <StatusCell status={campaign.scheduleStatus} type="schedule" />
+                        <StatusCell status={campaign.fileStatus} type="file" />
+                    </div>
+                )
+            case "actions":
+                return (
+                    <div className="flex items-center justify-center gap-2">
+                        <Tooltip content="Re-trigger" size="sm" color="secondary">
+                            <Button isIconOnly size="sm" variant="light" color="secondary" onPress={(e) => handleAction(e, "retrigger", campaign.id)}>
+                                <Play size={16} fill="currentColor" />
+                            </Button>
+                        </Tooltip>
+                        <Tooltip content="Edit" size="sm">
+                            <Button isIconOnly size="sm" variant="light" className="text-default-500" onPress={(e) => handleAction(e, "edit", campaign.id)}>
+                                <Edit2 size={16} />
+                            </Button>
+                        </Tooltip>
+                        <Tooltip content="Delete" size="sm" color="danger">
+                            <Button isIconOnly size="sm" variant="light" color="danger" onPress={(e) => handleAction(e, "delete", campaign.id)}>
+                                <Trash2 size={16} />
+                            </Button>
+                        </Tooltip>
+                    </div>
+                )
+            default:
+                return null
+        }
+    }, [handleAction])
+
+    if (status === "failed") {
+        return (
+            <div className="flex justify-center items-center min-h-100 text-danger">
+                <p>Error loading campaigns: {error}</p>
+            </div>
+        )
+    }
+
+    const columns = [
+        { name: "CAMPAIGN", uid: "name" },
+        { name: "TEMPLATES", uid: "templates" },
+        { name: "SCHEDULED", uid: "scheduled" },
+        { name: "RECORDS", uid: "records" },
+        { name: "STATUS", uid: "status" },
+        { name: "ACTIONS", uid: "actions" },
+    ]
+
+    const MobileCampaignCard = ({ campaign }: { campaign: CampaignWithRelations }) => (
+        <Card className="mb-3 shadow-sm border-none bg-white lg:hidden">
+            <CardBody className="p-4 space-y-4">
+                <div className="flex items-start justify-between">
+                    <div>
+                        <p className="text-sm font-semibold text-default-800">{campaign.name}</p>
+                        <p className="text-tiny text-default-400 font-mono">#{campaign.id.slice(-6)}</p>
+                    </div>
+                    <div className="flex gap-1">
+                        <StatusCell status={campaign.scheduleStatus} type="schedule" />
+                        <StatusCell status={campaign.fileStatus} type="file" />
+                    </div>
+                </div>
+                <div className="flex flex-col gap-3">
+                    <div>
+                        <p className="text-[11px] uppercase text-default-300 tracking-wide">Templates</p>
+                        <div className="mt-2 flex -space-x-2">
+                            {campaign.templates.slice(0, 3).map((ct) => (
+                                <div
+                                    key={ct.id}
+                                    className="w-8 h-8 rounded-full bg-secondary-50 border-2 border-white flex items-center justify-center text-[10px] font-bold text-secondary"
+                                >
+                                    {ct.template.title.charAt(0).toUpperCase()}
+                                </div>
+                            ))}
+                            {campaign.templates.length > 3 && (
+                                <div className="w-8 h-8 rounded-full bg-default-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-default-500">
+                                    +{campaign.templates.length - 3}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    <div className="flex items-center justify-between text-tiny text-default-500">
+                        <div className="flex items-center gap-1 font-medium">
+                            <Calendar size={12} />
+                            <span>{new Date(campaign.scheduledAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</span>
+                        </div>
+                        <span className="text-secondary font-semibold">
+                            {new Date(campaign.scheduledAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                    </div>
+                    <div className="flex items-center justify-between text-tiny">
+                        <span className="text-default-400">Records</span>
+                        <span className="font-semibold text-default-500">{campaign.totalRecords.toLocaleString()}</span>
+                    </div>
+                </div>
+                <div className="flex items-center justify-end gap-3 pt-2 border-t border-divider">
+                    <Button isIconOnly size="sm" variant="light" color="secondary" aria-label="Re-trigger" onPress={(e) => handleAction(e, "retrigger", campaign.id)}>
+                        <Play size={18} fill="currentColor" />
+                    </Button>
+                    <Button isIconOnly size="sm" variant="light" aria-label="Edit" onPress={(e) => handleAction(e, "edit", campaign.id)}>
+                        <Edit2 size={18} />
+                    </Button>
+                    <Button isIconOnly size="sm" variant="light" color="danger" aria-label="Delete" onPress={(e) => handleAction(e, "delete", campaign.id)}>
+                        <Trash2 size={18} />
+                    </Button>
+                </div>
+            </CardBody>
+        </Card>
+    )
+
     return (
-        <Table
-            aria-label="Campaign List"
-            removeWrapper
-            classNames={{
-                base: "max-w-full overflow-x-auto",
-                th: "bg-transparent text-default-400 font-bold text-tiny border-b border-default-100",
-                td: "py-3 border-b border-default-50 last:border-none",
-            }}
-            bottomContent={
-                <div className="flex w-full justify-center py-4">
+        <div className="space-y-4">
+            <div className="hidden lg:block">
+                <Table
+                    aria-label="Campaign Table"
+                    isHeaderSticky
+                    classNames={{
+                        base: "max-h-[600px]",
+                        table: "min-w-[700px]",
+                    }}
+                    sortDescriptor={{ column: "name", direction: sort === "asc" ? "ascending" : "descending" }}
+                    onSortChange={onSortChange}
+                >
+                    <TableHeader columns={columns}>
+                        {(column) => (
+                            <TableColumn
+                                key={column.uid}
+                                align={column.uid === "actions" ? "center" : "start"}
+                                allowsSorting={column.uid === "name"}
+                            >
+                                {column.name}
+                            </TableColumn>
+                        )}
+                    </TableHeader>
+                    <TableBody
+                        items={sortedCampaigns}
+                        isLoading={status === "loading"}
+                        loadingContent={<Spinner color="secondary" size="sm" />}
+                    >
+                        {(item: CampaignWithRelations) => (
+                            <TableRow key={item.id} className="hover:bg-default-50/40 transition-colors">
+                                {(columnKey) => (
+                                    <TableCell className="py-4">{renderCell(item, columnKey)}</TableCell>
+                                )}
+                            </TableRow>
+                        )}
+                    </TableBody>
+                </Table>
+            </div>
+
+            <div className="lg:hidden">
+                {sortedCampaigns.map((campaign) => (
+                    <MobileCampaignCard key={campaign.id} campaign={campaign} />
+                ))}
+            </div>
+
+            {totalPages > 1 && (
+                <div className="flex justify-center mt-6">
                     <Pagination
-                        isCompact
-                        showControls
                         color="secondary"
                         page={currentPage}
                         total={totalPages}
-                        onChange={(page) => window.history.pushState(null, "", `?page=${page}`)}
+                        onChange={onPageChange}
+                        size={typeof window !== "undefined" && window.innerWidth < 640 ? "sm" : "md"}
+                        classNames={{
+                            item: "bg-white",
+                        }}
                     />
                 </div>
-            }
-        >
-            <TableHeader>
-                <TableColumn>CAMPAIGN</TableColumn>
-                <TableColumn>TEMPLATES</TableColumn>
-                <TableColumn>SCHEDULED</TableColumn>
-                <TableColumn>RECORDS</TableColumn>
-                <TableColumn>STATUS</TableColumn>
-                <TableColumn>FILES</TableColumn>
-                <TableColumn align="center">ACTIONS</TableColumn>
-            </TableHeader>
-            <TableBody
-                items={campaigns}
-                isLoading={status === "loading"}
-                loadingContent={<Spinner color="secondary" size="sm" />}
-            >
-                {(item) => (
-                    <TableRow 
-                        key={item.id} 
-                        className="hover:bg-default-50/50 transition-colors cursor-pointer group"
-                        onClick={() => console.log("Edit row", item.id)}
-                    >
-                        <TableCell>
-                            <span className="text-small font-bold text-default-700">{item.name}</span>
-                        </TableCell>
-                        <TableCell>
-                            <div className="flex -space-x-1.5">
-                                {item.templates.slice(0, 3).map((ct) => (
-                                    <Tooltip key={ct.id} content={ct.template.title}>
-                                        <div className="w-7 h-7 rounded-full bg-secondary-50 border-2 border-white flex items-center justify-center text-[10px] font-bold text-secondary-400">
-                                            {ct.template.title.charAt(0)}
-                                        </div>
-                                    </Tooltip>
-                                ))}
-                                {item.templates.length > 3 && (
-                                    <div className="w-7 h-7 rounded-full bg-default-100 border-2 border-white flex items-center justify-center text-[9px] font-bold text-default-500">
-                                        +{item.templates.length - 3}
-                                    </div>
-                                )}
-                            </div>
-                        </TableCell>
-                        <TableCell>
-                            <div className="flex flex-col text-tiny">
-                                <span className="font-medium">{new Date(item.scheduledAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>
-                                <span className="text-default-400">{new Date(item.scheduledAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</span>
-                            </div>
-                        </TableCell>
-                        <TableCell>
-                            <span className="text-tiny font-mono text-default-500">{item.totalRecords.toLocaleString()}</span>
-                        </TableCell>
-                        <TableCell><StatusCell status={item.scheduleStatus} type="schedule" /></TableCell>
-                        <TableCell><StatusCell status={item.fileStatus} type="file" /></TableCell>
-                        <TableCell>
-                            <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Tooltip content="Re-trigger" size="sm" color="secondary">
-                                    <Button isIconOnly size="sm" variant="light" color="secondary" onPress={(e) => handleAction(e, 'retrigger', item)}>
-                                        <Play size={14} fill="currentColor" />
-                                    </Button>
-                                </Tooltip>
-                                <Tooltip content="Edit" size="sm">
-                                    <Button isIconOnly size="sm" variant="light" className="text-default-400" onPress={(e) => handleAction(e, 'edit', item)}>
-                                        <Edit2 size={14} />
-                                    </Button>
-                                </Tooltip>
-                                <Tooltip content="Delete" size="sm" color="danger">
-                                    <Button isIconOnly size="sm" variant="light" color="danger" onPress={(e) => handleAction(e, 'delete', item)}>
-                                        <Trash2 size={14} />
-                                    </Button>
-                                </Tooltip>
-                            </div>
-                        </TableCell>
-                    </TableRow>
-                )}
-            </TableBody>
-        </Table>
+            )}
+        </div>
     )
 }
