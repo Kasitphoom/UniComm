@@ -179,6 +179,37 @@ export const updateCampaign = createAsyncThunk(
     },
 )
 
+export const deleteCampaign = createAsyncThunk(
+    "campaigns/deleteCampaign",
+    async (id: string) => {
+        const response = await fetch(`/api/campaigns/${id}`, {
+            method: "DELETE",
+            credentials: "include",
+        })
+
+        let data: unknown = null
+        try {
+            data = await response.json()
+        } catch (error) {
+            // Ignore JSON parsing errors when server returns empty body
+        }
+
+        if (!response.ok) {
+            const errorMessage =
+                data &&
+                typeof data === "object" &&
+                data !== null &&
+                "error" in data &&
+                typeof (data as { error?: unknown }).error === "string"
+                    ? ((data as { error?: string }).error as string)
+                    : "Failed to delete campaign"
+            throw new Error(errorMessage)
+        }
+
+        return { id }
+    },
+)
+
 const initialState: CampaignsState = {
     list: {
         items: [],
@@ -200,6 +231,11 @@ const initialState: CampaignsState = {
         status: "idle",
         error: null,
         currentId: null,
+    },
+    remove: {
+        status: "idle",
+        error: null,
+        deletingId: null,
     },
 }
 
@@ -289,6 +325,23 @@ const campaignsSlice = createSlice({
                 state.update.status = "failed"
                 state.update.error = action.error.message || "Failed to update campaign"
                 state.update.currentId = null
+            })
+            .addCase(deleteCampaign.pending, (state, action) => {
+                state.remove.status = "loading"
+                state.remove.error = null
+                state.remove.deletingId = action.meta.arg
+            })
+            .addCase(deleteCampaign.fulfilled, (state, action) => {
+                state.remove.status = "succeeded"
+                const deletedId = action.payload.id
+                state.remove.deletingId = null
+                state.list.items = state.list.items.filter((campaign) => campaign.id !== deletedId)
+                state.list.totalCount = Math.max(0, state.list.totalCount - 1)
+            })
+            .addCase(deleteCampaign.rejected, (state, action) => {
+                state.remove.status = "failed"
+                state.remove.error = action.error.message || "Failed to delete campaign"
+                state.remove.deletingId = null
             })
     },
 })

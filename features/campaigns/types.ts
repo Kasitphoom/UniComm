@@ -27,8 +27,15 @@ export interface CampaignUpdateState {
     currentId: string | null
 }
 
+export interface CampaignDeleteState {
+    status: RequestStatus
+    error: string | null
+    deletingId: string | null
+}
+
 export interface CampaignsState {
     list: CampaignsListState
     create: CampaignCreateState
     update: CampaignUpdateState
+    remove: CampaignDeleteState
 }

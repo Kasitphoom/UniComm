@@ -17,16 +17,20 @@ import {
     PressEvent,
     Card,
     CardBody,
+    addToast,
 } from "@heroui/react"
 import { Edit2, Trash2, Play, Calendar } from "lucide-react"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import { fetchCampaigns, type FetchCampaignsParams, updateCampaign } from "@/features/campaigns/campaignsSlice"
+import { fetchCampaigns, type FetchCampaignsParams, updateCampaign, deleteCampaign } from "@/features/campaigns/campaignsSlice"
+import { UserRole } from "@/app/generated/business/prisma"
 import type { FILE_STATUS, SCHEDULE_STATUS } from "@/app/generated/business/prisma"
 import { StatusCell } from "./StatusCell"
 import { CampaignWithRelations } from "@/types/campaign"
 import CampaignWizardModal from "./CampaignWizardModal"
 import type { CampaignFormValues } from "./newCampaignSteps/types"
 import { getLocalTimeZone, parseAbsoluteToLocal, fromDate } from "@internationalized/date"
+import ConfirmDialog from "@/components/common/ConfirmDialog"
+import { userHasPermissionClient } from "@/utils/permissions"
 
 export const CampaignTable = () => {
     const dispatch = useAppDispatch()
@@ -40,9 +44,19 @@ export const CampaignTable = () => {
         error,
     } = useAppSelector((state) => state.campaigns.list)
     const { status: updateStatus } = useAppSelector((state) => state.campaigns.update)
+    const { status: deleteStatus, deletingId } = useAppSelector((state) => state.campaigns.remove)
 
     const [isWizardOpen, setWizardOpen] = useState(false)
     const [editingCampaign, setEditingCampaign] = useState<CampaignWithRelations | null>(null)
+    const [campaignToDelete, setCampaignToDelete] = useState<CampaignWithRelations | null>(null)
+    const isDeleteLoading = Boolean(
+        campaignToDelete && deleteStatus === "loading" && deletingId === campaignToDelete.id,
+    )
+    const canManageCampaigns = userHasPermissionClient([
+        UserRole.OWNER,
+        UserRole.ADMIN,
+        UserRole.MEMBER,
+    ])
 
     const paramsString = searchParams.toString()
     const sort = (searchParams.get("sort") || "desc") as "asc" | "desc"
@@ -75,17 +89,23 @@ export const CampaignTable = () => {
     }, [])
 
     const handleWizardOpenChange = useCallback((open: boolean) => {
-        if (!open) {
+        if (!open || !canManageCampaigns) {
             handleWizardClose()
             return
         }
         setWizardOpen(true)
-    }, [handleWizardClose])
+    }, [handleWizardClose, canManageCampaigns])
 
     const handleEditAction = useCallback((campaign: CampaignWithRelations) => {
+        if (!canManageCampaigns) return
         setEditingCampaign(campaign)
         setWizardOpen(true)
-    }, [])
+    }, [canManageCampaigns])
+
+    const handleDeleteAction = useCallback((campaign: CampaignWithRelations) => {
+        if (!canManageCampaigns) return
+        setCampaignToDelete(campaign)
+    }, [canManageCampaigns])
 
     const onPageChange = (newPage: number) => {
         const params = new URLSearchParams(searchParams.toString())
@@ -124,7 +144,7 @@ export const CampaignTable = () => {
     }, [editingCampaign])
 
     const handleEditSubmit = useCallback(async (values: CampaignFormValues) => {
-        if (!editingCampaign || !values.templateId || !values.customerListId || !values.scheduleDate) {
+        if (!canManageCampaigns || !editingCampaign || !values.templateId || !values.customerListId || !values.scheduleDate) {
             return
         }
 
@@ -140,7 +160,32 @@ export const CampaignTable = () => {
         })).unwrap()
 
         handleWizardClose()
-    }, [dispatch, editingCampaign, handleWizardClose])
+    }, [dispatch, editingCampaign, handleWizardClose, canManageCampaigns])
+
+    const handleDeleteConfirm = useCallback(async () => {
+        if (!canManageCampaigns || !campaignToDelete) {
+            setCampaignToDelete(null)
+            return
+        }
+        const targetId = campaignToDelete.id
+        const targetName = campaignToDelete.name
+        try {
+            await dispatch(deleteCampaign(targetId)).unwrap()
+            addToast({
+                title: "Campaign deleted",
+                description: `${targetName} has been removed.`,
+                color: "secondary",
+            })
+        } catch (error) {
+            addToast({
+                title: "Failed to delete campaign",
+                description: error instanceof Error ? error.message : "Unexpected error",
+                color: "danger",
+            })
+        } finally {
+            setCampaignToDelete(null)
+        }
+    }, [campaignToDelete, dispatch, canManageCampaigns])
 
     const renderCell = useCallback((campaign: CampaignWithRelations, columnKey: Key) => {
         switch (columnKey) {
@@ -198,7 +243,7 @@ export const CampaignTable = () => {
                                 <Play size={16} fill="currentColor" />
                             </Button>
                         </Tooltip>
-                        <Tooltip content="Edit" size="sm">
+                        <Tooltip content={canManageCampaigns ? "Edit" : "No permission"} size="sm">
                             <Button
                                 isIconOnly
                                 size="sm"
@@ -207,12 +252,22 @@ export const CampaignTable = () => {
                                 onPress={(e) => {
                                     handleEditAction(campaign)
                                 }}
+                                isDisabled={!canManageCampaigns}
                             >
                                 <Edit2 size={16} />
                             </Button>
                         </Tooltip>
-                        <Tooltip content="Delete" size="sm" color="danger">
-                            <Button isIconOnly size="sm" variant="light" color="danger" onPress={(e) => handleAction(e, "delete", campaign.id)}>
+                        <Tooltip content={canManageCampaigns ? "Delete" : "No permission"} size="sm" color="danger">
+                            <Button
+                                isIconOnly
+                                size="sm"
+                                variant="light"
+                                color="danger"
+                                onPress={(e) => {
+                                    handleDeleteAction(campaign)
+                                }}
+                                isDisabled={!canManageCampaigns}
+                            >
                                 <Trash2 size={16} />
                             </Button>
                         </Tooltip>
@@ -221,7 +276,7 @@ export const CampaignTable = () => {
             default:
                 return null
         }
-    }, [handleAction])
+    }, [handleAction, handleEditAction, handleDeleteAction, canManageCampaigns])
 
     if (status === "failed") {
         return (
@@ -322,6 +377,7 @@ export const CampaignTable = () => {
                         onPress={(e) => {
                             handleEditAction(campaign)
                         }}
+                        isDisabled={!canManageCampaigns}
                     >
                         <Edit2 size={16} />
                     </Button>
@@ -330,7 +386,10 @@ export const CampaignTable = () => {
                         size="sm" 
                         variant="light" 
                         color="danger" 
-                        onPress={(e) => handleAction(e, "delete", campaign.id)}
+                        onPress={(e) => {
+                            handleDeleteAction(campaign)
+                        }}
+                        isDisabled={!canManageCampaigns}
                     >
                         <Trash2 size={16} />
                     </Button>
@@ -401,7 +460,7 @@ export const CampaignTable = () => {
             )}
 
             <CampaignWizardModal
-                isOpen={isWizardOpen && Boolean(editingCampaign)}
+                isOpen={isWizardOpen && Boolean(editingCampaign) && canManageCampaigns}
                 onOpenChange={handleWizardOpenChange}
                 onClose={handleWizardClose}
                 onSubmit={handleEditSubmit}
@@ -410,6 +469,26 @@ export const CampaignTable = () => {
                 title="Edit Campaign"
                 submitLabel="Save Changes"
                 isSubmitting={updateStatus === "loading"}
+            />
+
+            <ConfirmDialog
+                isOpen={!!campaignToDelete && canManageCampaigns}
+                title={
+                    <div className="space-y-1">
+                        <h2 className="font-semibold text-large">Delete campaign</h2>
+                        <p className="text-tiny text-default-400">This action cannot be undone.</p>
+                    </div>
+                }
+                content={campaignToDelete ? (
+                    <p className="py-4">
+                        Are you sure you want to delete <span className="font-semibold">{campaignToDelete.name}</span>?
+                    </p>
+                ) : null}
+                onCancel={() => setCampaignToDelete(null)}
+                onConfirm={handleDeleteConfirm}
+                confirmText="Delete"
+                confirmButtonProps={{ color: "danger" }}
+                isConfirmLoading={isDeleteLoading}
             />
         </div>
     )

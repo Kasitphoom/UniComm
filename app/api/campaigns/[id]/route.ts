@@ -313,3 +313,60 @@ export async function PATCH(req: NextRequest, { params }: PatchContext) {
         )
     }
 }
+
+export async function DELETE(req: NextRequest, { params }: PatchContext) {
+    try {
+        const auth = await requireAuth(req)
+        if (!auth.ok) return auth.response
+        if (!auth.businessId) {
+            return NextResponse.json(
+                { error: "No active business selected" },
+                { status: 400 },
+            )
+        }
+
+        const hasPermission = await userHasPermissionAPI(req, [
+            UserRole.OWNER,
+            UserRole.ADMIN,
+            UserRole.MEMBER,
+        ])
+        if (!hasPermission) {
+            return NextResponse.json(
+                { error: "Insufficient permissions" },
+                { status: 403 },
+            )
+        }
+
+        const { id: campaignId } = await params
+        if (!campaignId) {
+            return NextResponse.json(
+                { error: "Campaign ID is required" },
+                { status: 400 },
+            )
+        }
+
+        const prisma = await getBusinessPrisma(auth.businessId)
+
+        const existing = await prisma.campaign.findUnique({
+            where: { id: campaignId },
+        })
+
+        if (!existing) {
+            return NextResponse.json(
+                { error: "Campaign not found" },
+                { status: 404 },
+            )
+        }
+
+        await prisma.campaign.delete({
+            where: { id: campaignId },
+        })
+
+        return NextResponse.json({ success: true })
+    } catch (error: any) {
+        return NextResponse.json(
+            { error: error?.message || "Failed to delete campaign" },
+            { status: 500 },
+        )
+    }
+}
