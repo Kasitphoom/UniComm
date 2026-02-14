@@ -99,6 +99,86 @@ export const createCampaign = createAsyncThunk(
     },
 )
 
+export type UpdateCampaignPayload = {
+    id: string
+    name?: string
+    scheduledAt?: string
+    templateId?: string
+    customerListId?: string
+}
+
+export const updateCampaign = createAsyncThunk(
+    "campaigns/updateCampaign",
+    async ({ id, name, scheduledAt, templateId, customerListId }: UpdateCampaignPayload) => {
+        const body: Record<string, unknown> = {}
+
+        if (name !== undefined) {
+            const trimmed = name.trim()
+            if (!trimmed) {
+                throw new Error("Campaign name cannot be empty")
+            }
+            body.name = trimmed
+        }
+
+        if (scheduledAt !== undefined) {
+            if (!scheduledAt.trim()) {
+                throw new Error("scheduledAt must be a valid datetime string")
+            }
+            body.scheduledAt = scheduledAt
+        }
+
+        if (templateId !== undefined) {
+            const trimmedTemplateId = templateId.trim()
+            if (!trimmedTemplateId) {
+                throw new Error("Template ID must be provided when updating the template")
+            }
+            body.templateIds = [trimmedTemplateId]
+        }
+
+        if (customerListId !== undefined) {
+            const trimmedCustomerListId = customerListId.trim()
+            if (!trimmedCustomerListId) {
+                throw new Error("Customer list ID cannot be empty")
+            }
+            body.customerListId = trimmedCustomerListId
+        }
+
+        if (!Object.keys(body).length) {
+            throw new Error("No fields provided for update")
+        }
+
+        const response = await fetch(`/api/campaigns/${id}`, {
+            method: "PATCH",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify(body),
+        })
+
+        let data: unknown = null
+        try {
+            data = await response.json()
+        } catch (error) {
+            // Ignore JSON parsing errors
+        }
+
+        if (!response.ok || !data) {
+            const errorMessage =
+                data &&
+                typeof data === "object" &&
+                data !== null &&
+                "error" in data &&
+                typeof (data as { error?: unknown }).error === "string"
+                    ? ((data as { error?: string }).error as string)
+                    : "Failed to update campaign"
+            throw new Error(errorMessage)
+        }
+
+        return data as CampaignWithRelations
+    },
+)
+
 const initialState: CampaignsState = {
     list: {
         items: [],
@@ -115,6 +195,11 @@ const initialState: CampaignsState = {
     create: {
         status: "idle",
         error: null,
+    },
+    update: {
+        status: "idle",
+        error: null,
+        currentId: null,
     },
 }
 
@@ -186,6 +271,24 @@ const campaignsSlice = createSlice({
             .addCase(createCampaign.rejected, (state, action) => {
                 state.create.status = "failed"
                 state.create.error = action.error.message || "Failed to create campaign"
+            })
+            .addCase(updateCampaign.pending, (state, action) => {
+                state.update.status = "loading"
+                state.update.error = null
+                state.update.currentId = action.meta.arg.id
+            })
+            .addCase(updateCampaign.fulfilled, (state, action) => {
+                state.update.status = "succeeded"
+                state.update.currentId = null
+                const index = state.list.items.findIndex((campaign) => campaign.id === action.payload.id)
+                if (index !== -1) {
+                    state.list.items[index] = action.payload
+                }
+            })
+            .addCase(updateCampaign.rejected, (state, action) => {
+                state.update.status = "failed"
+                state.update.error = action.error.message || "Failed to update campaign"
+                state.update.currentId = null
             })
     },
 })

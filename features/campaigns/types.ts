@@ -21,7 +21,14 @@ export interface CampaignCreateState {
     error: string | null
 }
 
+export interface CampaignUpdateState {
+    status: RequestStatus
+    error: string | null
+    currentId: string | null
+}
+
 export interface CampaignsState {
     list: CampaignsListState
     create: CampaignCreateState
+    update: CampaignUpdateState
 }
