@@ -33,9 +33,16 @@ export interface CampaignDeleteState {
     deletingId: string | null
 }
 
+export interface CampaignRerunState {
+    status: RequestStatus
+    error: string | null
+    currentId: string | null
+}
+
 export interface CampaignsState {
     list: CampaignsListState
     create: CampaignCreateState
     update: CampaignUpdateState
     remove: CampaignDeleteState
+    rerun: CampaignRerunState
 }

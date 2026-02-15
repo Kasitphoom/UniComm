@@ -21,7 +21,7 @@ import {
 } from "@heroui/react"
 import { Edit2, Trash2, Play, Calendar } from "lucide-react"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import { fetchCampaigns, type FetchCampaignsParams, updateCampaign, deleteCampaign } from "@/features/campaigns/campaignsSlice"
+import { fetchCampaigns, type FetchCampaignsParams, updateCampaign, deleteCampaign, rerunCampaign } from "@/features/campaigns/campaignsSlice"
 import { UserRole } from "@/app/generated/business/prisma"
 import type { FILE_STATUS, SCHEDULE_STATUS } from "@/app/generated/business/prisma"
 import { StatusCell } from "./StatusCell"
@@ -45,6 +45,7 @@ export const CampaignTable = () => {
     } = useAppSelector((state) => state.campaigns.list)
     const { status: updateStatus } = useAppSelector((state) => state.campaigns.update)
     const { status: deleteStatus, deletingId } = useAppSelector((state) => state.campaigns.remove)
+    const { status: rerunStatus, currentId: rerunId } = useAppSelector((state) => state.campaigns.rerun)
 
     const [isWizardOpen, setWizardOpen] = useState(false)
     const [editingCampaign, setEditingCampaign] = useState<CampaignWithRelations | null>(null)
@@ -79,9 +80,29 @@ export const CampaignTable = () => {
         dispatch(fetchCampaigns(campaignParams))
     }, [dispatch, campaignParams])
 
-    const handleAction = useCallback((e: PressEvent, type: string, id: string) => {
-        console.log(`${type} campaign:`, id)
-    }, [])
+    const handleAction = useCallback( async (_event: PressEvent, type: string, id: string) => {
+        switch (type) {
+            case "retrigger":
+                if (rerunStatus === "loading" && rerunId === id) return
+                try {
+                    await dispatch(rerunCampaign(id)).unwrap()
+                    addToast({
+                        title: "Campaign run triggered",
+                        description: "We will update the status once the files are ready.",
+                        color: "success",
+                    })
+                } catch (error) {
+                    addToast({
+                        title: "Failed to rerun campaign",
+                        description: error instanceof Error ? error.message : "Unexpected error",
+                        color: "danger",
+                    })
+                }
+                break
+            default:
+                break
+        }
+    }, [dispatch, rerunId, rerunStatus])
 
     const handleWizardClose = useCallback(() => {
         setWizardOpen(false)
@@ -239,7 +260,15 @@ export const CampaignTable = () => {
                 return (
                     <div className="flex items-center justify-center gap-2">
                         <Tooltip content="Re-trigger" size="sm" color="secondary">
-                            <Button isIconOnly size="sm" variant="light" color="secondary" onPress={(e) => handleAction(e, "retrigger", campaign.id)}>
+                            <Button
+                                isIconOnly
+                                size="sm"
+                                variant="light"
+                                color="secondary"
+                                onPress={(e) => handleAction(e, "retrigger", campaign.id)}
+                                isLoading={rerunStatus === "loading" && rerunId === campaign.id}
+                                isDisabled={rerunStatus === "loading" && rerunId === campaign.id}
+                            >
                                 <Play size={16} fill="currentColor" />
                             </Button>
                         </Tooltip>
@@ -366,6 +395,8 @@ export const CampaignTable = () => {
                         variant="light" 
                         color="secondary" 
                         onPress={(e) => handleAction(e, "retrigger", campaign.id)}
+                        isLoading={rerunStatus === "loading" && rerunId === campaign.id}
+                        isDisabled={rerunStatus === "loading" && rerunId === campaign.id}
                     >
                         <Play size={16} fill="currentColor" />
                     </Button>

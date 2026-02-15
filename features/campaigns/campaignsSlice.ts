@@ -210,6 +210,38 @@ export const deleteCampaign = createAsyncThunk(
     },
 )
 
+export const rerunCampaign = createAsyncThunk(
+    "campaigns/rerunCampaign",
+    async (id: string) => {
+        const response = await fetch(`/api/campaigns/${id}/run`, {
+            method: "POST",
+            credentials: "include",
+        })
+
+        let data: unknown = null
+        try {
+            data = await response.json()
+        } catch {
+            // Ignore JSON parsing errors, handled below
+        }
+
+        if (!response.ok || !data || typeof data !== "object") {
+            const errorMessage =
+                data &&
+                typeof (data as { error?: unknown }).error === "string"
+                    ? ((data as { error?: string }).error as string)
+                    : "Failed to run campaign"
+            throw new Error(errorMessage)
+        }
+
+        if (!("campaign" in data) || !(data as { campaign?: unknown }).campaign) {
+            throw new Error("Response did not include an updated campaign")
+        }
+
+        return (data as { campaign: CampaignWithRelations }).campaign
+    },
+)
+
 const initialState: CampaignsState = {
     list: {
         items: [],
@@ -236,6 +268,11 @@ const initialState: CampaignsState = {
         status: "idle",
         error: null,
         deletingId: null,
+    },
+    rerun: {
+        status: "idle",
+        error: null,
+        currentId: null,
     },
 }
 
@@ -342,6 +379,24 @@ const campaignsSlice = createSlice({
                 state.remove.status = "failed"
                 state.remove.error = action.error.message || "Failed to delete campaign"
                 state.remove.deletingId = null
+            })
+            .addCase(rerunCampaign.pending, (state, action) => {
+                state.rerun.status = "loading"
+                state.rerun.error = null
+                state.rerun.currentId = action.meta.arg
+            })
+            .addCase(rerunCampaign.fulfilled, (state, action) => {
+                state.rerun.status = "succeeded"
+                const index = state.list.items.findIndex((campaign) => campaign.id === action.payload.id)
+                if (index !== -1) {
+                    state.list.items[index] = action.payload
+                }
+                state.rerun.currentId = null
+            })
+            .addCase(rerunCampaign.rejected, (state, action) => {
+                state.rerun.status = "failed"
+                state.rerun.error = action.error.message || "Failed to run campaign"
+                state.rerun.currentId = null
             })
     },
 })
