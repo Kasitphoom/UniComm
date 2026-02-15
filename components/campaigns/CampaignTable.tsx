@@ -47,8 +47,6 @@ export const CampaignTable = () => {
     const { status: deleteStatus, deletingId } = useAppSelector((state) => state.campaigns.remove)
     const { status: rerunStatus, currentId: rerunId } = useAppSelector((state) => state.campaigns.rerun)
 
-    console.log(rerunStatus, rerunId)
-
     const [isWizardOpen, setWizardOpen] = useState(false)
     const [editingCampaign, setEditingCampaign] = useState<CampaignWithRelations | null>(null)
     const [campaignToDelete, setCampaignToDelete] = useState<CampaignWithRelations | null>(null)
