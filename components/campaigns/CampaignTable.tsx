@@ -47,6 +47,8 @@ export const CampaignTable = () => {
     const { status: deleteStatus, deletingId } = useAppSelector((state) => state.campaigns.remove)
     const { status: rerunStatus, currentId: rerunId } = useAppSelector((state) => state.campaigns.rerun)
 
+    console.log(rerunStatus, rerunId)
+
     const [isWizardOpen, setWizardOpen] = useState(false)
     const [editingCampaign, setEditingCampaign] = useState<CampaignWithRelations | null>(null)
     const [campaignToDelete, setCampaignToDelete] = useState<CampaignWithRelations | null>(null)
@@ -142,13 +144,19 @@ export const CampaignTable = () => {
     }
 
     const sortedCampaigns = useMemo(() => {
-        const cloned = [...campaigns]
-        return cloned.sort((a, b) => {
+        const sorted = [...campaigns].sort((a, b) => {
             const nameA = a.name?.toLowerCase() || ""
             const nameB = b.name?.toLowerCase() || ""
             return sort === "asc" ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA)
         })
-    }, [campaigns, sort])
+
+        if (rerunStatus === "idle" && !rerunId) {
+            return sorted
+        }
+
+        // Clone the campaign objects so the HeroUI Table re-renders action cells when rerun state flips
+        return sorted.map((campaign) => ({ ...campaign }))
+    }, [campaigns, sort, rerunId, rerunStatus])
 
     const editInitialValues = useMemo<CampaignFormValues | undefined>(() => {
         if (!editingCampaign) return undefined
@@ -268,9 +276,8 @@ export const CampaignTable = () => {
                                 onPress={(e) => handleAction(e, "retrigger", campaign.id)}
                                 isLoading={rerunStatus === "loading" && rerunId === campaign.id}
                                 isDisabled={rerunStatus === "loading" && rerunId === campaign.id}
-                            >
-                                <Play size={16} fill="currentColor" />
-                            </Button>
+                                startContent={!(rerunStatus === "loading" && rerunId === campaign.id) && <Play size={16} fill="currentColor" />}
+                            />
                         </Tooltip>
                         <Tooltip content={canManageCampaigns ? "Edit" : "No permission"} size="sm">
                             <Button
@@ -305,7 +312,7 @@ export const CampaignTable = () => {
             default:
                 return null
         }
-    }, [handleAction, handleEditAction, handleDeleteAction, canManageCampaigns])
+    }, [handleAction, handleEditAction, handleDeleteAction, canManageCampaigns, rerunId, rerunStatus])
 
     if (status === "failed") {
         return (
@@ -459,7 +466,10 @@ export const CampaignTable = () => {
                         loadingContent={<Spinner color="secondary" size="sm" />}
                     >
                         {(item: CampaignWithRelations) => (
-                            <TableRow key={item.id} className="hover:bg-default-50/40 transition-colors">
+                            <TableRow
+                                key={rerunId === item.id ? `${item.id}-${rerunStatus}` : item.id}
+                                className="hover:bg-default-50/40 transition-colors"
+                            >
                                 {(columnKey) => (
                                     <TableCell className="py-4">{renderCell(item, columnKey)}</TableCell>
                                 )}
