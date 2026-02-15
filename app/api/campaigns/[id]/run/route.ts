@@ -3,7 +3,7 @@ import { requireAuth } from "@/lib/api-auth"
 import { runCampaignJob } from "@/utils/campaign"
 import { userHasPermissionAPI } from "@/utils/permissions"
 import { getBusinessPrisma } from "@/lib/prisma-business"
-import { FILE_STATUS, Prisma, SCHEDULE_STATUS, UserRole } from "@/app/generated/business/prisma"
+import { Prisma, UserRole } from "@/app/generated/business/prisma"
 
 const campaignInclude = {
     templates: {
@@ -74,40 +74,46 @@ export const POST = async (req: NextRequest, { params }: RouteParams) => {
             )
         }
 
-        const jobResults = await runCampaignJob({ campaignId, businessIds: [businessId] })
+        const jobResults = await runCampaignJob({
+            campaignId,
+            businessIds: [businessId],
+            triggerSource: "MANUAL",
+        })
         const jobResult = jobResults.find((result) => result.businessId === businessId)
+        const campaignResult = jobResult?.campaigns.find((result) => result.campaignId === campaignId)
 
-        const runSucceeded = Boolean(jobResult?.success)
-        const hasGeneratedFile = Boolean(jobResult?.lastFileId)
-        const nextFileStatus = runSucceeded
-            ? hasGeneratedFile
-                ? FILE_STATUS.AVALIABLE
-                : FILE_STATUS.EMPTY
-            : FILE_STATUS.FAILED
-        const nextScheduleStatus = runSucceeded ? SCHEDULE_STATUS.TRIGGERED : SCHEDULE_STATUS.FAILED
+        if (!jobResult || !campaignResult) {
+            return NextResponse.json(
+                { error: "Campaign job did not return a result", result: jobResult ?? null },
+                { status: 500 },
+            )
+        }
 
-        const updatedCampaign = await prisma.campaign.update({
+        const updatedCampaign = await prisma.campaign.findUnique({
             where: { id: campaignId },
-            data: {
-                fileStatus: nextFileStatus,
-                scheduleStatus: nextScheduleStatus,
-                executedAt: new Date(),
-            },
             include: campaignInclude,
         })
 
-        if (!runSucceeded) {
+        if (!updatedCampaign) {
+            return NextResponse.json(
+                { error: "Campaign not found after run", result: campaignResult },
+                { status: 404 },
+            )
+        }
+
+        if (!campaignResult.success) {
             return NextResponse.json(
                 {
-                    error: jobResult?.error ?? "Failed to execute campaign",
-                    result: jobResult ?? null,
+                    error: campaignResult.error ?? "Failed to execute campaign",
+                    result: campaignResult,
+                    jobResult,
                     campaign: updatedCampaign,
                 },
                 { status: 500 },
             )
         }
 
-        return NextResponse.json({ result: jobResult ?? null, campaign: updatedCampaign })
+        return NextResponse.json({ result: campaignResult, jobResult, campaign: updatedCampaign })
     } catch (error) {
         console.error("Error running campaign:", error)
         return NextResponse.json(

@@ -15,6 +15,18 @@ const MAX_PARALLEL_BUSINESSES = 10
 const ZIP_EXPIRATION_MS = 14 * 24 * 60 * 60 * 1000 // 2 weeks
 type BusinessPrismaClient = ReturnType<typeof getBusinessPrisma>
 
+type CampaignRunResult = {
+    campaignId: string
+    success: boolean
+    error?: string
+    fileId?: string
+    fileStatus: FILE_STATUS
+    scheduleStatus: SCHEDULE_STATUS
+    pdfCount?: number
+}
+
+type CampaignRunTrigger = "MANUAL" | "CRON" | "SYSTEM"
+
 type CampaignJobResult = {
     businessId: string
     success: boolean
@@ -22,6 +34,7 @@ type CampaignJobResult = {
     lastFileId?: string
     lastFilePath?: string
     pdfCount?: number
+    campaigns: CampaignRunResult[]
 }
 
 type ContactListField = {
@@ -35,6 +48,12 @@ type PdfArtifact = {
 }
 
 const normalizeFieldName = (value: string) => value.trim().toLowerCase()
+
+const getLogPrefix = (source: CampaignRunTrigger) => {
+    if (source === "MANUAL") return "[MANUAL]"
+    if (source === "CRON") return "[CRON]"
+    return "[SYSTEM]"
+}
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
     typeof value === "object" && value !== null && !Array.isArray(value)
@@ -284,7 +303,11 @@ const createCampaignFile = async (
     return { file: campaignFile, pdfCount: pdfArtifacts.length }
 }
 
-const runCampaignForBusiness = async (campaignId: string, businessId: string): Promise<CampaignJobResult> => {
+const runCampaignForBusiness = async (
+    campaignId: string,
+    businessId: string,
+    triggerSource: CampaignRunTrigger,
+): Promise<CampaignJobResult> => {
     try {
         const business = await prisma.business.findUnique({
             where: { id: businessId },
@@ -292,7 +315,7 @@ const runCampaignForBusiness = async (campaignId: string, businessId: string): P
         })
 
         if (!business) {
-            return { businessId, success: false, error: "Business not found" }
+            return { businessId, success: false, error: "Business not found", campaigns: [] }
         }
 
         const businessPrisma = getBusinessPrisma(businessId)
@@ -320,36 +343,119 @@ const runCampaignForBusiness = async (campaignId: string, businessId: string): P
             })
         
         if (!campaigns || (Array.isArray(campaigns) && campaigns.length === 0)) {
-            return { businessId, success: false, error: "No campaigns to run" }
+            console.info(
+                `[Campaign Runner][${triggerSource}] No campaigns to run for business ${business.name} (${business.id})`,
+            )
+            return { businessId, success: false, error: "No campaigns to run", campaigns: [] }
         }
 
         const campaignsToRun = Array.isArray(campaigns) ? campaigns : [campaigns]
         let lastFileInfo: CampaignFileResult | null = null
-
+        const campaignResults: CampaignRunResult[] = []
+        const logPrefix = getLogPrefix(triggerSource)
+        
+        console.log(
+            `[Campaign Runner][${triggerSource}] Running ${campaignsToRun.length} campaign(s) for business ${business.name} (${business.id})`,
+        )
         for (const campaign of campaignsToRun) {
-            const campaignFileResult = await createCampaignFile(campaign, businessPrisma)
-            if (campaignFileResult) {
-                lastFileInfo = campaignFileResult
-                console.info(
-                    `[Campaign ${campaign.name}] Uploaded campaign ZIP (${campaignFileResult.pdfCount} PDFs) to ${campaignFileResult.file.filePath}`,
-                )
-            } else {
-                console.info(`[Campaign ${campaign.name}] No PDFs generated (missing data)`)
+            try {
+                const campaignFileResult = await createCampaignFile(campaign, businessPrisma)
+                const hasGeneratedFile = Boolean(campaignFileResult?.file?.id)
+                const nextFileStatus = hasGeneratedFile ? FILE_STATUS.AVALIABLE : FILE_STATUS.EMPTY
+                const nextScheduleStatus = SCHEDULE_STATUS.TRIGGERED
+                const successMessage = hasGeneratedFile
+                    ? `${logPrefix} Campaign run successfully`
+                    : `${logPrefix} Campaign run completed without generated files`
+
+                if (campaignFileResult) {
+                    lastFileInfo = campaignFileResult
+                    console.info(
+                        `[Campaign ${campaign.name}] Uploaded campaign ZIP (${campaignFileResult.pdfCount} PDFs) to ${campaignFileResult.file.filePath}`,
+                    )
+                } else {
+                    console.info(`[Campaign ${campaign.name}] No PDFs generated (missing data)`)
+                }
+
+                await businessPrisma.campaign.update({
+                    where: { id: campaign.id },
+                    data: {
+                        fileStatus: nextFileStatus,
+                        scheduleStatus: nextScheduleStatus,
+                        executedAt: new Date(),
+                        logs: {
+                            create: {
+                                message: successMessage,
+                                status: nextScheduleStatus,
+                            },
+                        },
+                    },
+                })
+
+                campaignResults.push({
+                    campaignId: campaign.id,
+                    success: true,
+                    fileId: campaignFileResult?.file.id,
+                    fileStatus: nextFileStatus,
+                    scheduleStatus: nextScheduleStatus,
+                    pdfCount: campaignFileResult?.pdfCount,
+                })
+            } catch (campaignError) {
+                const errorMessage = campaignError instanceof Error ? campaignError.message : "Unknown error"
+                const nextFileStatus = FILE_STATUS.FAILED
+                const nextScheduleStatus = SCHEDULE_STATUS.FAILED
+
+                console.error(`[Campaign ${campaign.name}] Failed to run: ${errorMessage}`)
+
+                await businessPrisma.campaign.update({
+                    where: { id: campaign.id },
+                    data: {
+                        fileStatus: nextFileStatus,
+                        scheduleStatus: nextScheduleStatus,
+                        executedAt: new Date(),
+                        logs: {
+                            create: {
+                                message: `${logPrefix} Campaign run failed: ${errorMessage}`,
+                                status: nextScheduleStatus,
+                            },
+                        },
+                    },
+                })
+
+                campaignResults.push({
+                    campaignId: campaign.id,
+                    success: false,
+                    error: errorMessage,
+                    fileStatus: nextFileStatus,
+                    scheduleStatus: nextScheduleStatus,
+                })
             }
         }
 
+        const allSuccessful = campaignResults.every((result) => result.success)
+        const aggregatedError = allSuccessful
+            ? undefined
+            : campaignResults.find((result) => !result.success)?.error ?? "One or more campaigns failed"
+
+        const summaryMessage = allSuccessful
+            ? `[Campaign Runner][${triggerSource}] Successfully processed ${campaignResults.length} campaign(s) for business ${business.name} (${business.id})`
+            : `[Campaign Runner][${triggerSource}] Completed with failures for business ${business.name} (${business.id}). Successful: ${campaignResults.filter((result) => result.success).length}, Failed: ${campaignResults.filter((result) => !result.success).length}`
+        console.info(summaryMessage)
+
         return {
             businessId,
-            success: true,
+            success: allSuccessful,
+            error: aggregatedError,
             lastFileId: lastFileInfo?.file.id,
             lastFilePath: lastFileInfo?.file.filePath,
             pdfCount: lastFileInfo?.pdfCount,
+            campaigns: campaignResults,
         }
     } catch (error) {
         return {
             businessId,
             success: false,
             error: error instanceof Error ? error.message : "Unknown error",
+            campaigns: [],
         }
     }
 }
@@ -358,12 +464,14 @@ type RunCampaignJobOptions = {
     campaignId?: string
     businessIds?: string[]
     maxParallel?: number
+    triggerSource?: CampaignRunTrigger
 }
 
 export const runCampaignJob = async ({
     campaignId = "",
     businessIds = [],
     maxParallel = MAX_PARALLEL_BUSINESSES,
+    triggerSource = "SYSTEM",
 }: RunCampaignJobOptions) => {
     const businessIdsToRun = businessIds.length > 0 ? businessIds : await getAllBusinessIds()
     if (businessIdsToRun.length === 0) return []
@@ -373,7 +481,9 @@ export const runCampaignJob = async ({
 
     for (let i = 0; i < businessIdsToRun.length; i += parallelLimit) {
         const batch = businessIdsToRun.slice(i, i + parallelLimit)
-        const batchResults = await Promise.all(batch.map((businessId) => runCampaignForBusiness(campaignId, businessId)))
+        const batchResults = await Promise.all(
+            batch.map((businessId) => runCampaignForBusiness(campaignId, businessId, triggerSource)),
+        )
         results.push(...batchResults)
     }
 
