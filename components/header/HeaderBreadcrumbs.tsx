@@ -185,7 +185,7 @@ const HeaderBreadcrumbs = () => {
                         key={node.key}
                         href={isCurrent ? undefined : node.href}
                         isCurrent={isCurrent}
-                        className={`text-small truncate max-w-48 ${colorClass}`}
+                        className={`text-small truncate text-ellipsis max-w-48 ${colorClass}`}
                     >
                         {node.label}
                     </BreadcrumbItem>
