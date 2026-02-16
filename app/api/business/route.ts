@@ -44,6 +44,16 @@ import prismaBusiness from "@/lib/prisma-business"
 export async function POST(request: NextRequest) {
     let createdBusinessId: string | null = null
     try {
+
+        const secret = process.env.ADMIN_SECRET
+        const authHeader = request.headers.get("Authorization") || ""
+        if (!secret || authHeader !== `Bearer ${secret}`) {
+            return NextResponse.json(
+                { error: "Unauthorized" },
+                { status: 401 }
+            )
+        }
+
         const body = await request.json()
 
         // Create the Business record in main DB (no payload required per schema)

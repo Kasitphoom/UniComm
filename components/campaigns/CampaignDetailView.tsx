@@ -3,6 +3,8 @@
 import { useMemo, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import {
+    Accordion,
+    AccordionItem,
     Button,
     Card,
     CardBody,
@@ -40,6 +42,7 @@ import ConfirmDialog from "../common/ConfirmDialog"
 import type { CampaignDetail } from "@/types/campaign"
 import type { CampaignFormValues } from "./newCampaignSteps/types"
 import { StatusCell } from "./StatusCell"
+import { timeDifferenceFormatter } from "@/utils/DateFormatter"
 
 // --- Helper Functions ---
 
@@ -63,15 +66,7 @@ const formatRelative = (value?: Date | string | null) => {
     if (!value) return "—"
     const date = typeof value === "string" ? new Date(value) : value
     if (Number.isNaN(date.getTime())) return "—"
-    const now = Date.now()
-    const diff = now - date.getTime()
-    const minutes = Math.floor(diff / (1000 * 60))
-    if (minutes < 1) return "just now"
-    if (minutes < 60) return `${minutes}m ago`
-    const hours = Math.floor(minutes / 60)
-    if (hours < 24) return `${hours}h ago`
-    const days = Math.floor(hours / 24)
-    return `${days}d ago`
+    return timeDifferenceFormatter(date)
 }
 
 // --- Components ---
@@ -271,7 +266,9 @@ const CampaignDetailView = ({ campaign }: Props) => {
     , [campaign.files])
 
     const sortedLogs = useMemo(() => 
-        [...campaign.logs].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        [...campaign.logs]
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            .map((log) => ({ ...log, _id: log.id }))
     , [campaign.logs])
 
     // Derived Data
@@ -433,7 +430,9 @@ const CampaignDetailView = ({ campaign }: Props) => {
                                                 <p className="text-xs text-default-500 flex items-center gap-2">
                                                     <span>{formatDateTime(file.createdAt)}</span>
                                                     <span>•</span>
-                                                    <span>Expires {formatRelative(file.expiresAt)}</span>
+                                                    <Tooltip content={file.expiresAt ? formatDateTime(file.expiresAt) : "No expiration"} size="sm">
+                                                        <span className="underline">Expires {formatRelative(file.expiresAt)}</span>
+                                                    </Tooltip>
                                                 </p>
                                             </div>
                                         </div>
@@ -474,44 +473,56 @@ const CampaignDetailView = ({ campaign }: Props) => {
                 >
                     <ScrollShadow className="w-full h-100 sm:h-full">
                         {sortedLogs.length > 0 ? (
-                            <div className="flex flex-col">
+                            <Accordion
+                                isCompact
+                                className="bg-transparent"
+                                itemClasses={{
+                                    base: "px-0 border border-default-100 bg-transparent",
+                                    title: "w-full",
+                                    trigger: "px-0 data-[open=true]:bg-default-50 rounded-xl",
+                                    content: "p-4",
+                                }}
+                            >
                                 {sortedLogs.map((log) => {
-                                    const isSuccess = log.status === 'TRIGGERED';
-                                    const isFailed = log.status === 'FAILED';
-                                    
-                                    return (
-                                        <div key={log.id} className="grid grid-cols-[auto_1fr_auto] items-center gap-4 p-2 hover:bg-default-50 rounded-lg transition-colors border-b border-default-100/50 last:border-0">
-                                            <div className={`flex gap-2 items-center p-1.5 rounded-full ${
-                                                isSuccess ? "text-success-600" :
-                                                isFailed ? "text-danger-600" :
-                                                "text-primary-600"
-                                            }`}>
-                                                {isSuccess ? <CheckCircle2 size={16} /> :
-                                                 isFailed ? <AlertCircle size={16} /> :
-                                                 <Clock size={16} />}
-                                                <p className="text-xs text-default-400 font-mono">
-                                                    {formatDateTime(log.createdAt)}
-                                                </p>
-                                            </div>
-                                            
-                                            <div className="flex flex-col min-w-0">
-                                                <p className="text-sm text-default-900 truncate">
-                                                    {log.message || "Status updated"}
-                                                </p>
-                                                
-                                            </div>
+                                    const logKey = log._id ?? log.id
+                                    const isSuccess = log.status === "TRIGGERED"
+                                    const isFailed = log.status === "FAILED"
+                                    const statusColors = isSuccess
+                                        ? "bg-success-50 text-success-600"
+                                        : isFailed
+                                          ? "bg-danger-50 text-danger-600"
+                                          : "bg-primary-50 text-primary-600"
+                                    const iconColor = isSuccess
+                                        ? "text-success-600"
+                                        : isFailed
+                                          ? "text-danger-600"
+                                          : "text-primary-600"
+                                    const detailText = log.message?.trim() || "No additional details."
 
-                                            <div className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                                                isSuccess ? "bg-success-50 text-success-600" :
-                                                isFailed ? "bg-danger-50 text-danger-600" :
-                                                "bg-primary-50 text-primary-600"
-                                            }`}>
-                                                {log.status}
-                                            </div>
-                                        </div>
+                                    return (
+                                        <AccordionItem
+                                            key={logKey}
+                                            aria-label={`Activity log ${logKey}`}
+                                            title={(
+                                                <div className="grid grid-cols-[auto_1fr_auto] items-center gap-4 w-full">
+                                                    <div className={`flex gap-2 items-center p-1.5 rounded-full ${iconColor}`}>
+                                                        {isSuccess ? <CheckCircle2 size={16} /> : isFailed ? <AlertCircle size={16} /> : <Clock size={16} />}
+                                                        <p className="text-xs text-default-400 font-mono">{formatDateTime(log.createdAt)}</p>
+                                                    </div>
+                                                    <div className="flex flex-col min-w-0">
+                                                        <p className="text-sm text-default-900 truncate">{log.message || "Status updated"}</p>
+                                                    </div>
+                                                    <div className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${statusColors}`}>
+                                                        {log.status}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        >
+                                            <p className="text-sm text-default-600 whitespace-pre-wrap">{detailText}</p>
+                                        </AccordionItem>
                                     )
                                 })}
-                            </div>
+                            </Accordion>
                         ) : (
                             <EmptyState 
                                 icon={Activity} 
