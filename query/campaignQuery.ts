@@ -17,7 +17,6 @@ const campaignDetailInclude = {
         },
     },
     files: {
-        where: { isDeleted: false },
         orderBy: { createdAt: "desc" },
     },
     logs: {

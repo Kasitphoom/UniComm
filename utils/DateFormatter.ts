@@ -1,23 +1,39 @@
 export const timeDifferenceFormatter = (date: Date): string => {
     const now = new Date()
-    const diffInMs = now.getTime() - date.getTime()
-    const diffInMinutes = Math.floor(diffInMs / (1000 * 60))
+    const diffInMs = date.getTime() - now.getTime()
+    const isFuture = diffInMs > 0
+    const absDiffInMinutes = Math.floor(Math.abs(diffInMs) / (1000 * 60))
 
-    if (diffInMinutes < 1) return 'just now'
-    if (diffInMinutes < 60) return `${diffInMinutes}min ago`
+    const format = (value: number, unit: string) =>
+        isFuture ? `in ${value}${unit}` : `${value}${unit} ago`
 
-    const diffInHours = Math.floor(diffInMinutes / 60)
-    if (diffInHours < 24) return `${diffInHours}h ago`
+    if (absDiffInMinutes < 1) {
+        return isFuture ? 'in <1min' : 'just now'
+    }
+    if (absDiffInMinutes < 60) {
+        return format(absDiffInMinutes, 'min')
+    }
 
-    const diffInDays = Math.floor(diffInHours / 24)
-    if (diffInDays < 7) return `${diffInDays}d ago`
+    const absDiffInHours = Math.floor(absDiffInMinutes / 60)
+    if (absDiffInHours < 24) {
+        return format(absDiffInHours, 'h')
+    }
 
-    const diffInWeeks = Math.floor(diffInDays / 7)
-    if (diffInWeeks < 4) return `${diffInWeeks}w ago`
+    const absDiffInDays = Math.floor(absDiffInHours / 24)
+    if (absDiffInDays < 7) {
+        return format(absDiffInDays, 'd')
+    }
 
-    const diffInMonths = Math.floor(diffInDays / 30)
-    if (diffInMonths < 12) return `${diffInMonths} month(s) ago`
+    const absDiffInWeeks = Math.floor(absDiffInDays / 7)
+    if (absDiffInWeeks < 4) {
+        return format(absDiffInWeeks, 'w')
+    }
 
-    const diffInYears = Math.floor(diffInDays / 365)
-    return `${diffInYears} year(s) ago`
+    const absDiffInMonths = Math.floor(absDiffInDays / 30)
+    if (absDiffInMonths < 12) {
+        return format(absDiffInMonths, ' month(s)')
+    }
+
+    const absDiffInYears = Math.floor(absDiffInDays / 365)
+    return format(absDiffInYears, ' year(s)')
 }

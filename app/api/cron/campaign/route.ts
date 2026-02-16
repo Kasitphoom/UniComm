@@ -13,7 +13,7 @@ export const GET = async (request: NextRequest) => {
         }
 
         const results = await runCampaignJob({ triggerSource: "CRON" });
-        deleteCampaignFileJob();
+        await deleteCampaignFileJob();
 
         return NextResponse.json(
             { message: "Cron job executed", processedBusinesses: results.length },
