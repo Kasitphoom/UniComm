@@ -419,7 +419,7 @@ const CampaignDetailView = ({ campaign }: Props) => {
                         </div>
                     }
                 >
-                    <ScrollShadow className="h-full w-full">
+                    <ScrollShadow className="w-full h-100 sm:h-full">
                         {sortedFiles.length > 0 ? (
                             <div className="flex flex-col">
                                 {sortedFiles.map((file) => (
@@ -472,7 +472,7 @@ const CampaignDetailView = ({ campaign }: Props) => {
                         </div>
                     }
                 >
-                    <ScrollShadow className="h-full w-full">
+                    <ScrollShadow className="w-full h-100 sm:h-full">
                         {sortedLogs.length > 0 ? (
                             <div className="flex flex-col">
                                 {sortedLogs.map((log) => {
@@ -532,7 +532,7 @@ const CampaignDetailView = ({ campaign }: Props) => {
                         </div>
                     }
                 >
-                     <ScrollShadow className="h-full">
+                     <ScrollShadow className="h-100 sm:h-full">
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-2">
                             <Card className="border border-default-100 shadow-sm h-fit">
                                 <CardHeader className="px-6 py-4 border-b border-default-100 bg-default-50/50">

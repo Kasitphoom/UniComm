@@ -30,6 +30,50 @@ type PatchContext = {
     params: Promise<{ id: string }>
 }
 
+export async function GET(req: NextRequest, { params }: PatchContext) {
+    try {
+        const auth = await requireAuth(req)
+        if (!auth.ok) return auth.response
+        if (!auth.businessId) {
+            return NextResponse.json(
+                { error: "No active business selected" },
+                { status: 400 },
+            )
+        }
+
+        const { id: campaignId } = await params
+        if (!campaignId) {
+            return NextResponse.json(
+                { error: "Campaign ID is required" },
+                { status: 400 },
+            )
+        }
+
+        const prisma = await getBusinessPrisma(auth.businessId)
+        const campaign = await prisma.campaign.findUnique({
+            where: { id: campaignId },
+            select: {
+                id: true,
+                name: true,
+            },
+        })
+
+        if (!campaign) {
+            return NextResponse.json(
+                { error: "Campaign not found" },
+                { status: 404 },
+            )
+        }
+
+        return NextResponse.json(campaign)
+    } catch (error: any) {
+        return NextResponse.json(
+            { error: error?.message || "Failed to fetch campaign" },
+            { status: 500 },
+        )
+    }
+}
+
 export async function PATCH(req: NextRequest, { params }: PatchContext) {
     try {
         const auth = await requireAuth(req)
