@@ -1,7 +1,7 @@
 import { PutCommandOptions } from '@vercel/blob';
 
 class StorageService {
-    uploadFile(file: Buffer, filename: string): Promise<string> {
+    uploadFile(file: Buffer, filename: string, overrideOptions?: Partial<PutCommandOptions>): Promise<string> {
         // Implementation for uploading file
         return Promise.resolve(`https://storage.service/${filename}`)
     }

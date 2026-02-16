@@ -19,6 +19,27 @@ export type CampaignWithRelations = Prisma.CampaignGetPayload<{
     }
 }>
 
+export type CampaignDetail = Prisma.CampaignGetPayload<{
+    include: {
+        templates: {
+            include: {
+                template: true
+            }
+        }
+        contactlist: {
+            include: {
+                _count: {
+                    select: {
+                        customers: true
+                    }
+                }
+            }
+        }
+        files: true
+        logs: true
+    }
+}>
+
 export type CampaignListResponse = {
     campaigns: CampaignWithRelations[]
     currentPage: number

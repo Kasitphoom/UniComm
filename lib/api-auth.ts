@@ -137,3 +137,26 @@ export async function requireAuth(
     }
     return { ok: true, ...auth }
 }
+
+export async function requireCronAuth(req: Request): Promise<RequireAuthResult> {
+    const secret = process.env.CRON_JOBS_SECRET
+    const authHeader = req.headers.get("Authorization") || ""
+    if (!secret || authHeader !== `Bearer ${secret}`) {
+        return {
+            ok: false,
+            response: NextResponse.json(
+                { error: "Unauthorized" },
+                { status: 401 }
+            ),
+        }
+    }
+
+    return {
+        ok: true,
+        session: null,
+        token: null,
+        userId: null,
+        mainUserId: null,
+        businessId: null,
+    }
+}

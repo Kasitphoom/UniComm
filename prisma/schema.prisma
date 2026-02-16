@@ -197,12 +197,14 @@ model Campaign {
 
   scheduledAt    DateTime
   scheduleStatus SCHEDULE_STATUS @default(PENDING)
+  executedAt     DateTime?
 
   fileStatus FILE_STATUS @default(EMPTY)
 
   totalRecords Int @default(0)
 
   logs CampaignLog[]
+  files CampaignFile[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -232,6 +234,20 @@ model CampaignTemplate {
   @@unique([campaignId, templateId])
   @@index([campaignId])
   @@index([templateId])
+}
+
+model CampaignFile {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  campaignId String   @db.ObjectId
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  fileName String
+  filePath String
+  status   FILE_STATUS @default(PENDING)
+  isDeleted Boolean     @default(false)
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
 }
 
 // ======== MIGRATION MODEL (for tracking applied migrations in each business database) =========
