@@ -158,23 +158,19 @@ export const CustomerListSelectorStep = ({
                     </div>
                 </div>
 
-                {/* THE FIX: CENTERED CONNECTOR DOT */}
-                {/* We place this inside the 'relative' wrapper but outside the card */}
                 <div className="absolute -right-[5px] top-1/2 -translate-y-1/2 z-20">
                     <div className={`w-2.5 h-2.5 rounded-full border-2 border-white shadow-sm transition-colors duration-300 ${selectedCustomerListId ? 'bg-secondary' : 'bg-default-300'}`}
                     />
                 </div>
             </div>
 
-{/* CONNECTION LINE 1 */}
-<div className="w-12 h-[2px] bg-default-200 relative self-center">
-    <div 
-        className={`absolute inset-0 transition-all duration-500 ease-in-out
-        ${selectedCustomerListId ? 'bg-secondary w-full' : 'w-0'}`} 
-    />
-</div>
+            <div className="w-12 h-[2px] bg-default-200 relative self-center">
+                <div 
+                    className={`absolute inset-0 transition-all duration-500 ease-in-out
+                    ${selectedCustomerListId ? 'bg-secondary w-full' : 'w-0'}`} 
+                />
+            </div>
 
-            {/* NODE 2: THE "PROCESSOR" (COMPATIBILITY) */}
             <div className="relative group">
                 <div className={`z-20 relative px-6 py-3 rounded-full border-2 bg-white shadow-lg flex items-center gap-3 transition-all
                     ${!selectedCustomerListId ? 'border-dashed border-default-300 opacity-50' : isCompatible ? 'border-secondary' : 'border-danger animate-pulse'}`}>
@@ -196,20 +192,16 @@ export const CustomerListSelectorStep = ({
                         </div>
                     )}
                 </div>
-                {/* Decorative Background Glow */}
                 {selectedCustomerListId && isCompatible && (
                     <div className="absolute inset-0 bg-secondary/20 blur-xl rounded-full -z-10" />
                 )}
             </div>
 
-            {/* CONNECTION LINE 2 */}
             <div className="w-16 h-[2px] bg-default-200 relative">
                  <div className={`absolute inset-0 transition-all duration-500 ${isCompatible ? 'bg-secondary w-full' : 'w-0'}`} />
             </div>
 
-            {/* NODE 3: DESTINATION TEMPLATE */}
             <div className="relative flex flex-col items-center">
-                 {/* Connector Point */}
                  <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-default-300 border-2 border-white z-10" />
                  
                  <div className="w-72">
