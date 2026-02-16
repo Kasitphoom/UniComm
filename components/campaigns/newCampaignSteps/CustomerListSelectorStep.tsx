@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react'
 import { Select, SelectItem, Card, CardBody, Chip } from '@heroui/react'
-import { Users, FileText, CheckCircle2, AlertTriangle, Link2 } from 'lucide-react'
+import { Users, FileText, CheckCircle2, AlertTriangle, Link2, Database } from 'lucide-react'
 import { useAppSelector } from '@/store/hooks'
 import { clientFetchTemplate } from '@/utils/template/utils'
 import { TemplateWithUser } from '@/types/template'
@@ -132,66 +132,102 @@ export const CustomerListSelectorStep = ({
     )
 
     return (
-        <div className="flex flex-col items-center gap-4 py-4 animate-in fade-in duration-500">
-            <div className="w-full max-w-md p-6 bg-content1 rounded-2xl shadow-sm">
-                <div className="flex items-center gap-2 mb-4">
-                    <Users size={18} />
-                    <span className="text-small uppercase tracking-wider">Source Audience</span>
+        <div className="flex flex-row items-center justify-center gap-0 py-12 px-4 overflow-x-auto">
+            
+            <div className="relative flex items-center">
+                <div className={`w-72 p-1 rounded-2xl border-2 transition-all duration-300 shadow-sm ${selectedCustomerListId ? 'border-secondary bg-secondary/5' : 'border-default-200 bg-content1'}`}>
+                    <div className="p-4 bg-content1 rounded-xl">
+                        <div className="flex items-center gap-2 mb-3 text-default-500">
+                            <Database size={16} />
+                            <span className="text-[10px] uppercase font-bold tracking-widest">Input Source</span>
+                        </div>
+                        <Select
+                            label="Customer List"
+                            variant="flat"
+                            size="sm"
+                            selectedKeys={selectedKeys}
+                            onSelectionChange={handleSelection}
+                            startContent={<Users size={14} />}
+                        >
+                            {customerLists.map((list) => (
+                                <SelectItem key={list.id} textValue={list.name}>
+                                    {list.name}
+                                </SelectItem>
+                            ))}
+                        </Select>
+                    </div>
                 </div>
-                <Select
-                    label="Choose Customer List"
-                    variant="bordered"
-                    color={selectedCustomerListId ? (isCompatible ? 'secondary' : 'danger') : 'default'}
-                    onSelectionChange={handleSelection}
-                    startContent={<Users size={16} className="text-default-400" />}
-                    errorMessage={error}
-                    isLoading={status === 'loading'}
-                    selectedKeys={selectedKeys}
-                >
-                    {customerLists.map((list) => (
-                        <SelectItem key={list.id} description={list.remarks}>
-                            {list.name}
-                        </SelectItem>
-                    ))}
-                </Select>
+
+                {/* THE FIX: CENTERED CONNECTOR DOT */}
+                {/* We place this inside the 'relative' wrapper but outside the card */}
+                <div className="absolute -right-[5px] top-1/2 -translate-y-1/2 z-20">
+                    <div className={`w-2.5 h-2.5 rounded-full border-2 border-white shadow-sm transition-colors duration-300 ${selectedCustomerListId ? 'bg-secondary' : 'bg-default-300'}`}
+                    />
+                </div>
             </div>
 
-            <div className="relative flex flex-col items-center w-full h-20 justify-center">
-                <div
-                    className={`w-1 h-full rounded-full transition-all duration-700 
-                    ${selectedCustomerListId ? (isCompatible ? 'bg-secondary' : 'bg-danger') : 'bg-default-100'}`}
-                />
-                <div className="absolute top-1/2 -translate-y-1/2 z-10">
-                    {!selectedCustomerListId ? (
-                        <div className="bg-white p-2 rounded-full border-2 border-dashed border-default-200 text-default-300">
-                            <Link2 size={20} />
+{/* CONNECTION LINE 1 */}
+<div className="w-12 h-[2px] bg-default-200 relative self-center">
+    <div 
+        className={`absolute inset-0 transition-all duration-500 ease-in-out
+        ${selectedCustomerListId ? 'bg-secondary w-full' : 'w-0'}`} 
+    />
+</div>
+
+            {/* NODE 2: THE "PROCESSOR" (COMPATIBILITY) */}
+            <div className="relative group">
+                <div className={`z-20 relative px-6 py-3 rounded-full border-2 bg-white shadow-lg flex items-center gap-3 transition-all
+                    ${!selectedCustomerListId ? 'border-dashed border-default-300 opacity-50' : isCompatible ? 'border-secondary' : 'border-danger animate-pulse'}`}>
+                    
+                    {isCompatible === null ? (
+                        <div className="flex items-center gap-2 text-default-400">
+                            <div className="w-2 h-2 rounded-full bg-default-300 animate-pulse" />
+                            <span className="text-xs font-medium">Waiting...</span>
+                        </div>
+                    ) : isCompatible ? (
+                        <div className="flex items-center gap-2 text-secondary font-bold">
+                            <CheckCircle2 size={18} />
+                            <span className="text-xs uppercase">Validated</span>
                         </div>
                     ) : (
-                        <Chip
-                            color={isCompatible ? 'secondary' : 'danger'}
-                            variant="shadow"
-                            startContent={isCompatible ? <CheckCircle2 size={16} /> : <AlertTriangle className="ml-2" size={16} />}
-                            className={`border-2 border-white transition-all ${isCompatible ? '' : 'animate-bounce'}`}
-                        >
-                            {isCompatible ? 'Customer information matched' : 'Mapping Mismatch'}
-                        </Chip>
+                        <div className="flex items-center gap-2 text-danger font-bold">
+                            <AlertTriangle size={18} />
+                            <span className="text-xs uppercase">Mismatch</span>
+                        </div>
                     )}
                 </div>
+                {/* Decorative Background Glow */}
+                {selectedCustomerListId && isCompatible && (
+                    <div className="absolute inset-0 bg-secondary/20 blur-xl rounded-full -z-10" />
+                )}
             </div>
 
-            <div className="w-full max-w-sm">
-                {isTemplateLoading && !template ? (
-                    <TemplateCardSkeleton />
-                ) : template ? (
-                    <TemplateSelectionCard template={template} isSelected={false} onToggle={() => {}} />
-                ) : (
-                    <Card className="border-dashed border-default-200">
-                        <CardBody className="flex flex-col items-center gap-4 py-8">
-                            <FileText size={24} className="text-default-300" />
-                            <span className="text-default-500 text-center">Select a template to preview its details here.</span>
-                        </CardBody>
-                    </Card>
-                )}
+            {/* CONNECTION LINE 2 */}
+            <div className="w-16 h-[2px] bg-default-200 relative">
+                 <div className={`absolute inset-0 transition-all duration-500 ${isCompatible ? 'bg-secondary w-full' : 'w-0'}`} />
+            </div>
+
+            {/* NODE 3: DESTINATION TEMPLATE */}
+            <div className="relative flex flex-col items-center">
+                 {/* Connector Point */}
+                 <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-default-300 border-2 border-white z-10" />
+                 
+                 <div className="w-72">
+                    {isTemplateLoading ? (
+                        <TemplateCardSkeleton />
+                    ) : template ? (
+                        <div className={`transition-all duration-500 transform ${isCompatible ? 'scale-100 opacity-100' : 'scale-95 opacity-70 grayscale'}`}>
+                             <TemplateSelectionCard template={template} isSelected={false} onToggle={() => {}} />
+                        </div>
+                    ) : (
+                        <Card className="border-dashed border-2 border-default-200 bg-default-50/50">
+                            <CardBody className="flex flex-col items-center py-6">
+                                <FileText size={20} className="text-default-300 mb-2" />
+                                <span className="text-[10px] text-default-400 text-center uppercase tracking-tighter">Target Template</span>
+                            </CardBody>
+                        </Card>
+                    )}
+                 </div>
             </div>
         </div>
     )
