@@ -26,7 +26,7 @@ const TemplateSelectionStep = ({
     isLoading,
 }: TemplateSelectionStepProps) => (
     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-right-4 h-111.5">
-        <div className="flex justify-between items-center px-1">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center px-1 gap-2">
             <p className="text-small font-bold text-default-600">
                 Select Template ({selectedTemplateId ? 1 : 0}/1)
             </p>

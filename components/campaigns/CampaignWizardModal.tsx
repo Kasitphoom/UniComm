@@ -34,7 +34,7 @@ const StepIndicator = ({
     labels: string[]
     onStepClick: (step: number) => void
 }) => (
-    <div className="flex gap-4 mt-2">
+    <div className="flex items-center justify-between md:justify-start gap-2 md:gap-4 mt-2 overflow-x-auto no-scrollbar py-1">
         {labels.map((label, index) => {
             const stepNumber = index + 1
             const isReachable = stepNumber <= current
@@ -44,28 +44,26 @@ const StepIndicator = ({
                 <div
                     key={`${label}-${stepNumber}`}
                     onClick={() => isReachable && onStepClick(stepNumber)}
-                    className={`
-                        flex items-center gap-2 transition-all duration-200
-                        ${isReachable ? "cursor-pointer group" : "cursor-not-allowed opacity-50"}
-                        ${isActive ? "text-secondary" : "text-default-400"}
-                    `}
+                    className={`flex items-center gap-2 flex-shrink-0 transition-all duration-200 
+                        ${isReachable ? "cursor-pointer group" : "cursor-not-allowed opacity-50"}`}
                 >
-                    <div
-                        className={`
-                            w-6 h-6 rounded-full flex items-center justify-center text-[10px] border-1 transition-colors
-                            ${isActive
-                                ? "border-secondary bg-secondary text-white font-bold"
-                                : "border-default-300 group-hover:border-secondary group-hover:text-secondary"}
-                        `}
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] border-1 transition-colors
+                            ${isActive ? "border-secondary bg-secondary text-white font-bold" : "border-default-300 text-default-400"}`}
                     >
                         {stepNumber}
                     </div>
 
-                    <span className={`text-tiny font-bold uppercase tracking-wider ${isReachable && "group-hover:text-secondary"}`}>
+                    {/* Hide label on small mobile devices, show on tablet/desktop */}
+                    <span className={`hidden sm:inline text-tiny font-bold uppercase tracking-wider 
+                        ${isActive ? "text-secondary" : "text-default-400"}`}
+                    >
                         {label}
                     </span>
 
-                    {index < labels.length - 1 && <div className="w-6 h-px bg-default-200 mx-1" />}
+                    {/* Compact connector for mobile */}
+                    {index < labels.length - 1 && (
+                        <div className="w-4 md:w-6 h-px bg-default-200 ml-1" />
+                    )}
                 </div>
             )
         })}

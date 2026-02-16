@@ -132,11 +132,11 @@ export const CustomerListSelectorStep = ({
     )
 
     return (
-        <div className="flex flex-row items-center justify-center gap-0 py-12 px-4 overflow-x-auto">
+        <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-0 py-8 md:py-12 px-4 overflow-x-hidden md:overflow-x-auto">
             
-            <div className="relative flex items-center">
-                <div className={`w-72 p-1 rounded-2xl border-2 transition-all duration-300 shadow-sm ${selectedCustomerListId ? 'border-secondary bg-secondary/5' : 'border-default-200 bg-content1'}`}>
-                    <div className="p-4 bg-content1 rounded-xl">
+            <div className="w-full md:w-72 relative flex flex-col md:flex-row items-center">
+                <div className={`w-full md:w-72 p-1 rounded-2xl border-2 transition-all duration-300 shadow-sm ${selectedCustomerListId ? 'border-secondary bg-secondary/5' : 'border-default-200 bg-content1'}`}>
+                    <div className="w-full md:w-auto p-4 bg-content1 rounded-xl">
                         <div className="flex items-center gap-2 mb-3 text-default-500">
                             <Database size={16} />
                             <span className="text-[10px] uppercase font-bold tracking-widest">Input Source</span>
@@ -149,7 +149,7 @@ export const CustomerListSelectorStep = ({
                             onSelectionChange={handleSelection}
                             startContent={<Users size={14} />}
                         >
-                            {customerLists.map((list) => (
+                            {customerLists.map((list: any) => (
                                 <SelectItem key={list.id} textValue={list.name}>
                                     {list.name}
                                 </SelectItem>
@@ -158,16 +158,19 @@ export const CustomerListSelectorStep = ({
                     </div>
                 </div>
 
-                <div className="absolute -right-1.25 top-1/2 -translate-y-1/2 z-20">
-                    <div className={`w-2.5 h-2.5 rounded-full border-2 border-white shadow-sm transition-colors duration-300 ${selectedCustomerListId ? 'bg-secondary' : 'bg-default-300'}`}
-                    />
+                <div className="absolute 
+                    left-1/2 -translate-x-1/2 -bottom-1.25 
+                    md:left-auto md:translate-x-0 md:-right-1.25
+                    md:top-1/2 md:-translate-y-1/2 md:bottom-auto 
+                    z-20">
+                    <div className={`w-2.5 h-2.5 rounded-full border-2 border-white shadow-sm transition-colors duration-300 ${selectedCustomerListId ? 'bg-secondary' : 'bg-default-300'}`} />
                 </div>
             </div>
 
-            <div className="w-12 h-0.5 bg-default-200 relative self-center">
+            <div className="w-0.5 md:w-12 h-8 md:h-0.5 bg-default-200 relative self-center">
                 <div 
                     className={`absolute inset-0 transition-all duration-500 ease-in-out
-                    ${selectedCustomerListId ? 'bg-secondary w-full' : 'w-0'}`} 
+                    ${selectedCustomerListId ? 'bg-secondary w-full h-full' : 'w-0 h-0'}`} 
                 />
             </div>
 
@@ -197,14 +200,17 @@ export const CustomerListSelectorStep = ({
                 )}
             </div>
 
-            <div className="w-16 h-0.5 bg-default-200 relative">
-                 <div className={`absolute inset-0 transition-all duration-500 ${isCompatible ? 'bg-secondary w-full' : 'w-0'}`} />
+            <div className="w-0.5 md:w-16 h-8 md:h-0.5 bg-default-200 relative">
+                 <div className={`absolute inset-0 transition-all duration-500 ${isCompatible ? 'bg-secondary w-full h-full' : 'w-0 h-0'}`} />
             </div>
 
-            <div className="relative flex flex-col items-center">
-                 <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-default-300 border-2 border-white z-10" />
+            <div className="relative flex flex-col items-center w-full md:w-auto">
+                 <div className="absolute 
+                    left-1/2 -translate-x-1/2 -top-1.25 md:top-1/2 
+                    md:-left-1 md:-translate-y-1/2 md:translate-x-0 
+                    w-3 h-3 rounded-full bg-default-300 border-2 border-white z-10" />
                  
-                 <div className="w-72">
+                 <div className="w-full md:w-72">
                     {isTemplateLoading ? (
                         <TemplateCardSkeleton />
                     ) : template ? (
