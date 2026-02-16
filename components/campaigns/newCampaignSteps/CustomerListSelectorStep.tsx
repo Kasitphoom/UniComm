@@ -158,13 +158,13 @@ export const CustomerListSelectorStep = ({
                     </div>
                 </div>
 
-                <div className="absolute -right-[5px] top-1/2 -translate-y-1/2 z-20">
+                <div className="absolute -right-1.25 top-1/2 -translate-y-1/2 z-20">
                     <div className={`w-2.5 h-2.5 rounded-full border-2 border-white shadow-sm transition-colors duration-300 ${selectedCustomerListId ? 'bg-secondary' : 'bg-default-300'}`}
                     />
                 </div>
             </div>
 
-            <div className="w-12 h-[2px] bg-default-200 relative self-center">
+            <div className="w-12 h-0.5 bg-default-200 relative self-center">
                 <div 
                     className={`absolute inset-0 transition-all duration-500 ease-in-out
                     ${selectedCustomerListId ? 'bg-secondary w-full' : 'w-0'}`} 
@@ -197,7 +197,7 @@ export const CustomerListSelectorStep = ({
                 )}
             </div>
 
-            <div className="w-16 h-[2px] bg-default-200 relative">
+            <div className="w-16 h-0.5 bg-default-200 relative">
                  <div className={`absolute inset-0 transition-all duration-500 ${isCompatible ? 'bg-secondary w-full' : 'w-0'}`} />
             </div>
 
