@@ -19,7 +19,7 @@ import {
     CardBody,
     addToast,
 } from "@heroui/react"
-import { Edit2, Trash2, Play, Calendar } from "lucide-react"
+import { Edit2, Trash2, Play, Calendar, Eye } from "lucide-react"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import { fetchCampaigns, type FetchCampaignsParams, updateCampaign, deleteCampaign, rerunCampaign } from "@/features/campaigns/campaignsSlice"
 import { UserRole } from "@/app/generated/business/prisma"
@@ -127,6 +127,10 @@ export const CampaignTable = () => {
         if (!canManageCampaigns) return
         setCampaignToDelete(campaign)
     }, [canManageCampaigns])
+
+    const handleViewAction = useCallback((campaign: CampaignWithRelations) => {
+        router.push(`/campaigns/${campaign.id}`)
+    }, [router])
 
     const onPageChange = (newPage: number) => {
         const params = new URLSearchParams(searchParams.toString())
@@ -265,6 +269,16 @@ export const CampaignTable = () => {
             case "actions":
                 return (
                     <div className="flex items-center justify-center gap-2">
+                        <Tooltip content="View details" size="sm">
+                            <Button
+                                isIconOnly
+                                size="sm"
+                                variant="light"
+                                onPress={() => handleViewAction(campaign)}
+                            >
+                                <Eye size={16} />
+                            </Button>
+                        </Tooltip>
                         <Tooltip content="Re-trigger" size="sm" color="secondary">
                             <Button
                                 isIconOnly
@@ -393,7 +407,16 @@ export const CampaignTable = () => {
                 </div>
 
                 {/* BOTTOM: Actions */}
-                <div className="flex items-center justify-end gap-2 pt-2 border-t border-default-50">
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-default-50">
+                        <Button
+                            variant="flat"
+                            size="sm"
+                            color="primary"
+                            className="text-white"
+                            onPress={() => handleViewAction(campaign)}
+                        >
+                            View
+                        </Button>
                     <Button 
                         isIconOnly 
                         size="sm" 
