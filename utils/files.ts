@@ -16,6 +16,7 @@ export const deleteCampaignFileJob = async () => {
                 expiresAt: {
                     lte: currentTime,
                 },
+                isDeleted: false,
             },
         })
 
