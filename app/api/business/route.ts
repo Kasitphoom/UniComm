@@ -48,13 +48,10 @@ export async function POST(request: NextRequest) {
         const secret = process.env.ADMIN_SECRET
         const authHeader = request.headers.get("Authorization") || ""
         if (!secret || authHeader !== `Bearer ${secret}`) {
-            return {
-                ok: false,
-                response: NextResponse.json(
-                    { error: "Unauthorized" },
-                    { status: 401 }
-                ),
-            }
+            return NextResponse.json(
+                { error: "Unauthorized" },
+                { status: 401 }
+            )
         }
 
         const body = await request.json()
