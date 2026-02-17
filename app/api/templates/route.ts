@@ -67,6 +67,7 @@ export async function GET(req: Request) {
                     approvers: {
                         include: { user: true },
                     },
+                    contactList: true,
                 },
             }),
             prisma.templates.count({ where: whereOrUndefined }),

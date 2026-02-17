@@ -231,7 +231,7 @@ function valueToXmlBody(val: unknown): any {
 
 export const transformTemplateToXml = async (
     template: Template
-): Promise<string> => {
+): Promise<{xml: string, variables: string[]}> => {
     const bp = template.basePdf
     let widthMm: number
     let heightMm: number
@@ -299,5 +299,26 @@ export const transformTemplateToXml = async (
     }
 
     const builder = new XMLBuilder({ ignoreAttributes: false, suppressBooleanAttributes: false })
-    return builder.build(xmlObj)
+    return {xml: builder.build(xmlObj), variables: extractVariablesFromSchema(template.schemas)}
+}
+
+export const extractVariablesFromSchema = (schema: Schema[][]): string[] => {
+    const variables: string[] = []
+
+    for (const page of schema) {
+        for (const item of page) {
+            if (item.type !== "TextWithVariables") continue;
+            
+            const content = (item as any).variables
+            if (Array.isArray(content)) {
+                for (const variable of content) {
+                    if (typeof variable === "string") {
+                        variables.push(variable)
+                    }
+                }
+            }
+        }
+    }
+
+    return variables
 }

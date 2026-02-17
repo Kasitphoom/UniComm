@@ -3,7 +3,6 @@ import { createAsyncThunk, createSlice, PayloadAction } from "@reduxjs/toolkit"
 import type { TemplatesState } from "./types"
 import type {
     Template,
-    TemplateListItem,
     TemplateWithUser,
 } from "@/types/template"
 import type { ApproverWithUser, ApprovalStatus } from "@/types/approver"
@@ -30,7 +29,7 @@ export const fetchTemplates = createAsyncThunk(
             throw new Error(text || "Failed to fetch templates")
         }
         const data = (await res.json()) as {
-            templates: TemplateListItem[]
+            templates: TemplateWithUser[]
             currentPage: number
             total: number
         }
@@ -56,7 +55,7 @@ export const fetchUserTemplates = createAsyncThunk(
             throw new Error(text || "Failed to fetch user templates")
         }
         const data = (await res.json()) as {
-            templates: TemplateListItem[]
+            templates: TemplateWithUser[]
             currentPage: number
             total: number
         }
@@ -374,6 +373,8 @@ const templatesSlice = createSlice({
                             versions: action.payload.versions as any,
                             approvers: action.payload.approvers as any,
                             requireUserApproval: false,
+                            requiredFields: action.payload.requiredFields as any,
+                            contactList: action.payload.contactList as any,
                         },
                         ...state.list.items,
                     ]
@@ -452,8 +453,8 @@ const templatesSlice = createSlice({
             .addCase(updateTemplateApprovalStatus.fulfilled, (state, action) => {
                 const { templateId, approval } = action.payload
 
-                const updateApproverCollection = (approvers?: ApproverWithUser[]) => {
-                    if (!approvers) return approvers
+                const updateApproverCollection = (approvers?: ApproverWithUser[]): ApproverWithUser[] => {
+                    if (!approvers) return []
                     return approvers.map((existing) =>
                         existing.id === approval.id ? { ...existing, ...approval } : existing,
                     )
@@ -466,7 +467,7 @@ const templatesSlice = createSlice({
                     } as TemplateWithUser
                 }
 
-                const updateListItems = (items: TemplateListItem[]) =>
+                const updateListItems = (items: TemplateWithUser[]) =>
                     items.map((item) =>
                         item.id === templateId
                             ? {

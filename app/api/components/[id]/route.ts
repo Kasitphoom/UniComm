@@ -127,7 +127,7 @@ export async function PATCH(
         }
 
         const hashedTemplate = await hashTemplate(body)
-        const xmlContent = await transformTemplateToXml(body)
+        const {xml: xmlContent, variables} = await transformTemplateToXml(body)
         
         const storageService = getStorageService()
         if (!storageService) {
@@ -150,6 +150,7 @@ export async function PATCH(
                 where: { id },
                 data: {
                     filePath: existingVersions[0].filePath,
+                    requiredFields: variables,
                 },
                 include: {
                     versions: {
@@ -177,6 +178,7 @@ export async function PATCH(
                     },
                 },
                 filePath: newUrl,
+                requiredFields: variables,
             },
             include: {
                 versions: {
