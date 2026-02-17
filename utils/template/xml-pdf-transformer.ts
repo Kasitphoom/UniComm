@@ -305,20 +305,38 @@ export const transformTemplateToXml = async (
 export const extractVariablesFromSchema = (schema: Schema[][]): string[] => {
     const variables: string[] = []
 
-    for (const page of schema) {
-        for (const item of page) {
-            if (item.type !== "TextWithVariables") continue;
-            
-            const content = (item as any).variables
-            if (Array.isArray(content)) {
-                for (const variable of content) {
-                    if (typeof variable === "string") {
-                        variables.push(variable)
+    const collectFromItems = (items: Schema[] | undefined) => {
+        if (!Array.isArray(items)) return
+
+        for (const item of items) {
+            if (!item || typeof item !== "object") continue
+
+            if (item.type === "TextWithVariables") {
+                const content = (item as any).variables
+                if (Array.isArray(content)) {
+                    for (const variable of content) {
+                        if (typeof variable === "string") {
+                            variables.push(variable)
+                        }
                     }
+                }
+                continue
+            }
+
+            if (item.type === "ComponentBlocks") {
+                const nested = (item as any).componentSchemas
+                if (Array.isArray(nested)) {
+                    collectFromItems(nested)
                 }
             }
         }
     }
+
+    for (const page of schema) {
+        collectFromItems(page)
+    }
+
+    console.log("Extracted variables from schema:", variables)
 
     return variables
 }
