@@ -69,6 +69,15 @@ const formatRelative = (value?: Date | string | null) => {
     return timeDifferenceFormatter(date)
 }
 
+const isExpired = (value?: Date | string | null, nowTimestamp?: number) => {
+    if (!value) return false
+    const date = typeof value === "string" ? new Date(value) : value
+    const timestamp = date.getTime()
+    if (Number.isNaN(timestamp)) return false
+    const nowValue = typeof nowTimestamp === "number" ? nowTimestamp : Date.now()
+    return timestamp <= nowValue
+}
+
 // --- Components ---
 
 const MetricCard = ({ 
@@ -276,11 +285,14 @@ const CampaignDetailView = ({ campaign }: Props) => {
     const contactListName = campaign.contactlist?.name ?? "Unknown list"
     const contactCount = campaign.contactlist?._count?.customers ?? campaign.totalRecords
     const fieldCount = Array.isArray(campaign.contactlist?.fields) ? campaign.contactlist?.fields.length ?? 0 : 0
+    const nowTimestamp = Date.now()
+    const latestAvailableFile = sortedFiles.find((file) => !isExpired(file.expiresAt, nowTimestamp))
+    const hasDownloadableFiles = Boolean(latestAvailableFile)
     
     const handleDownloadLatest = useCallback(() => {
-        if (!sortedFiles.length) return
-        window.open(sortedFiles[0].filePath, "_blank", "noopener,noreferrer")
-    }, [sortedFiles])
+        if (!latestAvailableFile) return
+        window.open(latestAvailableFile.filePath, "_blank", "noopener,noreferrer")
+    }, [latestAvailableFile])
 
     return (
         <div className="flex flex-col gap-6 w-full h-[calc(100vh-4rem)]">
@@ -349,7 +361,7 @@ const CampaignDetailView = ({ campaign }: Props) => {
                             color="secondary"
                             startContent={<Download size={18} />}
                             onPress={handleDownloadLatest}
-                            isDisabled={!sortedFiles.length}
+                            isDisabled={!hasDownloadableFiles}
                             className="font-medium shadow-sm"
                         >
                             Download Latest
@@ -419,37 +431,42 @@ const CampaignDetailView = ({ campaign }: Props) => {
                     <ScrollShadow className="w-full h-100 sm:h-full">
                         {sortedFiles.length > 0 ? (
                             <div className="flex flex-col">
-                                {sortedFiles.map((file) => (
-                                    <div key={file.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 hover:bg-default-50 transition-colors gap-4 rounded-xl border-b border-default-100 last:border-0 cursor-default">
-                                        <div className="flex items-center gap-4">
-                                            <div className="p-2 rounded-lg bg-default-100 text-default-600">
-                                                <FileText size={18} />
+                                {sortedFiles.map((file) => {
+                                    const isFileExpired = isExpired(file.expiresAt, nowTimestamp)
+
+                                    return (
+                                        <div key={file.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3 hover:bg-default-50 transition-colors gap-4 rounded-xl border-b border-default-100 last:border-0 cursor-default">
+                                            <div className="flex items-center gap-4">
+                                                <div className="p-2 rounded-lg bg-default-100 text-default-600">
+                                                    <FileText size={18} />
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-medium text-default-900">{file.fileName}</p>
+                                                    <p className="text-xs text-default-500 flex items-center gap-2">
+                                                        <span>{formatDateTime(file.createdAt)}</span>
+                                                        <span>•</span>
+                                                        <Tooltip content={file.expiresAt ? formatDateTime(file.expiresAt) : "No expiration"} size="sm">
+                                                            <span className="underline">Expires {formatRelative(file.expiresAt)}</span>
+                                                        </Tooltip>
+                                                    </p>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <p className="text-sm font-medium text-default-900">{file.fileName}</p>
-                                                <p className="text-xs text-default-500 flex items-center gap-2">
-                                                    <span>{formatDateTime(file.createdAt)}</span>
-                                                    <span>•</span>
-                                                    <Tooltip content={file.expiresAt ? formatDateTime(file.expiresAt) : "No expiration"} size="sm">
-                                                        <span className="underline">Expires {formatRelative(file.expiresAt)}</span>
-                                                    </Tooltip>
-                                                </p>
+                                            <div className="flex items-center gap-4 self-end sm:self-auto">
+                                                <StatusCell status={file.status} type="file" />
+                                                <Button
+                                                    isIconOnly
+                                                    variant="light"
+                                                    size="sm"
+                                                    onPress={() => window.open(file.filePath, "_blank", "noopener,noreferrer")}
+                                                    isDisabled={isFileExpired}
+                                                    className="text-default-400 data-[hover=true]:text-default-900"
+                                                >
+                                                    <Download size={18} />
+                                                </Button>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-4 self-end sm:self-auto">
-                                            <StatusCell status={file.status} type="file" />
-                                            <Button
-                                                isIconOnly
-                                                variant="light"
-                                                size="sm"
-                                                onPress={() => window.open(file.filePath, "_blank", "noopener,noreferrer")}
-                                                className="text-default-400 data-[hover=true]:text-default-900"
-                                            >
-                                                <Download size={18} />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                ))}
+                                    )
+                                })}
                             </div>
                         ) : (
                             <EmptyState 
