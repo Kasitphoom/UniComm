@@ -1,7 +1,7 @@
 import prisma from "@/lib/prisma-main"
 import { getAllBusinessIds } from "./business"
 import { getBusinessPrisma } from "@/lib/prisma-business"
-import { Prisma, SCHEDULE_STATUS, FILE_STATUS, CampaignFile } from "@/app/generated/business/prisma"
+import { Prisma, SCHEDULE_STATUS, FILE_STATUS, CampaignFile, APPROVAL_STATUS } from "@/app/generated/business/prisma"
 import { getStorageService } from "./upload/modules"
 import { transformXmlToTemplate } from "./template/xml-pdf-transformer"
 import { generate } from "@pdfme/generator"
@@ -206,7 +206,11 @@ const buildInputsForCustomer = (
 const campaignIncludes = {
     templates: {
         include: {
-            template: true,
+            template: {
+                include: {
+                    approvers: true,
+                },
+            },
         }
     },
     contactlist: {
@@ -224,6 +228,7 @@ type CampaignFileResult = {
 }
 
 const createCampaignFile = async (
+    businessId: string,
     campaign: CampaignWithTemplates,
     businessPrisma: BusinessPrismaClient,
 ): Promise<CampaignFileResult | null> => {
@@ -243,6 +248,23 @@ const createCampaignFile = async (
         .filter((template): template is NonNullable<typeof template> => Boolean(template?.filePath))
 
     if (templates.length === 0) return null
+
+    const hasPendingApprovals = templates.some((template) => {
+        const approvers = template.approvers ?? []
+        if (approvers.length === 0) return false
+
+        const approvalsRejected = approvers.some((approver) => approver.status === APPROVAL_STATUS.REJECTED)
+        const approvedCount = approvers.filter((approver) => approver.status === APPROVAL_STATUS.APPROVED).length
+        const approvalsComplete = approvedCount === approvers.length && !approvalsRejected
+
+        return !approvalsComplete
+    })
+
+    console.log(`[Campaign ${campaign.name}] Found ${templates.length} template(s) and ${customers.length} customer(s). Pending approvals: ${hasPendingApprovals}`)
+
+    if (hasPendingApprovals) {
+        throw new Error("Campaign file is not yet fully approved")
+    }
 
     const storageService = getStorageService()
     if (!storageService) {
@@ -283,7 +305,7 @@ const createCampaignFile = async (
     })
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
-    const zipFileName = `campaign-${campaign.name}-${timestamp}.zip`
+    const zipFileName = `${businessId}/campaign/campaign-${campaign.name}-${timestamp}.zip`
     const zipUrl = await storageService.uploadFile(zipBuffer, zipFileName, {
         contentType: "application/zip",
     })
@@ -359,7 +381,7 @@ const runCampaignForBusiness = async (
         )
         for (const campaign of campaignsToRun) {
             try {
-                const campaignFileResult = await createCampaignFile(campaign, businessPrisma)
+                const campaignFileResult = await createCampaignFile(businessId, campaign, businessPrisma)
                 const hasGeneratedFile = Boolean(campaignFileResult?.file?.id)
                 const nextFileStatus = hasGeneratedFile ? FILE_STATUS.AVALIABLE : FILE_STATUS.EMPTY
                 const nextScheduleStatus = SCHEDULE_STATUS.TRIGGERED

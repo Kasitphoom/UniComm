@@ -202,6 +202,7 @@ const CampaignDetailView = ({ campaign }: Props) => {
                 description: error instanceof Error ? error.message : "Unexpected error",
                 color: "danger",
             })
+            router.refresh()
         }
     }, [campaign.id, canManageCampaigns, dispatch, rerunId, rerunStatus, router])
 
