@@ -10,6 +10,8 @@ export type XMLOutput = {
     }
 }
 
+type ComponentSchemaResolver = (componentName: string) => Promise<Schema[] | null>
+
 // Coerce XML string primitives back to JS primitives
 const coerce = (v: unknown): number | string | boolean | unknown => {
     if (typeof v !== "string") return v
@@ -230,7 +232,8 @@ function valueToXmlBody(val: unknown): any {
 }
 
 export const transformTemplateToXml = async (
-    template: Template
+    template: Template,
+    options?: { resolveComponentSchemas?: ComponentSchemaResolver }
 ): Promise<{xml: string, variables: string[]}> => {
     const bp = template.basePdf
     let widthMm: number
@@ -252,8 +255,70 @@ export const transformTemplateToXml = async (
     const widthCm = widthMm / 10
     const heightCm = heightMm / 10
 
+    const resolveComponentSchemas = options?.resolveComponentSchemas
+
+    const resolveComponentBlocks = async (
+        items: Schema[] | undefined,
+        ancestors: string[] = [],
+    ): Promise<Schema[]> => {
+        if (!Array.isArray(items)) return []
+
+        const nextItems: Schema[] = []
+
+        for (const item of items) {
+            if (!item || typeof item !== "object") {
+                nextItems.push(item)
+                continue
+            }
+
+            if (item.type !== "ComponentBlocks") {
+                nextItems.push(item)
+                continue
+            }
+
+            const componentName = typeof (item as any).componentName === "string"
+                ? (item as any).componentName.trim()
+                : ""
+            const existingSchemas = (item as any).componentSchemas
+            let resolvedSchemas = Array.isArray(existingSchemas) ? existingSchemas : undefined
+
+            if (
+                (!resolvedSchemas || resolvedSchemas.length === 0) &&
+                componentName &&
+                resolveComponentSchemas &&
+                !ancestors.includes(componentName)
+            ) {
+                const fetched = await resolveComponentSchemas(componentName)
+                if (Array.isArray(fetched) && fetched.length > 0) {
+                    resolvedSchemas = fetched
+                }
+            }
+
+            if (Array.isArray(resolvedSchemas)) {
+                const resolvedNested = await resolveComponentBlocks(
+                    resolvedSchemas,
+                    componentName ? [...ancestors, componentName] : ancestors,
+                )
+                if (resolvedNested !== resolvedSchemas || resolvedSchemas !== existingSchemas) {
+                    nextItems.push({ ...(item as any), componentSchemas: resolvedNested } as Schema)
+                    continue
+                }
+            }
+
+            nextItems.push(item)
+        }
+
+        return nextItems
+    }
+
+    const resolvedSchemas = resolveComponentSchemas
+        ? await Promise.all(
+            template.schemas.map((pageSchema) => resolveComponentBlocks(pageSchema)),
+        )
+        : template.schemas
+
     // Build Document -> Page[] using recursive conversion per schema item
-    const pages = template.schemas.map((pageSchema) => {
+    const pages = resolvedSchemas.map((pageSchema) => {
         // preserve explicit empty page
         if (Array.isArray(pageSchema) && pageSchema.length === 0) return []
 
@@ -299,7 +364,7 @@ export const transformTemplateToXml = async (
     }
 
     const builder = new XMLBuilder({ ignoreAttributes: false, suppressBooleanAttributes: false })
-    return {xml: builder.build(xmlObj), variables: extractVariablesFromSchema(template.schemas)}
+    return {xml: builder.build(xmlObj), variables: extractVariablesFromSchema(resolvedSchemas)}
 }
 
 export const extractVariablesFromSchema = (schema: Schema[][]): string[] => {
