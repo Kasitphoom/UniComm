@@ -12,6 +12,68 @@ export type XMLOutput = {
 
 type ComponentSchemaResolver = (componentName: string) => Promise<Schema[] | null>
 
+const resolveComponentBlocksInItems = async (
+    items: Schema[] | undefined,
+    resolveComponentSchemas: ComponentSchemaResolver,
+    ancestors: string[] = [],
+): Promise<Schema[]> => {
+    if (!Array.isArray(items)) return []
+
+    const nextItems: Schema[] = []
+
+    for (const item of items) {
+        if (!item || typeof item !== "object") {
+            nextItems.push(item)
+            continue
+        }
+
+        if (item.type !== "ComponentBlocks") {
+            nextItems.push(item)
+            continue
+        }
+
+        const componentName = typeof (item as any).componentName === "string"
+            ? (item as any).componentName.trim()
+            : ""
+        const existingSchemas = (item as any).componentSchemas
+        let resolvedSchemas = Array.isArray(existingSchemas) ? existingSchemas : undefined
+
+        if (componentName && !ancestors.includes(componentName)) {
+            const fetched = await resolveComponentSchemas(componentName)
+            if (Array.isArray(fetched) && fetched.length > 0) {
+                resolvedSchemas = fetched
+            }
+        }
+
+        if (Array.isArray(resolvedSchemas)) {
+            const resolvedNested = await resolveComponentBlocksInItems(
+                resolvedSchemas,
+                resolveComponentSchemas,
+                componentName ? [...ancestors, componentName] : ancestors,
+            )
+            if (resolvedNested !== resolvedSchemas || resolvedSchemas !== existingSchemas) {
+                nextItems.push({ ...(item as any), componentSchemas: resolvedNested } as Schema)
+                continue
+            }
+        }
+
+        nextItems.push(item)
+    }
+
+    return nextItems
+}
+
+const resolveComponentBlocksInSchemas = async (
+    schemas: Schema[][],
+    resolveComponentSchemas?: ComponentSchemaResolver,
+): Promise<Schema[][]> => {
+    if (!resolveComponentSchemas) return schemas
+
+    return Promise.all(
+        schemas.map((pageSchema) => resolveComponentBlocksInItems(pageSchema, resolveComponentSchemas)),
+    )
+}
+
 // Coerce XML string primitives back to JS primitives
 const coerce = (v: unknown): number | string | boolean | unknown => {
     if (typeof v !== "string") return v
@@ -73,7 +135,8 @@ const xmlBodyToJs = (node: any): any => {
  * Transform XML into a pdfme Template (reverse of transformTemplateToXml).
  */
 export const transformXmlToTemplate = async (
-    xmlContent: string
+    xmlContent: string,
+    options?: { resolveComponentSchemas?: ComponentSchemaResolver }
 ): Promise<Template> => {
     // Do not ignore empty nodes: alwaysCreateTextNode ensures even empty tags produce a '#text' key
     const parser = new XMLParser({
@@ -135,8 +198,13 @@ export const transformXmlToTemplate = async (
     // Ensure at least one (possibly empty) page
     const normalizedSchemas = schemas.length === 0 ? [[]] : schemas
 
+    const resolvedSchemas = await resolveComponentBlocksInSchemas(
+        normalizedSchemas,
+        options?.resolveComponentSchemas,
+    )
+
     const template: Template = {
-        schemas: normalizedSchemas,
+        schemas: resolvedSchemas,
         basePdf: {
             width: widthMm,
             height: heightMm,
@@ -255,67 +323,10 @@ export const transformTemplateToXml = async (
     const widthCm = widthMm / 10
     const heightCm = heightMm / 10
 
-    const resolveComponentSchemas = options?.resolveComponentSchemas
-
-    const resolveComponentBlocks = async (
-        items: Schema[] | undefined,
-        ancestors: string[] = [],
-    ): Promise<Schema[]> => {
-        if (!Array.isArray(items)) return []
-
-        const nextItems: Schema[] = []
-
-        for (const item of items) {
-            if (!item || typeof item !== "object") {
-                nextItems.push(item)
-                continue
-            }
-
-            if (item.type !== "ComponentBlocks") {
-                nextItems.push(item)
-                continue
-            }
-
-            const componentName = typeof (item as any).componentName === "string"
-                ? (item as any).componentName.trim()
-                : ""
-            const existingSchemas = (item as any).componentSchemas
-            let resolvedSchemas = Array.isArray(existingSchemas) ? existingSchemas : undefined
-
-            if (
-                (!resolvedSchemas || resolvedSchemas.length === 0) &&
-                componentName &&
-                resolveComponentSchemas &&
-                !ancestors.includes(componentName)
-            ) {
-                const fetched = await resolveComponentSchemas(componentName)
-                if (Array.isArray(fetched) && fetched.length > 0) {
-                    resolvedSchemas = fetched
-                }
-            }
-
-            if (Array.isArray(resolvedSchemas)) {
-                const resolvedNested = await resolveComponentBlocks(
-                    resolvedSchemas,
-                    componentName ? [...ancestors, componentName] : ancestors,
-                )
-                if (resolvedNested !== resolvedSchemas || resolvedSchemas !== existingSchemas) {
-                    nextItems.push({ ...(item as any), componentSchemas: resolvedNested } as Schema)
-                    continue
-                }
-            }
-
-            nextItems.push(item)
-        }
-
-        return nextItems
-    }
-
-    const resolvedSchemas = resolveComponentSchemas
-        ? await Promise.all(
-            template.schemas.map((pageSchema) => resolveComponentBlocks(pageSchema)),
-        )
-        : template.schemas
+    const resolvedSchemas = await resolveComponentBlocksInSchemas(
+        template.schemas,
+        options?.resolveComponentSchemas,
+    )
 
     // Build Document -> Page[] using recursive conversion per schema item
     const pages = resolvedSchemas.map((pageSchema) => {
@@ -378,11 +389,14 @@ export const extractVariablesFromSchema = (schema: Schema[][]): string[] => {
 
             if (item.type === "TextWithVariables") {
                 const content = (item as any).variables
-                if (Array.isArray(content)) {
-                    for (const variable of content) {
-                        if (typeof variable === "string") {
-                            variables.push(variable)
-                        }
+                const normalized = Array.isArray(content)
+                    ? content
+                    : typeof content === "string"
+                        ? [content]
+                        : []
+                for (const variable of normalized) {
+                    if (typeof variable === "string") {
+                        variables.push(variable)
                     }
                 }
                 continue

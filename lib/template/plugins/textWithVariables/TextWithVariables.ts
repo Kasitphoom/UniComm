@@ -60,7 +60,7 @@ const parseVariables = (text: string, data?: Record<string, any>): string => {
 export const extractVariables = (text: string): string[] => {
     if (typeof text !== "string") return []
     const matches = text.matchAll(/\{\{([^}]+)\}\}/g)
-    return Array.from(matches, m => m[1].trim())
+    return Array.from(new Set(Array.from(matches, m => m[1].trim()).filter(Boolean)))
 }
 
 // Make element plain text contenteditable (supports Firefox)
@@ -127,7 +127,8 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         
         // Extract variables from text and update schema if needed
         const variables = extractVariables(rawText)
-        if (mode === 'designer' && JSON.stringify(variables) !== JSON.stringify(schema.variables)) {
+        const currentVariables = Array.isArray(schema.variables) ? schema.variables : []
+        if (mode === 'designer' && JSON.stringify(variables) !== JSON.stringify(currentVariables)) {
             if (onChange) {
                 onChange({ key: 'variables', value: variables })
             }

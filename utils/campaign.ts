@@ -6,7 +6,7 @@ import { getStorageService } from "./upload/modules"
 import { transformXmlToTemplate } from "./template/xml-pdf-transformer"
 import { generate } from "@pdfme/generator"
 import { getInputFromTemplate } from "@pdfme/common"
-import type { Template as PdfTemplate } from "@pdfme/common"
+import type { Schema, Template as PdfTemplate } from "@pdfme/common"
 import type { TextWithVariablesSchema } from "@/lib/template/plugins/textWithVariables"
 import { plugins } from "@/components/Editor/plugins"
 import JSZip from "jszip"
@@ -126,7 +126,11 @@ const buildVariablePayload = (
     contactFieldMap: Map<string, string>,
 ) => {
     const payload: Record<string, string> = {}
-    const variables = Array.isArray(schema.variables) ? schema.variables : []
+    const variables = Array.isArray(schema.variables)
+        ? schema.variables
+        : typeof schema.variables === "string"
+            ? [schema.variables]
+            : []
 
     for (const variable of variables) {
         if (!variable) continue
@@ -167,6 +171,37 @@ const buildInputsForCustomer = (
         }
     }
 
+    const buildComponentBlockInput = (schema: NamedSchema): Record<string, unknown> => {
+        const nested = (schema as { componentSchemas?: NamedSchema[] }).componentSchemas
+        if (!Array.isArray(nested)) return {}
+
+        const result: Record<string, unknown> = {}
+        for (const child of nested) {
+            if (!child || typeof child !== "object") continue
+            const childName = typeof child.name === "string" ? child.name : ""
+            if (!childName) continue
+
+            if (child.type === "ComponentBlocks") {
+                result[childName] = buildComponentBlockInput(child)
+                continue
+            }
+
+            if (child.type === "TextWithVariables") {
+                result[childName] = buildVariablePayload(
+                    child as TextWithVariablesSchema,
+                    customerData,
+                    normalizedCustomerValues,
+                    contactFieldMap,
+                )
+                continue
+            }
+
+            result[childName] = getSchemaContent(child)
+        }
+
+        return result
+    }
+
     return inputsShape.map((pageInput, pageIndex) => {
         const pageSchemas = template.schemas[pageIndex] || []
         const schemaByName = new Map<string, NamedSchema>()
@@ -191,6 +226,11 @@ const buildInputsForCustomer = (
                     normalizedCustomerValues,
                     contactFieldMap,
                 )
+                return
+            }
+
+            if (schema.type === "ComponentBlocks") {
+                filledPage[key] = buildComponentBlockInput(schema)
                 return
             }
 
@@ -269,11 +309,36 @@ const createCampaignFile = async (
         throw new Error("Storage service not configured")
     }
 
+    const resolveComponentSchemas = (() => {
+        const cache = new Map<string, Schema[] | null>()
+
+        return async (componentName: string) => {
+            const normalized = componentName.trim()
+            if (!normalized) return null
+            if (cache.has(normalized)) return cache.get(normalized) ?? null
+
+            const componentBlock = await businessPrisma.componentBlock.findUnique({
+                where: { name: normalized },
+            })
+            if (!componentBlock?.filePath) {
+                cache.set(normalized, null)
+                return null
+            }
+
+            const xmlContent = await storageService.getFileContent(componentBlock.filePath)
+            const parsed = await transformXmlToTemplate(xmlContent, { resolveComponentSchemas })
+            const firstPage = parsed.schemas?.[0]
+            const result = Array.isArray(firstPage) ? firstPage : null
+            cache.set(normalized, result)
+            return result
+        }
+    })()
+
     const pdfArtifacts: PdfArtifact[] = []
 
     for (const template of templates) {
         const fileContent = await storageService.getFileContent(template.filePath!)
-        const parsedContent = await transformXmlToTemplate(fileContent)
+        const parsedContent = await transformXmlToTemplate(fileContent, { resolveComponentSchemas })
 
         for (const customer of customers) {
             const customerData = toCustomerRecord(customer.data)
