@@ -165,7 +165,7 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
             const parsedTemplate = await clientFetchParsedTemplate(id)
             const draftKey = `template:${id}`
             const draftTemplate = await loadTemplateDraft(draftKey)
-            const template = (draftTemplate ?? parsedTemplate?.data) as Template | null
+            const template = (draftTemplate ?? parsedTemplate) as Template | null
 
             if (!template) {
                 throw new Error('Template data is not available for PDF export')
