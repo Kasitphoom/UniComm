@@ -260,8 +260,6 @@ const createCampaignFile = async (
         return !approvalsComplete
     })
 
-    console.log(`[Campaign ${campaign.name}] Found ${templates.length} template(s) and ${customers.length} customer(s). Pending approvals: ${hasPendingApprovals}`)
-
     if (hasPendingApprovals) {
         throw new Error("Campaign file is not yet fully approved")
     }
