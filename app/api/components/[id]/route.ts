@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
 import { getBusinessPrisma } from "@/lib/prisma-business"
 import { requireAuth } from "@/lib/api-auth"
-import { Template } from "@pdfme/common"
+import { Schema, Template } from "@pdfme/common"
 import { hashTemplate } from "@/lib/draftStore"
-import { transformTemplateToXml } from "@/utils/template/xml-pdf-transformer"
+import { transformTemplateToXml, transformXmlToTemplate } from "@/utils/template/xml-pdf-transformer"
 import { getStorageService } from "@/utils/upload/modules"
 import { hasRolePermission, RolePermissions } from "@/lib/role-permissions"
 
@@ -126,9 +126,6 @@ export async function PATCH(
             )
         }
 
-        const hashedTemplate = await hashTemplate(body)
-        const {xml: xmlContent, variables} = await transformTemplateToXml(body)
-        
         const storageService = getStorageService()
         if (!storageService) {
             return NextResponse.json(
@@ -136,6 +133,36 @@ export async function PATCH(
                 { status: 500 }
             )
         }
+
+        const resolveComponentSchemas = (() => {
+            const cache = new Map<string, Schema[] | null>()
+
+            return async (componentName: string) => {
+                const normalized = componentName.trim()
+                if (!normalized) return null
+                if (cache.has(normalized)) return cache.get(normalized) ?? null
+
+                const componentBlock = await prisma.componentBlock.findUnique({
+                    where: { name: normalized },
+                })
+                if (!componentBlock?.filePath) {
+                    cache.set(normalized, null)
+                    return null
+                }
+
+                const xmlContent = await storageService.getFileContent(componentBlock.filePath)
+                const parsed = await transformXmlToTemplate(xmlContent)
+                const firstPage = parsed.schemas?.[0]
+                const result = Array.isArray(firstPage) ? firstPage : null
+                cache.set(normalized, result)
+                return result
+            }
+        })()
+
+        const hashedTemplate = await hashTemplate(body)
+        const {xml: xmlContent, variables} = await transformTemplateToXml(body, {
+            resolveComponentSchemas,
+        })
 
         const fileKey = `${auth.businessId!}/component-block/${encodeURIComponent(`${id}.${hashedTemplate}`)}.xml`
 

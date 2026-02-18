@@ -1,5 +1,6 @@
 import authOptions from "@/lib/auth"
 import { getBusinessPrismaByCookie } from "@/lib/prisma-business"
+import { Schema } from "@pdfme/common"
 import { transformXmlToTemplate } from "@/utils/template/xml-pdf-transformer"
 import { getStorageService } from "@/utils/upload/modules"
 import { getServerSession } from "next-auth"
@@ -30,8 +31,33 @@ export const GET = async (request: Request, context: { params: Promise<{ id: str
             )
 
         const fileContent = await storageService.getFileContent(template.filePath)
-        
-        const parsedContent = await transformXmlToTemplate(fileContent)
+
+        const resolveComponentSchemas = (() => {
+            const cache = new Map<string, Schema[] | null>()
+
+            return async (componentName: string) => {
+                const normalized = componentName.trim()
+                if (!normalized) return null
+                if (cache.has(normalized)) return cache.get(normalized) ?? null
+
+                const componentBlock = await prisma.componentBlock.findUnique({
+                    where: { name: normalized },
+                })
+                if (!componentBlock?.filePath) {
+                    cache.set(normalized, null)
+                    return null
+                }
+
+                const xmlContent = await storageService.getFileContent(componentBlock.filePath)
+                const parsed = await transformXmlToTemplate(xmlContent, { resolveComponentSchemas })
+                const firstPage = parsed.schemas?.[0]
+                const result = Array.isArray(firstPage) ? firstPage : null
+                cache.set(normalized, result)
+                return result
+            }
+        })()
+
+        const parsedContent = await transformXmlToTemplate(fileContent, { resolveComponentSchemas })
 
         return NextResponse.json({
             data: parsedContent,

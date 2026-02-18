@@ -10,6 +10,70 @@ export type XMLOutput = {
     }
 }
 
+type ComponentSchemaResolver = (componentName: string) => Promise<Schema[] | null>
+
+const resolveComponentBlocksInItems = async (
+    items: Schema[] | undefined,
+    resolveComponentSchemas: ComponentSchemaResolver,
+    ancestors: string[] = [],
+): Promise<Schema[]> => {
+    if (!Array.isArray(items)) return []
+
+    const nextItems: Schema[] = []
+
+    for (const item of items) {
+        if (!item || typeof item !== "object") {
+            nextItems.push(item)
+            continue
+        }
+
+        if (item.type !== "ComponentBlocks") {
+            nextItems.push(item)
+            continue
+        }
+
+        const componentName = typeof (item as any).componentName === "string"
+            ? (item as any).componentName.trim()
+            : ""
+        const existingSchemas = (item as any).componentSchemas
+        let resolvedSchemas = Array.isArray(existingSchemas) ? existingSchemas : undefined
+
+        if (componentName && !ancestors.includes(componentName)) {
+            const fetched = await resolveComponentSchemas(componentName)
+            if (Array.isArray(fetched) && fetched.length > 0) {
+                resolvedSchemas = fetched
+            }
+        }
+
+        if (Array.isArray(resolvedSchemas)) {
+            const resolvedNested = await resolveComponentBlocksInItems(
+                resolvedSchemas,
+                resolveComponentSchemas,
+                componentName ? [...ancestors, componentName] : ancestors,
+            )
+            if (resolvedNested !== resolvedSchemas || resolvedSchemas !== existingSchemas) {
+                nextItems.push({ ...(item as any), componentSchemas: resolvedNested } as Schema)
+                continue
+            }
+        }
+
+        nextItems.push(item)
+    }
+
+    return nextItems
+}
+
+const resolveComponentBlocksInSchemas = async (
+    schemas: Schema[][],
+    resolveComponentSchemas?: ComponentSchemaResolver,
+): Promise<Schema[][]> => {
+    if (!resolveComponentSchemas) return schemas
+
+    return Promise.all(
+        schemas.map((pageSchema) => resolveComponentBlocksInItems(pageSchema, resolveComponentSchemas)),
+    )
+}
+
 // Coerce XML string primitives back to JS primitives
 const coerce = (v: unknown): number | string | boolean | unknown => {
     if (typeof v !== "string") return v
@@ -71,7 +135,8 @@ const xmlBodyToJs = (node: any): any => {
  * Transform XML into a pdfme Template (reverse of transformTemplateToXml).
  */
 export const transformXmlToTemplate = async (
-    xmlContent: string
+    xmlContent: string,
+    options?: { resolveComponentSchemas?: ComponentSchemaResolver }
 ): Promise<Template> => {
     // Do not ignore empty nodes: alwaysCreateTextNode ensures even empty tags produce a '#text' key
     const parser = new XMLParser({
@@ -133,8 +198,13 @@ export const transformXmlToTemplate = async (
     // Ensure at least one (possibly empty) page
     const normalizedSchemas = schemas.length === 0 ? [[]] : schemas
 
+    const resolvedSchemas = await resolveComponentBlocksInSchemas(
+        normalizedSchemas,
+        options?.resolveComponentSchemas,
+    )
+
     const template: Template = {
-        schemas: normalizedSchemas,
+        schemas: resolvedSchemas,
         basePdf: {
             width: widthMm,
             height: heightMm,
@@ -230,7 +300,8 @@ function valueToXmlBody(val: unknown): any {
 }
 
 export const transformTemplateToXml = async (
-    template: Template
+    template: Template,
+    options?: { resolveComponentSchemas?: ComponentSchemaResolver }
 ): Promise<{xml: string, variables: string[]}> => {
     const bp = template.basePdf
     let widthMm: number
@@ -252,8 +323,13 @@ export const transformTemplateToXml = async (
     const widthCm = widthMm / 10
     const heightCm = heightMm / 10
 
+    const resolvedSchemas = await resolveComponentBlocksInSchemas(
+        template.schemas,
+        options?.resolveComponentSchemas,
+    )
+
     // Build Document -> Page[] using recursive conversion per schema item
-    const pages = template.schemas.map((pageSchema) => {
+    const pages = resolvedSchemas.map((pageSchema) => {
         // preserve explicit empty page
         if (Array.isArray(pageSchema) && pageSchema.length === 0) return []
 
@@ -299,26 +375,47 @@ export const transformTemplateToXml = async (
     }
 
     const builder = new XMLBuilder({ ignoreAttributes: false, suppressBooleanAttributes: false })
-    return {xml: builder.build(xmlObj), variables: extractVariablesFromSchema(template.schemas)}
+    return {xml: builder.build(xmlObj), variables: extractVariablesFromSchema(resolvedSchemas)}
 }
 
 export const extractVariablesFromSchema = (schema: Schema[][]): string[] => {
     const variables: string[] = []
 
-    for (const page of schema) {
-        for (const item of page) {
-            if (item.type !== "TextWithVariables") continue;
-            
-            const content = (item as any).variables
-            if (Array.isArray(content)) {
-                for (const variable of content) {
+    const collectFromItems = (items: Schema[] | undefined) => {
+        if (!Array.isArray(items)) return
+
+        for (const item of items) {
+            if (!item || typeof item !== "object") continue
+
+            if (item.type === "TextWithVariables") {
+                const content = (item as any).variables
+                const normalized = Array.isArray(content)
+                    ? content
+                    : typeof content === "string"
+                        ? [content]
+                        : []
+                for (const variable of normalized) {
                     if (typeof variable === "string") {
                         variables.push(variable)
                     }
                 }
+                continue
+            }
+
+            if (item.type === "ComponentBlocks") {
+                const nested = (item as any).componentSchemas
+                if (Array.isArray(nested)) {
+                    collectFromItems(nested)
+                }
             }
         }
     }
+
+    for (const page of schema) {
+        collectFromItems(page)
+    }
+
+    console.log("Extracted variables from schema:", variables)
 
     return variables
 }
