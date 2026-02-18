@@ -191,7 +191,7 @@ model Campaign {
   id   String @id @default(auto()) @map("_id") @db.ObjectId
   name String @unique
 
-  templates      CampaignTemplate[]
+  templates     CampaignTemplate[]
   contactlist   ContactList        @relation(fields: [contactListId], references: [id])
   contactListId String             @db.ObjectId
 
@@ -203,11 +203,12 @@ model Campaign {
 
   totalRecords Int @default(0)
 
-  logs CampaignLog[]
+  logs  CampaignLog[]
   files CampaignFile[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  campaignRunLogs CampaignRunLog[]
 }
 
 model CampaignLog {
@@ -222,21 +223,21 @@ model CampaignLog {
 }
 
 model CampaignRunLog {
-  id         String   @id @default(auto()) @map("_id") @db.ObjectId
-  campaignId String?  @db.ObjectId
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  campaignId String?   @db.ObjectId
   campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
 
-  campaignName String
+  campaignName  String
   triggerSource String
-  status      SCHEDULE_STATUS
-  success     Boolean
-  errorMessage String?
+  status        SCHEDULE_STATUS
+  success       Boolean
+  errorMessage  String?
 
-  fileId      String? @db.ObjectId
-  fileStatus  FILE_STATUS
-  generatedDocuments Int @default(0)
+  fileId             String?     @db.ObjectId
+  fileStatus         FILE_STATUS
+  generatedDocuments Int         @default(0)
 
-  startedAt DateTime
+  startedAt  DateTime
   finishedAt DateTime
   durationMs Int
 
@@ -263,18 +264,18 @@ model CampaignTemplate {
 }
 
 model CampaignFile {
-  id         String   @id @default(auto()) @map("_id") @db.ObjectId
-  campaignId String?  @db.ObjectId
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  campaignId String?   @db.ObjectId
   campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
 
-  fileName String
-  filePath String
-  generatedDocuments Int @default(0)
-  status   FILE_STATUS @default(PENDING)
-  isDeleted Boolean     @default(false)
-  generationStartedAt DateTime?
+  fileName             String
+  filePath             String
+  generatedDocuments   Int         @default(0)
+  status               FILE_STATUS @default(PENDING)
+  isDeleted            Boolean     @default(false)
+  generationStartedAt  DateTime?
   generationFinishedAt DateTime?
-  expiresAt DateTime?
+  expiresAt            DateTime?
 
   createdAt DateTime @default(now())
 }

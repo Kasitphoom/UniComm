@@ -40,14 +40,13 @@ type DateWindow = {
 
 type StatsQuery = {
     campaignWhere?: Prisma.CampaignWhereInput
-    fileWhere?: Prisma.CampaignFileWhereInput
     runLogWhere?: any
 }
 
-const getProcessingStats = async ({ campaignWhere = {}, fileWhere = {}, runLogWhere = {} }: StatsQuery = {}): Promise<PerformanceStats> => {
+const getProcessingStats = async ({ campaignWhere = {}, runLogWhere = {} }: StatsQuery = {}): Promise<PerformanceStats> => {
     const prismaBusiness = await getBusinessPrismaByCookie()
 
-    const [aggregateResult, runLogStats, generatedFiles] = await Promise.all([
+    const [aggregateResult, runLogStats, failedRuns] = await Promise.all([
         prismaBusiness.campaign.aggregate({
             where: campaignWhere,
             _count: {
@@ -64,55 +63,25 @@ const getProcessingStats = async ({ campaignWhere = {}, fileWhere = {}, runLogWh
                 durationMs: true,
             },
         }).catch(() => ({ _count: { id: 0 }, _sum: { generatedDocuments: 0, durationMs: 0 } })),
-        prismaBusiness.campaignFile.findMany({
+        (prismaBusiness as any).campaignRunLog.count({
             where: {
-                ...fileWhere,
-                generationStartedAt: {
-                    not: null,
-                },
-                generationFinishedAt: {
-                    not: null,
-                },
+                ...runLogWhere,
+                success: false,
             },
-            select: {
-                generatedDocuments: true,
-                generationStartedAt: true,
-                generationFinishedAt: true,
-                campaign: {
-                    select: {
-                        totalRecords: true,
-                    },
-                },
-            },
-        }),
+        }).catch(() => 0),
     ])
 
-    const documentsGenerated = generatedFiles.reduce((acc, file) => {
-        const fallbackDocuments = file.campaign?.totalRecords ?? 0
-        const generatedDocuments = file.generatedDocuments > 0 ? file.generatedDocuments : fallbackDocuments
-        return acc + generatedDocuments
-    }, 0)
+    const documentsGenerated = runLogStats?._sum?.generatedDocuments ?? 0
 
     const totalCampaigns = aggregateResult._count.id ?? 0
 
     const totalRuns = runLogStats?._count?.id ?? 0
-    const failedRuns = await (prismaBusiness as any).campaignRunLog.count({
-        where: {
-            ...runLogWhere,
-            success: false,
-        },
-    }).catch(() => 0)
     const failedCampaigns = failedRuns
 
     const safeTotalRuns = totalRuns === 0 ? 1 : totalRuns
     const errorRate = totalRuns > 0 ? (failedRuns / safeTotalRuns) * 100 : 0
 
-    const totalProcessingSeconds = generatedFiles.reduce((acc, file) => {
-        if (!file.generationStartedAt || !file.generationFinishedAt) return acc
-        const durationMs = file.generationFinishedAt.getTime() - file.generationStartedAt.getTime()
-        if (durationMs <= 0) return acc
-        return acc + durationMs / 1000
-    }, 0)
+    const totalProcessingSeconds = (runLogStats?._sum?.durationMs ?? 0) / 1000
 
     const processingSpeed = totalProcessingSeconds > 0 ? documentsGenerated / totalProcessingSeconds : 0
 
@@ -128,15 +97,6 @@ const getProcessingStats = async ({ campaignWhere = {}, fileWhere = {}, runLogWh
 const getDateWindowWhere = ({ from, to }: DateWindow): Prisma.CampaignWhereInput => {
     return {
         createdAt: {
-            gte: from,
-            lt: to,
-        },
-    }
-}
-
-const getDateWindowFileWhere = ({ from, to }: DateWindow): Prisma.CampaignFileWhereInput => {
-    return {
-        generationFinishedAt: {
             gte: from,
             lt: to,
         },
@@ -166,12 +126,10 @@ export const getDashboardPerformanceStats = async (currentUserId?: string) => {
         getProcessingStats(),
         getProcessingStats({
             campaignWhere: getDateWindowWhere({ from: thirtyDaysAgo, to: now }),
-            fileWhere: getDateWindowFileWhere({ from: thirtyDaysAgo, to: now }),
             runLogWhere: getDateWindowRunLogWhere({ from: thirtyDaysAgo, to: now }),
         }),
         getProcessingStats({
             campaignWhere: getDateWindowWhere({ from: sixtyDaysAgo, to: thirtyDaysAgo }),
-            fileWhere: getDateWindowFileWhere({ from: sixtyDaysAgo, to: thirtyDaysAgo }),
             runLogWhere: getDateWindowRunLogWhere({ from: sixtyDaysAgo, to: thirtyDaysAgo }),
         }),
         prismaBusiness.campaign.findMany({
