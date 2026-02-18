@@ -221,6 +221,32 @@ model CampaignLog {
   createdAt DateTime @default(now())
 }
 
+model CampaignRunLog {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  campaignId String?  @db.ObjectId
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  campaignName String
+  triggerSource String
+  status      SCHEDULE_STATUS
+  success     Boolean
+  errorMessage String?
+
+  fileId      String? @db.ObjectId
+  fileStatus  FILE_STATUS
+  generatedDocuments Int @default(0)
+
+  startedAt DateTime
+  finishedAt DateTime
+  durationMs Int
+
+  createdAt DateTime @default(now())
+
+  @@index([campaignId])
+  @@index([createdAt])
+  @@index([status])
+}
+
 model CampaignTemplate {
   id         String @id @default(auto()) @map("_id") @db.ObjectId
   campaignId String @db.ObjectId

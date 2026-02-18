@@ -41,24 +41,29 @@ type DateWindow = {
 type StatsQuery = {
     campaignWhere?: Prisma.CampaignWhereInput
     fileWhere?: Prisma.CampaignFileWhereInput
+    runLogWhere?: any
 }
 
-const getProcessingStats = async ({ campaignWhere = {}, fileWhere = {} }: StatsQuery = {}): Promise<PerformanceStats> => {
+const getProcessingStats = async ({ campaignWhere = {}, fileWhere = {}, runLogWhere = {} }: StatsQuery = {}): Promise<PerformanceStats> => {
     const prismaBusiness = await getBusinessPrismaByCookie()
 
-    const [aggregateResult, failedCampaigns, generatedFiles] = await Promise.all([
+    const [aggregateResult, runLogStats, generatedFiles] = await Promise.all([
         prismaBusiness.campaign.aggregate({
             where: campaignWhere,
             _count: {
                 id: true,
             },
         }),
-        prismaBusiness.campaign.count({
-            where: {
-                ...campaignWhere,
-                scheduleStatus: "FAILED",
+        (prismaBusiness as any).campaignRunLog.aggregate({
+            where: runLogWhere,
+            _count: {
+                id: true,
             },
-        }),
+            _sum: {
+                generatedDocuments: true,
+                durationMs: true,
+            },
+        }).catch(() => ({ _count: { id: 0 }, _sum: { generatedDocuments: 0, durationMs: 0 } })),
         prismaBusiness.campaignFile.findMany({
             where: {
                 ...fileWhere,
@@ -89,8 +94,18 @@ const getProcessingStats = async ({ campaignWhere = {}, fileWhere = {} }: StatsQ
     }, 0)
 
     const totalCampaigns = aggregateResult._count.id ?? 0
-    const safeTotalCampaigns = totalCampaigns === 0 ? 1 : totalCampaigns
-    const errorRate = (failedCampaigns / safeTotalCampaigns) * 100
+
+    const totalRuns = runLogStats?._count?.id ?? 0
+    const failedRuns = await (prismaBusiness as any).campaignRunLog.count({
+        where: {
+            ...runLogWhere,
+            success: false,
+        },
+    }).catch(() => 0)
+    const failedCampaigns = failedRuns
+
+    const safeTotalRuns = totalRuns === 0 ? 1 : totalRuns
+    const errorRate = totalRuns > 0 ? (failedRuns / safeTotalRuns) * 100 : 0
 
     const totalProcessingSeconds = generatedFiles.reduce((acc, file) => {
         if (!file.generationStartedAt || !file.generationFinishedAt) return acc
@@ -128,6 +143,15 @@ const getDateWindowFileWhere = ({ from, to }: DateWindow): Prisma.CampaignFileWh
     }
 }
 
+const getDateWindowRunLogWhere = ({ from, to }: DateWindow): any => {
+    return {
+        finishedAt: {
+            gte: from,
+            lt: to,
+        },
+    }
+}
+
 export const getDashboardPerformanceStats = async (currentUserId?: string) => {
     const now = new Date()
     const thirtyDaysAgo = new Date(now)
@@ -143,10 +167,12 @@ export const getDashboardPerformanceStats = async (currentUserId?: string) => {
         getProcessingStats({
             campaignWhere: getDateWindowWhere({ from: thirtyDaysAgo, to: now }),
             fileWhere: getDateWindowFileWhere({ from: thirtyDaysAgo, to: now }),
+            runLogWhere: getDateWindowRunLogWhere({ from: thirtyDaysAgo, to: now }),
         }),
         getProcessingStats({
             campaignWhere: getDateWindowWhere({ from: sixtyDaysAgo, to: thirtyDaysAgo }),
             fileWhere: getDateWindowFileWhere({ from: sixtyDaysAgo, to: thirtyDaysAgo }),
+            runLogWhere: getDateWindowRunLogWhere({ from: sixtyDaysAgo, to: thirtyDaysAgo }),
         }),
         prismaBusiness.campaign.findMany({
             where: {
