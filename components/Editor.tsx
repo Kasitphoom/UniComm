@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef } from 'react'
 import { Designer } from '@pdfme/ui'
 import type { Template } from '@pdfme/common'
 import { plugins } from './Editor/plugins'
-import { Spinner } from '@heroui/react'
+import { addToast, Spinner } from '@heroui/react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { saveTemplateDraft, loadTemplateDraft, hashTemplate } from '@/lib/draftStore'
@@ -202,13 +202,23 @@ const Editor: React.FC<EditorProps> = ({ id, resource = 'template', draftKeyPref
 
         const handleSaveShortcut = (e: KeyboardEvent) => {
             if (!(e.ctrlKey || e.metaKey)) return
-            if (e.key.toLowerCase() !== 's') return
+            if (e.key.toLowerCase() !== 's' && e.code !== 'KeyS') return
             e.preventDefault()
+            e.stopPropagation()
             void flushToCloud()
+            addToast({
+                title: 'Saved',
+                description: 'Template changes have been uploaded.',
+                color: 'success',
+            })
         }
 
-        window.addEventListener('keydown', handleSaveShortcut)
-        return () => window.removeEventListener('keydown', handleSaveShortcut)
+        window.addEventListener('keydown', handleSaveShortcut, true)
+        document.addEventListener('keydown', handleSaveShortcut, true)
+        return () => {
+            window.removeEventListener('keydown', handleSaveShortcut, true)
+            document.removeEventListener('keydown', handleSaveShortcut, true)
+        }
     }, [flushToCloud, hasPermission])
 
     const isLoading = status === 'idle' || status === 'loading'
