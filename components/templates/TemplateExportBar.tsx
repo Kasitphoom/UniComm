@@ -298,6 +298,9 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
                 saveable
                 onSaveButtonClick={handleSave}
                 isSaving={isSaving}
+                saveButtonConfig={{
+                    isDisabled: user.currentBusinessProfile?.id !== template?.userId,
+                }}
                 previewable
                 exportable
                 requireApproval

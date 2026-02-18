@@ -399,8 +399,6 @@ export async function DELETE(req: NextRequest, { params }: PatchContext) {
                     select: {
                         id: true,
                         filePath: true,
-                        generationStartedAt: true,
-                        generationFinishedAt: true,
                     },
                 },
             },
@@ -413,14 +411,7 @@ export async function DELETE(req: NextRequest, { params }: PatchContext) {
             )
         }
 
-        const filesMissingTiming = existing.files.filter(
-            (file) => !file.generationStartedAt || !file.generationFinishedAt,
-        )
-        const filesWithTiming = existing.files.filter(
-            (file) => file.generationStartedAt && file.generationFinishedAt,
-        )
-
-        if (filesMissingTiming.length > 0) {
+        if (existing.files.length > 0) {
             const storageService = getStorageService()
             if (!storageService) {
                 return NextResponse.json(
@@ -431,24 +422,16 @@ export async function DELETE(req: NextRequest, { params }: PatchContext) {
                 )
             }
 
-            for (const file of filesMissingTiming) {
+            for (const file of existing.files) {
                 await storageService.deleteFile(file.filePath)
-                await prisma.campaignFile.delete({
-                    where: { id: file.id },
-                })
             }
-        }
 
-        if (filesWithTiming.length > 0) {
-            await prisma.campaignFile.updateMany({
+            await prisma.campaignFile.deleteMany({
                 where: {
                     id: {
-                        in: filesWithTiming.map((file) => file.id),
+                        in: existing.files.map((file) => file.id),
                     },
                 },
-                data: {
-                    campaignId: null,
-                } as any,
             })
         }
 
