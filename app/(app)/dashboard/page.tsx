@@ -210,9 +210,6 @@ const DashboardPage = async () => {
                             <FileCheck2 size={18} className="text-default-400" />
                             Pending Approvals
                         </div>
-                        <span className="rounded-full bg-warning-50 px-2.5 py-0.5 text-xs font-bold text-warning-600">
-                            {pendingTemplateApprovals} Action Required
-                        </span>
                     </div>
                     <div className="pb-2">
                         {pendingTemplateApprovalList.length > 0 ? (
@@ -232,7 +229,7 @@ const DashboardPage = async () => {
                                             </div>
                                             
                                             <div className="flex items-center gap-4 shrink-0">
-                                                <span className="text-[10px] font-bold uppercase tracking-wider text-warning-600 bg-warning-50 px-2 py-0.5 rounded">
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-warning-600 bg-warning-50 px-2 py-0.5 rounded-full">
                                                     Pending
                                                 </span>
                                                 <ArrowUpRight size={14} className="text-default-300 opacity-0 transition-all group-hover:opacity-100 group-hover:text-secondary" />
@@ -242,8 +239,8 @@ const DashboardPage = async () => {
                                 </div>
                             </div>
                         ) : (
-                            <div className="py-8 text-center text-sm text-default-400">
-                                All caught up! No pending templates.
+                            <div className="py-10 text-center">
+                                <p className="text-sm text-default-400">All caught up! No pending templates.</p>
                             </div>
                         )}
                     </div>
