@@ -49,7 +49,7 @@ export const deleteCampaignFileJob = async () => {
                         })
 
                         await prisma.campaign.update({
-                            where: { id: file.campaignId },
+                            where: { id: file.campaignId || undefined },
                             data: {
                                 logs: {
                                     create: {
