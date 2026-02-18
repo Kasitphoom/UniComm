@@ -259,7 +259,7 @@ const DashboardPage = async () => {
                             <tr>
                                 <th className="px-6 py-3 font-semibold">Period</th>
                                 <th className="px-6 py-3 font-semibold text-center">Campaigns</th>
-                                <th className="px-6 py-3 font-semibold text-center">Failed</th>
+                                <th className="px-6 py-3 font-semibold text-center">Failed Runs</th>
                                 <th className="px-6 py-3 font-semibold text-center">Error Rate</th>
                                 <th className="px-6 py-3 font-semibold text-right">Processing Speed</th>
                             </tr>
