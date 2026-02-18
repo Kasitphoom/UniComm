@@ -102,7 +102,7 @@ const DashboardPage = async () => {
                 <MetricCard 
                     title="Documents Generated" 
                     value={formatInteger(allTime.documentsGenerated)}
-                    subValue={formatInteger(last30Days.documentsGenerated)}
+                    subValue={formatInteger(previous30Days.documentsGenerated)}
                     delta={documentDelta}
                     icon={FileText}
                     iconColor="text-blue-500"
@@ -110,7 +110,7 @@ const DashboardPage = async () => {
                 <MetricCard 
                     title="Avg. Error Rate" 
                     value={formatRate(allTime.errorRate)}
-                    subValue={formatRate(last30Days.errorRate)}
+                    subValue={formatRate(previous30Days.errorRate)}
                     delta={errorRateDelta}
                     icon={AlertTriangle}
                     reverse
@@ -119,7 +119,7 @@ const DashboardPage = async () => {
                 <MetricCard 
                     title="Processing Speed" 
                     value={formatSpeed(allTime.processingSpeed)}
-                    subValue={formatSpeed(last30Days.processingSpeed)}
+                    subValue={formatSpeed(previous30Days.processingSpeed)}
                     extraValue={`Avg time: ${formatAverageTimePerDocument(allTime.processingSpeed)}`}
                     delta={speedDelta}
                     icon={Gauge}
