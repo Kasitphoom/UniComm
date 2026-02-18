@@ -1,12 +1,12 @@
 import prisma from "@/lib/prisma-main"
 import { getAllBusinessIds } from "./business"
 import { getBusinessPrisma } from "@/lib/prisma-business"
-import { Prisma, SCHEDULE_STATUS, FILE_STATUS, CampaignFile } from "@/app/generated/business/prisma"
+import { Prisma, SCHEDULE_STATUS, FILE_STATUS, CampaignFile, APPROVAL_STATUS } from "@/app/generated/business/prisma"
 import { getStorageService } from "./upload/modules"
 import { transformXmlToTemplate } from "./template/xml-pdf-transformer"
 import { generate } from "@pdfme/generator"
 import { getInputFromTemplate } from "@pdfme/common"
-import type { Template as PdfTemplate } from "@pdfme/common"
+import type { Schema, Template as PdfTemplate } from "@pdfme/common"
 import type { TextWithVariablesSchema } from "@/lib/template/plugins/textWithVariables"
 import { plugins } from "@/components/Editor/plugins"
 import JSZip from "jszip"
@@ -126,7 +126,11 @@ const buildVariablePayload = (
     contactFieldMap: Map<string, string>,
 ) => {
     const payload: Record<string, string> = {}
-    const variables = Array.isArray(schema.variables) ? schema.variables : []
+    const variables = Array.isArray(schema.variables)
+        ? schema.variables
+        : typeof schema.variables === "string"
+            ? [schema.variables]
+            : []
 
     for (const variable of variables) {
         if (!variable) continue
@@ -167,6 +171,37 @@ const buildInputsForCustomer = (
         }
     }
 
+    const buildComponentBlockInput = (schema: NamedSchema): Record<string, unknown> => {
+        const nested = (schema as { componentSchemas?: NamedSchema[] }).componentSchemas
+        if (!Array.isArray(nested)) return {}
+
+        const result: Record<string, unknown> = {}
+        for (const child of nested) {
+            if (!child || typeof child !== "object") continue
+            const childName = typeof child.name === "string" ? child.name : ""
+            if (!childName) continue
+
+            if (child.type === "ComponentBlocks") {
+                result[childName] = buildComponentBlockInput(child)
+                continue
+            }
+
+            if (child.type === "TextWithVariables") {
+                result[childName] = buildVariablePayload(
+                    child as TextWithVariablesSchema,
+                    customerData,
+                    normalizedCustomerValues,
+                    contactFieldMap,
+                )
+                continue
+            }
+
+            result[childName] = getSchemaContent(child)
+        }
+
+        return result
+    }
+
     return inputsShape.map((pageInput, pageIndex) => {
         const pageSchemas = template.schemas[pageIndex] || []
         const schemaByName = new Map<string, NamedSchema>()
@@ -194,6 +229,11 @@ const buildInputsForCustomer = (
                 return
             }
 
+            if (schema.type === "ComponentBlocks") {
+                filledPage[key] = buildComponentBlockInput(schema)
+                return
+            }
+
             if (filledPage[key] === undefined || filledPage[key] === null) {
                 filledPage[key] = getSchemaContent(schema)
             }
@@ -206,7 +246,11 @@ const buildInputsForCustomer = (
 const campaignIncludes = {
     templates: {
         include: {
-            template: true,
+            template: {
+                include: {
+                    approvers: true,
+                },
+            },
         }
     },
     contactlist: {
@@ -224,6 +268,7 @@ type CampaignFileResult = {
 }
 
 const createCampaignFile = async (
+    businessId: string,
     campaign: CampaignWithTemplates,
     businessPrisma: BusinessPrismaClient,
 ): Promise<CampaignFileResult | null> => {
@@ -244,16 +289,56 @@ const createCampaignFile = async (
 
     if (templates.length === 0) return null
 
+    const hasPendingApprovals = templates.some((template) => {
+        const approvers = template.approvers ?? []
+        if (approvers.length === 0) return false
+
+        const approvalsRejected = approvers.some((approver) => approver.status === APPROVAL_STATUS.REJECTED)
+        const approvedCount = approvers.filter((approver) => approver.status === APPROVAL_STATUS.APPROVED).length
+        const approvalsComplete = approvedCount === approvers.length && !approvalsRejected
+
+        return !approvalsComplete
+    })
+
+    if (hasPendingApprovals) {
+        throw new Error("Campaign file is not yet fully approved")
+    }
+
     const storageService = getStorageService()
     if (!storageService) {
         throw new Error("Storage service not configured")
     }
 
+    const resolveComponentSchemas = (() => {
+        const cache = new Map<string, Schema[] | null>()
+
+        return async (componentName: string) => {
+            const normalized = componentName.trim()
+            if (!normalized) return null
+            if (cache.has(normalized)) return cache.get(normalized) ?? null
+
+            const componentBlock = await businessPrisma.componentBlock.findUnique({
+                where: { name: normalized },
+            })
+            if (!componentBlock?.filePath) {
+                cache.set(normalized, null)
+                return null
+            }
+
+            const xmlContent = await storageService.getFileContent(componentBlock.filePath)
+            const parsed = await transformXmlToTemplate(xmlContent, { resolveComponentSchemas })
+            const firstPage = parsed.schemas?.[0]
+            const result = Array.isArray(firstPage) ? firstPage : null
+            cache.set(normalized, result)
+            return result
+        }
+    })()
+
     const pdfArtifacts: PdfArtifact[] = []
 
     for (const template of templates) {
         const fileContent = await storageService.getFileContent(template.filePath!)
-        const parsedContent = await transformXmlToTemplate(fileContent)
+        const parsedContent = await transformXmlToTemplate(fileContent, { resolveComponentSchemas })
 
         for (const customer of customers) {
             const customerData = toCustomerRecord(customer.data)
@@ -283,7 +368,7 @@ const createCampaignFile = async (
     })
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
-    const zipFileName = `campaign-${campaign.name}-${timestamp}.zip`
+    const zipFileName = `${businessId}/campaign/campaign-${campaign.name}-${timestamp}.zip`
     const zipUrl = await storageService.uploadFile(zipBuffer, zipFileName, {
         contentType: "application/zip",
     })
@@ -359,7 +444,7 @@ const runCampaignForBusiness = async (
         )
         for (const campaign of campaignsToRun) {
             try {
-                const campaignFileResult = await createCampaignFile(campaign, businessPrisma)
+                const campaignFileResult = await createCampaignFile(businessId, campaign, businessPrisma)
                 const hasGeneratedFile = Boolean(campaignFileResult?.file?.id)
                 const nextFileStatus = hasGeneratedFile ? FILE_STATUS.AVALIABLE : FILE_STATUS.EMPTY
                 const nextScheduleStatus = SCHEDULE_STATUS.TRIGGERED

@@ -64,6 +64,7 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
     const [isMobile, setIsMobile] = useState(false)
     const [template, setTemplate] = useState<TemplateWithUser | null>(null)
     const [isAlertVisible, setIsAlertVisible] = useState(false)
+    const [isSaving, setIsSaving] = useState(false)
     const parsedTemplate = useAppSelector(state => state.templates.parsedTemplate)
 
     useEffect(() => {
@@ -100,6 +101,39 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
                 break
             default:
                 console.warn(`Unknown export type: ${key}`)
+        }
+    }
+
+    const handleSave = async () => {
+        setIsSaving(true)
+        try {
+            const draftKey = `template:${id}`
+            const draftTemplate = await loadTemplateDraft(draftKey)
+            const templateToSave = (draftTemplate ?? parsedTemplate?.data) as Template | null
+
+            if (!templateToSave) {
+                addToast({
+                    title: 'Save Error',
+                    description: 'No template data available to save.',
+                    color: 'danger',
+                })
+                return
+            }
+
+            await dispatch(updateTemplate({ id, templateData: templateToSave })).unwrap()
+            addToast({
+                title: 'Saved',
+                description: 'Template changes have been uploaded.',
+                color: 'success',
+            })
+        } catch (error: any) {
+            addToast({
+                title: 'Save Error',
+                description: error?.message || 'Failed to save template.',
+                color: 'danger',
+            })
+        } finally {
+            setIsSaving(false)
         }
     }
 
@@ -165,7 +199,7 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
             const parsedTemplate = await clientFetchParsedTemplate(id)
             const draftKey = `template:${id}`
             const draftTemplate = await loadTemplateDraft(draftKey)
-            const template = (draftTemplate ?? parsedTemplate?.data) as Template | null
+            const template = (draftTemplate ?? parsedTemplate) as Template | null
 
             if (!template) {
                 throw new Error('Template data is not available for PDF export')
@@ -261,6 +295,9 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
     return (
         <>
             <ExportBar
+                saveable
+                onSaveButtonClick={handleSave}
+                isSaving={isSaving}
                 previewable
                 exportable
                 requireApproval

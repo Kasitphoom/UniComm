@@ -3,6 +3,7 @@ import { createSvgStr } from "@pdfme/schemas/utils"
 import { Blocks } from "lucide"
 import type { UIRenderProps } from "@pdfme/common"
 import { text, multiVariableText, image, svg, table, line, rectangle, ellipse, dateTime, date, time, select, radioGroup } from '@pdfme/schemas'
+import { TextWithVariables } from '@/lib/template/plugins/textWithVariables'
 import { ComponentBlocksPropPanel } from "./propPanel"
 
 export type ComponentBlocksSchema = Schema & {
@@ -15,6 +16,7 @@ export type ComponentBlocksSchema = Schema & {
 const builtinPluginMap: Record<string, Plugin<any>> = {
     text,
     multiVariableText,
+    TextWithVariables,
     image,
     svg,
     table,
@@ -120,6 +122,10 @@ const ComponentBlocks: Plugin<ComponentBlocksSchema> = {
         const groupWidthMm = Math.max(0.0001, maxX - minX)
         const groupHeightMm = Math.max(0.0001, maxY - minY)
 
+        const inputMap = arg.value && typeof arg.value === "object"
+            ? (arg.value as Record<string, unknown>)
+            : undefined
+
         // Render each child schema
         for (const s of children) {
             const pos = (s as any).position
@@ -138,23 +144,24 @@ const ComponentBlocks: Plugin<ComponentBlocksSchema> = {
 
             if (plugin && typeof plugin.pdf === "function") {
                 // Create a modified schema with calculated position and size
-                const childInput = getSchemaContent(s)
+                const childName = typeof (s as any).name === "string" ? (s as any).name : ""
+                const inputValue = childName && inputMap ? inputMap[childName] : undefined
+                const childInput = inputValue !== undefined ? inputValue : getSchemaContent(s)
 
                 const modifiedSchema = {
                     ...(s as any),
                     position: { x: childX, y: childY },
                     width: childWidth,
                     height: childHeight,
-                    content: childInput,
-                    value: (s as any).value !== undefined ? childInput : (s as any).value,
+                    content: typeof childInput === "string" ? childInput : (s as any).content,
                 }
 
                 try {
-                    let pdfArgs = {
+                    const pdfArgs = {
                         ...arg,
                         schema: modifiedSchema,
                         value: childInput,
-                    }
+                    } as unknown as PDFRenderProps<any>
                     await plugin.pdf(pdfArgs)
                 } catch (e) {
                     console.error(`ComponentBlocks: failed to render child ${type}`, e)

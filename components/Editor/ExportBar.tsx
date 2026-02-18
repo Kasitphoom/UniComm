@@ -32,7 +32,8 @@ import {
     CheckCircle2,
     AlertCircle,
     Clock,
-    XCircle
+    XCircle,
+    Save
 } from 'lucide-react'
 import ExportButton, { ExportType } from './ExportButton'
 import { APPROVAL_STATUS, BusinessUser } from '@/app/generated/business/prisma'
@@ -478,6 +479,9 @@ const SubmitApprovalButton = ({ onSubmit, config }: { onSubmit?: (ids: string[])
  * @param exportable whether to show the export button
  * @param onExportButtonClick a function to handle export button click, receives the export format key
  * 
+ * @param saveable whether to show the save button
+ * @param onSaveButtonClick a function to handle save button click
+ * 
  * @param requireApproval whether to show the submit approval button
  * @param onSubmitApprovalClick a function to handle submit approval button click
  * 
@@ -498,6 +502,10 @@ const ExportBar = ({
     exportable = false,
     onExportButtonClick,
 
+    saveable = false,
+    onSaveButtonClick,
+    isSaving = false,
+
     requireApproval = false,
     onSubmitApprovalClick,
     approvalButtonConfig,
@@ -513,6 +521,10 @@ const ExportBar = ({
 
     exportable?: boolean;
     onExportButtonClick?: (key: Key) => void;
+
+    saveable?: boolean;
+    onSaveButtonClick?: () => void;
+    isSaving?: boolean;
 
     requireApproval?: boolean;
     onSubmitApprovalClick?: (ids: string[]) => void;
@@ -548,9 +560,16 @@ const ExportBar = ({
                             <Settings size={20} />
                         </Button>
                     </Badge>
+
+                    {
+                        saveable && (
+                            <Button isIconOnly variant="light" startContent={!isSaving && <Save size={18} />} onPress={onSaveButtonClick} isLoading={isSaving}>
+                            </Button>
+                        )
+                    }
                 </div>
 
-                { previewable || exportable ? (
+                { saveable || previewable || exportable ? (
                 <ButtonGroup variant="flat" className='overflow-hidden rounded-medium' color="secondary">
                     {
                         previewable && (
