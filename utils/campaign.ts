@@ -272,6 +272,8 @@ const createCampaignFile = async (
     campaign: CampaignWithTemplates,
     businessPrisma: BusinessPrismaClient,
 ): Promise<CampaignFileResult | null> => {
+    const generationStartedAt = new Date()
+
     const contactList = campaign.contactlist
     if (!contactList) {
         throw new Error("Campaign is missing a contact list")
@@ -372,17 +374,23 @@ const createCampaignFile = async (
     const zipUrl = await storageService.uploadFile(zipBuffer, zipFileName, {
         contentType: "application/zip",
     })
+    const generationFinishedAt = new Date()
 
     const expiresAt = new Date(Date.now() + ZIP_EXPIRATION_MS)
 
+    const campaignFileData = {
+        campaignId: campaign.id,
+        fileName: zipFileName,
+        filePath: zipUrl,
+        generatedDocuments: pdfArtifacts.length,
+        status: FILE_STATUS.AVALIABLE,
+        generationStartedAt,
+        generationFinishedAt,
+        expiresAt,
+    } as any
+
     const campaignFile = await businessPrisma.campaignFile.create({
-        data: {
-            campaignId: campaign.id,
-            fileName: zipFileName,
-            filePath: zipUrl,
-            status: FILE_STATUS.AVALIABLE,
-            expiresAt,
-        },
+        data: campaignFileData,
     })
 
     return { file: campaignFile, pdfCount: pdfArtifacts.length }

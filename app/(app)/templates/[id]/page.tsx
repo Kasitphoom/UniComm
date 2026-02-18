@@ -12,7 +12,7 @@ const page = async ({ params }: { params: Promise<{ id: string }> }) => {
 
     if (!id) {
         // navigate back to templates page
-        redirect('/templates')
+        redirect('/dashboard')
     }
 
     // Get current session
