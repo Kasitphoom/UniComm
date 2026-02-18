@@ -197,6 +197,20 @@ const Editor: React.FC<EditorProps> = ({ id, resource = 'template', draftKeyPref
         return () => document.removeEventListener('click', clickHandler, true)
     }, [flushToCloud, router])
 
+    useEffect(() => {
+        if (!hasPermission) return
+
+        const handleSaveShortcut = (e: KeyboardEvent) => {
+            if (!(e.ctrlKey || e.metaKey)) return
+            if (e.key.toLowerCase() !== 's') return
+            e.preventDefault()
+            void flushToCloud()
+        }
+
+        window.addEventListener('keydown', handleSaveShortcut)
+        return () => window.removeEventListener('keydown', handleSaveShortcut)
+    }, [flushToCloud, hasPermission])
+
     const isLoading = status === 'idle' || status === 'loading'
     const hasError = status === 'failed'
 
