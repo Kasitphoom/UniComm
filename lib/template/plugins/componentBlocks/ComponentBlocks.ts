@@ -157,11 +157,11 @@ const ComponentBlocks: Plugin<ComponentBlocksSchema> = {
                 }
 
                 try {
-                    let pdfArgs = {
+                    const pdfArgs = {
                         ...arg,
                         schema: modifiedSchema,
                         value: childInput,
-                    }
+                    } as unknown as PDFRenderProps<any>
                     await plugin.pdf(pdfArgs)
                 } catch (e) {
                     console.error(`ComponentBlocks: failed to render child ${type}`, e)
