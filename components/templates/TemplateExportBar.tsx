@@ -1,15 +1,20 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, Key } from 'react'
 import ExportBar from '../Editor/ExportBar'
+import TemplateSettingsModal from './TemplateSettingsModal'
 import { getStorageService } from '@/utils/upload/modules'
 import { TemplateWithUser } from '@/types/template'
 import { addToast, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, useDisclosure, Spinner, Tabs, Tab } from '@heroui/react'
-import { useAppSelector } from '@/store/hooks'
+import { useAppDispatch, useAppSelector } from '@/store/hooks'
+import { loadTemplateDraft } from '@/lib/draftStore'
+import { updateTemplate, updateTemplateApprovalStatus, updateTemplateApprovers } from '@/features/templates/templatesSlice'
 import { generate } from '@pdfme/generator'
 import { plugins } from '../Editor/plugins'
 import { Template, getInputFromTemplate } from '@pdfme/common'
 import { clientFetchParsedTemplate, clientFetchTemplate } from '@/utils/template/utils'
 import dynamic from 'next/dynamic'
+import { useUser } from '../providers/UserProvider'
+import { ApprovalStatus } from '@/types/approver'
 
 const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { 
     ssr: false,
@@ -49,11 +54,17 @@ export const generatePdfPreview = async (template: Template) => {
 
 const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) => {
     const { isOpen, onOpen, onOpenChange } = useDisclosure()
+    const dispatch = useAppDispatch()
+    const user = useUser()
+    const { isOpen: isSettingsOpen, onOpen: onSettingOpen, onOpenChange: onSettingsOpenChange } = useDisclosure()
     const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null)
     const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null)
     const [isGeneratingPreview, setIsGeneratingPreview] = useState(false)
     const [selectedMode, setSelectedMode] = useState<string | number>('browser')
     const [isMobile, setIsMobile] = useState(false)
+    const [template, setTemplate] = useState<TemplateWithUser | null>(null)
+    const [isAlertVisible, setIsAlertVisible] = useState(false)
+    const [isSaving, setIsSaving] = useState(false)
     const parsedTemplate = useAppSelector(state => state.templates.parsedTemplate)
 
     useEffect(() => {
@@ -67,6 +78,18 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
         return () => window.removeEventListener('resize', checkMobile)
     }, [])
 
+    const fetchTemplate = async () => {
+        const result = await clientFetchTemplate(id)
+        console.log('Fetched template for export bar:', result)
+        setTemplate(result)
+        setIsAlertVisible(!result.contactListId)
+    }
+
+    useEffect(() => {
+        console.log('Fetching template for export bar with id:', id)
+        fetchTemplate()
+    }, [id])
+
     // Export Handler
     const handleExport = async (key: React.Key) => {
         switch (key) {
@@ -78,6 +101,39 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
                 break
             default:
                 console.warn(`Unknown export type: ${key}`)
+        }
+    }
+
+    const handleSave = async () => {
+        setIsSaving(true)
+        try {
+            const draftKey = `template:${id}`
+            const draftTemplate = await loadTemplateDraft(draftKey)
+            const templateToSave = (draftTemplate ?? parsedTemplate?.data) as Template | null
+
+            if (!templateToSave) {
+                addToast({
+                    title: 'Save Error',
+                    description: 'No template data available to save.',
+                    color: 'danger',
+                })
+                return
+            }
+
+            await dispatch(updateTemplate({ id, templateData: templateToSave })).unwrap()
+            addToast({
+                title: 'Saved',
+                description: 'Template changes have been uploaded.',
+                color: 'success',
+            })
+        } catch (error: any) {
+            addToast({
+                title: 'Save Error',
+                description: error?.message || 'Failed to save template.',
+                color: 'danger',
+            })
+        } finally {
+            setIsSaving(false)
         }
     }
 
@@ -140,7 +196,14 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
         try {
 
             const templateData = await clientFetchTemplate(id)
-            const template = await clientFetchParsedTemplate(id)
+            const parsedTemplate = await clientFetchParsedTemplate(id)
+            const draftKey = `template:${id}`
+            const draftTemplate = await loadTemplateDraft(draftKey)
+            const template = (draftTemplate ?? parsedTemplate) as Template | null
+
+            if (!template) {
+                throw new Error('Template data is not available for PDF export')
+            }
 
             // Generate PDF as Uint8Array
             const pdfBytes = await generatePdfPreview(template)
@@ -171,7 +234,11 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
     const handlePreview = async () => {
         setIsGeneratingPreview(true)
         try {
-            if (!parsedTemplate?.data) {
+            const draftKey = `template:${id}`
+            const draftTemplate = await loadTemplateDraft(draftKey)
+            const template = (draftTemplate ?? parsedTemplate?.data) as Template | null
+
+            if (!template) {
                 addToast({
                     title: 'Preview Error',
                     description: 'Parsed template data is not available for preview',
@@ -180,7 +247,6 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
                 return
             }
 
-            const template = parsedTemplate.data as Template
             setPreviewTemplate(template)
 
             // Generate PDF as Uint8Array
@@ -208,16 +274,55 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
         }
     }
 
+    const handleApprovalSubmit = async (approverIds: string[]) => {
+        await dispatch(updateTemplateApprovers({ id, approvers: approverIds }))
+        await fetchTemplate()
+    }
+
+    const handleUpdateTemplateApprovalStatus = async (status: Key) => {
+        // No-op: handled in ExportBar
+        const approverId = template?.approvers.find(a => a.user.id === user.currentBusinessProfile?.id)?.id
+        if (!approverId) return
+
+        await dispatch(updateTemplateApprovalStatus({
+            templateId: id,
+            approvalId: approverId,
+            status: status as string as ApprovalStatus,
+        }))
+        await fetchTemplate()
+    }
+
     return (
         <>
             <ExportBar
+                saveable
+                onSaveButtonClick={handleSave}
+                isSaving={isSaving}
                 previewable
                 exportable
                 requireApproval
-                // approvalButtonConfig={{ disabled: !isOwner }}
-                approvalButtonConfig={{ disabled: true }}
+                approvalButtonConfig={{ 
+                    disabled: !isOwner, 
+                    currentApprovers: template?.approvers || [],
+                    isApprover: template?.requireUserApproval || false,
+                    updateApproveStatus: handleUpdateTemplateApprovalStatus,
+                }}
+                // approvalButtonConfig={{ disabled: true }}
+                onSubmitApprovalClick={handleApprovalSubmit}
                 onExportButtonClick={handleExport}
                 onPreviewButtonClick={handlePreview}
+                onSettingsButtonClick={() => onSettingOpen()}
+                settingsBadgeConfig={{
+                    isInvisible: template && !template.contactListId ? false : true,
+                    content: '!',
+                    color: 'danger',
+                }}
+                alertConfig={{
+                    title: "No Contact List Selected",
+                    description: "To use dynamic variables, you need to link a contact list to this template first.",
+                    isVisible: isAlertVisible,
+                    onClose: () => setIsAlertVisible(false),
+                }}
             />
 
             {/* PDF Preview Modal */}
@@ -270,6 +375,12 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
                     )}
                 </ModalContent>
             </Modal>
+
+            <TemplateSettingsModal
+                isOpen={isSettingsOpen}
+                onOpenChange={onSettingsOpenChange}
+                templateId={id}
+            />
         </>
     )
 }

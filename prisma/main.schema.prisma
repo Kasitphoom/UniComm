@@ -66,3 +66,9 @@ model References {
   createdAt   DateTime? @default(now())
   expiresAt   DateTime
 }
+
+model Migration {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String   @unique
+  appliedAt DateTime @default(now())
+}
