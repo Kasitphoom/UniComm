@@ -8,7 +8,11 @@ import { cn } from '@heroui/react'
 // --- Helpers ---
 const formatInteger = (value: number) => new Intl.NumberFormat('en-US').format(value)
 const formatRate = (value: number) => `${value.toFixed(2)}%`
-const formatSpeed = (value: number) => `${value.toFixed(1)} docs/min`
+const formatSpeed = (value: number) => `${value.toFixed(2)} docs/sec`
+const formatAverageTimePerDocument = (value: number) => {
+    if (value <= 0) return 'N/A'
+    return `${(1 / value).toFixed(2)} sec/doc`
+}
 const formatDateTime = (value: Date) => new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(value)
 
 const getDelta = (current: number, previous: number) => {
@@ -34,7 +38,7 @@ const getDeltaTrend = (value: number, reverse = false) => {
 
 // --- Components ---
 
-const MetricCard = ({ title, value, subValue, delta, icon: Icon, reverse = false, iconColor = "text-primary" }: any) => {
+const MetricCard = ({ title, value, subValue, extraValue, delta, icon: Icon, reverse = false, iconColor = "text-secondary" }: any) => {
     const trend = getDeltaTrend(delta, reverse)
     const TrendIcon = trend.icon
 
@@ -44,6 +48,9 @@ const MetricCard = ({ title, value, subValue, delta, icon: Icon, reverse = false
                 <div>
                     <p className="text-sm font-medium text-default-500">{title}</p>
                     <h3 className="mt-1 text-2xl font-bold tracking-tight">{value}</h3>
+                    {extraValue ? (
+                        <p className="mt-1 text-xs text-default-500">{extraValue}</p>
+                    ) : null}
                 </div>
                 <div className={cn("rounded-lg bg-default-50 p-2.5", iconColor)}>
                     <Icon size={20} />
@@ -70,9 +77,11 @@ const DashboardPage = async () => {
         last30Days,
         previous30Days,
         pendingTemplateApprovals,
-        upcomingCampaigns,
+        scheduledCampaigns,
+        errorCampaigns,
         pendingTemplateApprovalList,
-        hasMoreUpcomingCampaigns,
+        hasMoreScheduledCampaigns,
+        hasMoreErrorCampaigns,
         hasMorePendingTemplateApprovals,
     } = await getDashboardPerformanceStats(currentUserId)
 
@@ -111,6 +120,7 @@ const DashboardPage = async () => {
                     title="Processing Speed" 
                     value={formatSpeed(allTime.processingSpeed)}
                     subValue={formatSpeed(last30Days.processingSpeed)}
+                    extraValue={`Avg time: ${formatAverageTimePerDocument(allTime.processingSpeed)}`}
                     delta={speedDelta}
                     icon={Gauge}
                     iconColor="text-purple-500"
@@ -118,50 +128,79 @@ const DashboardPage = async () => {
             </div>
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                {/* Upcoming Campaigns */}
+                {/* Scheduled Campaigns */}
                 <section className="flex flex-col rounded-xl border border-default-100 bg-content1 shadow-sm">
                     <div className="flex items-center justify-between border-b border-default-100 p-5">
                         <div className="flex items-center gap-2 font-semibold">
                             <CalendarClock size={18} className="text-default-400" />
-                            Upcoming Campaigns
+                            Scheduled Campaigns
                         </div>
-                        {hasMoreUpcomingCampaigns && (
-                            <Link href="/campaigns" className="text-xs font-medium text-primary hover:underline">View All</Link>
+                        {(hasMoreScheduledCampaigns || hasMoreErrorCampaigns) && (
+                            <Link href="/campaigns" className="text-xs font-medium text-secondary hover:underline">to campaigns</Link>
                         )}
                     </div>
                     <div className="pb-2">
-                        {upcomingCampaigns.length > 0 ? (
-                            <div className="flex flex-col">
-                                <div className="divide-y divide-default-100">
-                                    {upcomingCampaigns.map((campaign) => (
-                                        <Link 
-                                            key={campaign.id} 
-                                            href={`/campaigns/${campaign.id}`}
-                                            className="group flex items-center justify-between px-5 py-3 transition-colors hover:bg-default-50/50"
-                                        >
-                                            <div className="flex items-center gap-3 overflow-hidden">
-                                                <div className="h-1.5 w-1.5 rounded-full bg-primary" /> {/* Status dot */}
-                                                <p className="truncate text-sm font-medium text-default-700 group-hover:text-primary">
-                                                    {campaign.name}
-                                                </p>
-                                            </div>
-                                            
-                                            <div className="flex items-center gap-4 shrink-0">
-                                                <p className="text-xs text-default-400 tabular-nums">
-                                                    {formatDateTime(campaign.scheduledAt)}
-                                                </p>
-                                                <ArrowUpRight size={14} className="text-default-300 opacity-0 transition-all group-hover:opacity-100 group-hover:text-primary" />
-                                            </div>
-                                        </Link>
-                                    ))}
-                                </div>
+                    {scheduledCampaigns.length > 0 || errorCampaigns.length > 0 ? (
+                        <div className="flex flex-col">
+                            <div className="divide-y divide-default-100">
+                                {/* 1. Render Errors first to grab attention */}
+                                {errorCampaigns.map((campaign) => (
+                                    <Link 
+                                        key={campaign.id} 
+                                        href={`/campaigns/${campaign.id}`}
+                                        className="group flex items-center justify-between px-5 py-3 transition-colors hover:bg-danger-50/30"
+                                    >
+                                        <div className="flex items-center gap-3 overflow-hidden">
+                                            <div className="h-1.5 w-1.5 rounded-full bg-danger animate-pulse" />
+                                            <p className="truncate text-sm font-medium text-default-700 group-hover:text-danger-600">
+                                                {campaign.name}
+                                            </p>
+                                        </div>
+                                        
+                                        <div className="flex items-center gap-4 shrink-0">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-danger-600 bg-danger-50 px-2 py-0.5 rounded">
+                                                Error
+                                            </span>
+                                            <ArrowUpRight size={14} className="text-default-300 opacity-0 transition-all group-hover:opacity-100 group-hover:text-danger-600" />
+                                        </div>
+                                    </Link>
+                                ))}
+
+                                {/* 2. Render Scheduled / Overdue next */}
+                                {scheduledCampaigns.map((campaign) => (
+                                    <Link 
+                                        key={campaign.id} 
+                                        href={`/campaigns/${campaign.id}`}
+                                        className="group flex items-center justify-between px-5 py-3 transition-colors hover:bg-default-50/50"
+                                    >
+                                        <div className="flex items-center gap-3 overflow-hidden">
+                                            <div className={cn("h-1.5 w-1.5 rounded-full", campaign.isOverdue ? "bg-warning" : "bg-secondary")} />
+                                            <p className="truncate text-sm font-medium text-default-700 group-hover:text-secondary">
+                                                {campaign.name}
+                                            </p>
+                                        </div>
+                                        
+                                        <div className="flex items-center gap-4 shrink-0">
+                                            {campaign.isOverdue && (
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-warning-600 bg-warning-50 px-2 py-0.5 rounded">
+                                                    Overdue
+                                                </span>
+                                            )}
+                                            <p className="text-xs text-default-400 tabular-nums">
+                                                {formatDateTime(campaign.scheduledAt)}
+                                            </p>
+                                            <ArrowUpRight size={14} className="text-default-300 opacity-0 transition-all group-hover:opacity-100 group-hover:text-secondary" />
+                                        </div>
+                                    </Link>
+                                ))}
                             </div>
-                        ) : (
-                            <div className="py-8 text-center text-sm text-default-400">
-                                No scheduled campaigns.
-                            </div>
-                        )}
-                    </div>
+                        </div>
+                    ) : (
+                        <div className="py-10 text-center">
+                            <p className="text-sm text-default-400">No active or scheduled campaigns.</p>
+                        </div>
+                    )}
+                </div>
                 </section>
 
                 {/* Pending Approvals */}
@@ -187,7 +226,7 @@ const DashboardPage = async () => {
                                         >
                                             <div className="flex items-center gap-3 overflow-hidden">
                                                 <div className="h-1.5 w-1.5 rounded-full bg-warning" /> {/* Warning dot for approval */}
-                                                <p className="truncate text-sm font-medium text-default-700 group-hover:text-primary">
+                                                <p className="truncate text-sm font-medium text-default-700 group-hover:text-secondary">
                                                     {template.templateTitle}
                                                 </p>
                                             </div>
@@ -196,7 +235,7 @@ const DashboardPage = async () => {
                                                 <span className="text-[10px] font-bold uppercase tracking-wider text-warning-600 bg-warning-50 px-2 py-0.5 rounded">
                                                     Pending
                                                 </span>
-                                                <ArrowUpRight size={14} className="text-default-300 opacity-0 transition-all group-hover:opacity-100 group-hover:text-primary" />
+                                                <ArrowUpRight size={14} className="text-default-300 opacity-0 transition-all group-hover:opacity-100 group-hover:text-secondary" />
                                             </div>
                                         </Link>
                                     ))}
