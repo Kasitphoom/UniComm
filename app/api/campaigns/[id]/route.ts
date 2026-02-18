@@ -3,6 +3,7 @@ import { Prisma, UserRole } from "@/app/generated/business/prisma"
 import { requireAuth } from "@/lib/api-auth"
 import { getBusinessPrisma } from "@/lib/prisma-business"
 import { userHasPermissionAPI } from "@/utils/permissions"
+import { getStorageService } from "@/utils/upload/modules"
 
 const normalizeFieldName = (value: string) => value.trim().toLowerCase()
 
@@ -393,6 +394,16 @@ export async function DELETE(req: NextRequest, { params }: PatchContext) {
 
         const existing = await prisma.campaign.findUnique({
             where: { id: campaignId },
+            include: {
+                files: {
+                    select: {
+                        id: true,
+                        filePath: true,
+                        generationStartedAt: true,
+                        generationFinishedAt: true,
+                    },
+                },
+            },
         })
 
         if (!existing) {
@@ -400,6 +411,45 @@ export async function DELETE(req: NextRequest, { params }: PatchContext) {
                 { error: "Campaign not found" },
                 { status: 404 },
             )
+        }
+
+        const filesMissingTiming = existing.files.filter(
+            (file) => !file.generationStartedAt || !file.generationFinishedAt,
+        )
+        const filesWithTiming = existing.files.filter(
+            (file) => file.generationStartedAt && file.generationFinishedAt,
+        )
+
+        if (filesMissingTiming.length > 0) {
+            const storageService = getStorageService()
+            if (!storageService) {
+                return NextResponse.json(
+                    {
+                        error: "Storage service not configured, cannot delete campaign files safely",
+                    },
+                    { status: 500 },
+                )
+            }
+
+            for (const file of filesMissingTiming) {
+                await storageService.deleteFile(file.filePath)
+                await prisma.campaignFile.delete({
+                    where: { id: file.id },
+                })
+            }
+        }
+
+        if (filesWithTiming.length > 0) {
+            await prisma.campaignFile.updateMany({
+                where: {
+                    id: {
+                        in: filesWithTiming.map((file) => file.id),
+                    },
+                },
+                data: {
+                    campaignId: null,
+                } as any,
+            })
         }
 
         await prisma.campaign.delete({

@@ -238,13 +238,16 @@ model CampaignTemplate {
 
 model CampaignFile {
   id         String   @id @default(auto()) @map("_id") @db.ObjectId
-  campaignId String   @db.ObjectId
-  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId String?  @db.ObjectId
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
 
   fileName String
   filePath String
+  generatedDocuments Int @default(0)
   status   FILE_STATUS @default(PENDING)
   isDeleted Boolean     @default(false)
+  generationStartedAt DateTime?
+  generationFinishedAt DateTime?
   expiresAt DateTime?
 
   createdAt DateTime @default(now())
