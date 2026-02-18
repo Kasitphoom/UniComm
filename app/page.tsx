@@ -17,7 +17,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
 
         const userBizIds: string[] = (session.user as any)?.businessIds || [];
         if (preferred && userBizIds.includes(preferred)) {
-            redirect(`/templates`);
+            redirect(`/dashboard`);
         }
     }
 
