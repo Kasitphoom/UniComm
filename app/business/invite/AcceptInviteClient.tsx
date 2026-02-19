@@ -63,7 +63,7 @@ export default function AcceptInviteClient({ referenceId, inviteEmail, businessN
             }
 
             if (data.businessId) {
-                await update({ activeBusinessId: data.businessId });
+                await update({ activeBusinessId: data.businessId, user: { activeBusinessId: data.businessId } } as any);
             }
 
             setStatus("success");
