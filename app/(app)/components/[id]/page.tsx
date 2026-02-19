@@ -1,18 +1,18 @@
 import Editor from '@/components/Editor'
 import { componentBlockAdapter } from '@/lib/editor/adapter'
 import { getComponentBlockData } from '@/query/templateQuery'
-import { redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import React from 'react'
 import { getServerSession } from 'next-auth'
 import authOptions from '@/lib/auth'
+import { isValidObjectId } from '@/utils/objectId'
 
 const page = async ({ params }: { params: Promise<{ id: string }> }) => {
     
     const { id } = await params
 
-    if (!id) {
-        // navigate back to templates page
-        redirect('/components')
+    if (!id || !isValidObjectId(id)) {
+        notFound()
     }
 
     // Get current session
@@ -21,9 +21,12 @@ const page = async ({ params }: { params: Promise<{ id: string }> }) => {
 
     // Get component block data to check ownership
     const componentBlockData = await getComponentBlockData(id)
+    if (!componentBlockData) {
+        notFound()
+    }
     
     // Check if user is the owner
-    const isOwner = componentBlockData?.userId === currentUserId
+    const isOwner = componentBlockData.userId === currentUserId
 
     return (
         <div className='h-full'>
