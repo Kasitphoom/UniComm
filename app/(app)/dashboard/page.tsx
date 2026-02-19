@@ -102,7 +102,7 @@ const DashboardPage = async () => {
                 <MetricCard 
                     title="Documents Generated" 
                     value={formatInteger(allTime.documentsGenerated)}
-                    subValue={formatInteger(last30Days.documentsGenerated)}
+                    subValue={formatInteger(previous30Days.documentsGenerated)}
                     delta={documentDelta}
                     icon={FileText}
                     iconColor="text-blue-500"
@@ -110,7 +110,7 @@ const DashboardPage = async () => {
                 <MetricCard 
                     title="Avg. Error Rate" 
                     value={formatRate(allTime.errorRate)}
-                    subValue={formatRate(last30Days.errorRate)}
+                    subValue={formatRate(previous30Days.errorRate)}
                     delta={errorRateDelta}
                     icon={AlertTriangle}
                     reverse
@@ -119,7 +119,7 @@ const DashboardPage = async () => {
                 <MetricCard 
                     title="Processing Speed" 
                     value={formatSpeed(allTime.processingSpeed)}
-                    subValue={formatSpeed(last30Days.processingSpeed)}
+                    subValue={formatSpeed(previous30Days.processingSpeed)}
                     extraValue={`Avg time: ${formatAverageTimePerDocument(allTime.processingSpeed)}`}
                     delta={speedDelta}
                     icon={Gauge}
@@ -210,9 +210,6 @@ const DashboardPage = async () => {
                             <FileCheck2 size={18} className="text-default-400" />
                             Pending Approvals
                         </div>
-                        <span className="rounded-full bg-warning-50 px-2.5 py-0.5 text-xs font-bold text-warning-600">
-                            {pendingTemplateApprovals} Action Required
-                        </span>
                     </div>
                     <div className="pb-2">
                         {pendingTemplateApprovalList.length > 0 ? (
@@ -232,7 +229,7 @@ const DashboardPage = async () => {
                                             </div>
                                             
                                             <div className="flex items-center gap-4 shrink-0">
-                                                <span className="text-[10px] font-bold uppercase tracking-wider text-warning-600 bg-warning-50 px-2 py-0.5 rounded">
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-warning-600 bg-warning-50 px-2 py-0.5 rounded-full">
                                                     Pending
                                                 </span>
                                                 <ArrowUpRight size={14} className="text-default-300 opacity-0 transition-all group-hover:opacity-100 group-hover:text-secondary" />
@@ -242,8 +239,8 @@ const DashboardPage = async () => {
                                 </div>
                             </div>
                         ) : (
-                            <div className="py-8 text-center text-sm text-default-400">
-                                All caught up! No pending templates.
+                            <div className="py-10 text-center">
+                                <p className="text-sm text-default-400">All caught up! No pending templates.</p>
                             </div>
                         )}
                     </div>
@@ -262,7 +259,7 @@ const DashboardPage = async () => {
                             <tr>
                                 <th className="px-6 py-3 font-semibold">Period</th>
                                 <th className="px-6 py-3 font-semibold text-center">Campaigns</th>
-                                <th className="px-6 py-3 font-semibold text-center">Failed</th>
+                                <th className="px-6 py-3 font-semibold text-center">Failed Runs</th>
                                 <th className="px-6 py-3 font-semibold text-center">Error Rate</th>
                                 <th className="px-6 py-3 font-semibold text-right">Processing Speed</th>
                             </tr>

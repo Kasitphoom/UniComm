@@ -505,6 +505,7 @@ const ExportBar = ({
     saveable = false,
     onSaveButtonClick,
     isSaving = false,
+    saveButtonConfig,
 
     requireApproval = false,
     onSubmitApprovalClick,
@@ -525,6 +526,7 @@ const ExportBar = ({
     saveable?: boolean;
     onSaveButtonClick?: () => void;
     isSaving?: boolean;
+    saveButtonConfig?: Omit<React.ComponentProps<typeof Button>, "children" | "onPress">;
 
     requireApproval?: boolean;
     onSubmitApprovalClick?: (ids: string[]) => void;
@@ -563,7 +565,7 @@ const ExportBar = ({
 
                     {
                         saveable && (
-                            <Button isIconOnly variant="light" startContent={!isSaving && <Save size={18} />} onPress={onSaveButtonClick} isLoading={isSaving}>
+                            <Button isIconOnly variant="light" startContent={!isSaving && <Save size={18} />} onPress={onSaveButtonClick} isLoading={isSaving} {...saveButtonConfig}>
                             </Button>
                         )
                     }
