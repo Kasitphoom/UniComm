@@ -19,7 +19,7 @@ const LoginForm = () => {
     const { status, data: session } = useSession();
     const searchParams = useSearchParams();
 
-    const callbackUrl = searchParams.get("callbackUrl") || "/templates";
+    const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
 
     const { handleSubmit, control } = useForm({
         resolver: yupResolver(schema),
