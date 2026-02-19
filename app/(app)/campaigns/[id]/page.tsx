@@ -2,6 +2,7 @@ import { Suspense } from "react"
 import { notFound } from "next/navigation"
 import CampaignDetailView from "@/components/campaigns/CampaignDetailView"
 import { getCampaignDetail } from "@/query/campaignQuery"
+import { isValidObjectId } from "@/utils/objectId"
 
 type PageParams = {
     params: Promise<{ id: string }>
@@ -10,7 +11,7 @@ type PageParams = {
 const CampaignDetailPage = async ({ params }: PageParams) => {
     const { id } = await params
 
-    if (!id) {
+    if (!id || !isValidObjectId(id)) {
         notFound()
     }
 
