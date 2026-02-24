@@ -1,7 +1,7 @@
 'use client'
-import React, { useEffect, useState } from 'react'
-import { Card, CardBody, CardFooter, Dropdown, DropdownMenu, DropdownTrigger, DropdownItem, Skeleton, User, Spinner, addToast } from '@heroui/react'
-import { Dot, EllipsisVertical, TrashIcon } from 'lucide-react'
+import React, { Key, useEffect, useState } from 'react'
+import { Button, Card, CardBody, CardFooter, Dropdown, DropdownMenu, DropdownTrigger, DropdownItem, Skeleton, User, Spinner, addToast, cn } from '@heroui/react'
+import { Clock, EllipsisVertical, FileText, TrashIcon } from 'lucide-react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
@@ -99,7 +99,7 @@ const ComponentBlockCard = ({ block }: { block: ComponentBlockWithUser }) => {
 		})
 	}
 
-	const onAction = async (key: any) => {
+	const onAction = async (key: Key) => {
 		if (key === 'Delete') {
 			await onBlockDelete()
 			dispatch(fetchComponentBlocks({
@@ -109,78 +109,128 @@ const ComponentBlockCard = ({ block }: { block: ComponentBlockWithUser }) => {
 		}
 	}
 
+	const ActionMenu = ({ onAction } : { onAction: (key: Key) => Promise<void> }) => (
+		<Dropdown placement="bottom-end">
+			<DropdownTrigger>
+				<Button isIconOnly size="sm" variant="light" className="text-default-400 min-w-unit-8 w-8 h-8">
+					<EllipsisVertical size={16} />
+				</Button>
+			</DropdownTrigger>
+			<DropdownMenu onAction={onAction} aria-label="Component Actions">
+				<DropdownItem 
+					key="Delete" 
+					color="danger" 
+					className="text-danger" 
+					startContent={<TrashIcon size={16} />}
+				>
+					Delete Component
+				</DropdownItem>
+			</DropdownMenu>
+		</Dropdown>
+	)
+
 	return (
-		<Card className={viewMode === 'grid' ? 'h-70' : ''} shadow={viewMode === 'grid' ? 'sm' : 'none'} isPressable onPress={onCardClick}>
-			<CardBody>
-				{
-					viewMode === 'grid' ? (
-						<div className='w-full h-full overflow-hidden rounded-md bg-default-100'>
-							{isPreviewLoading && !previewUrl && (
-								<Skeleton className='w-full h-full rounded-md' />
-							)}
-							{previewTemplate ? (
-								<PdfViewer template={previewTemplate} className={'overflow-hidden w-full h-full rounded-md'} customViewerOptions={{ showToolbar: false, scroll: false }} />
-							) : (!isPreviewLoading && (
-								<div className='flex items-center justify-center text-xs text-default-400'>
-									{previewError || 'Preview unavailable'}
-								</div>
-							))}
+		<Card 
+			isPressable
+			onPress={onCardClick}
+			className={cn(
+				"group transition-all duration-300",
+				viewMode === "grid" 
+					? "border border-default-100 hover:border-secondary-300 shadow-none hover:shadow-xl hover:shadow-default-200/50" 
+					: "border-none hover:bg-default-100/50"
+			)}
+		>
+			<CardBody className={cn("p-0 overflow-visible", viewMode === 'list' && "px-4 py-3")}>
+				{viewMode === 'grid' ? (
+					<div className="relative w-full aspect-video overflow-hidden rounded-t-xl bg-default-50 border-b border-default-100">
+						{/* Interactive Hover Overlay */}
+						<div className="absolute inset-0 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-black/5 flex items-center justify-center backdrop-blur-[2px]">
+							<Button size="sm" variant="flat" className="bg-white/90 font-bold shadow-sm" onPress={onCardClick}>Edit Component</Button>
 						</div>
-					) : (
-						<div className='flex items-center justify-between w-full'>
-							<p className='line-clamp-2 text-ellipsis overflow-hidden'>{block.name}</p>
-							<div className='flex gap-2 items-center flex-wrap'>
-								<User
-									name={block.user.displayName}
-									avatarProps={{
-										name: block.user.displayName?.toUpperCase(),
-										size: 'sm',
-										className: 'h-6 w-6 text-[10px]'
-									}}
+
+						{isPreviewLoading && (
+							<Skeleton className="w-full h-full" />
+						)}
+						
+						{previewTemplate ? (
+							<div className="w-full h-full pointer-events-none origin-top scale-[1.01]">
+								<PdfViewer 
+									template={previewTemplate} 
+									className="w-full h-full object-cover" 
+									customViewerOptions={{ showToolbar: false, scroll: false }}
 								/>
-								<Dot size={12} className='text-default-400' />
-								<p className='text-xs text-default-400' suppressHydrationWarning>
+							</div>
+						) : (!isPreviewLoading && (
+							<div className="flex flex-col items-center justify-center h-full text-default-300 gap-2">
+								<FileText size={28} strokeWidth={1.5} />
+								<span className="text-[10px] font-bold uppercase tracking-widest text-default-400">
+									{previewError || 'Preview Unavailable'}
+								</span>
+							</div>
+						))}
+					</div>
+				) : (
+					/* --- LIST VIEW ROW --- */
+					<div className="flex items-center justify-between w-full gap-4">
+						<div className="flex items-center gap-4 flex-1">
+							<div className="p-2 rounded-lg bg-secondary-50 text-secondary">
+								<FileText size={18} />
+							</div>
+							<p className="font-semibold text-small line-clamp-1 truncate flex-1">
+								{block.name}
+							</p>
+						</div>
+
+						<div className="flex items-center gap-6">
+							<User
+								name={block.user.displayName}
+								avatarProps={{ 
+									name: block.user.displayName?.toUpperCase(),
+									size: 'sm',
+									className: "h-7 w-7 text-[10px] bg-secondary-100 text-secondary"
+								}}
+								classNames={{ name: "hidden md:block text-tiny font-medium" }}
+							/>
+							<div className="hidden sm:flex items-center gap-1.5 text-default-400">
+								<Clock size={14} />
+								<p className="text-tiny whitespace-nowrap">
 									{timeDifferenceFormatter(new Date(block.updatedAt))}
 								</p>
 							</div>
+							{canDelete && (
+								<ActionMenu onAction={onAction} />
+							)}
 						</div>
-					)
-				}
+					</div>
+				)}
 			</CardBody>
-			{
-				viewMode === 'grid' && (
-					<CardFooter className='relative flex shrink-0 flex-col gap-2 items-start justify-between'>
-						<p className='line-clamp-2 text-ellipsis overflow-hidden'>{block.name}</p>
-						<div className='flex gap-2 items-center flex-wrap'>
-							<User
-								name={block.user.displayName}
-								avatarProps={{
-									name: block.user.displayName?.toUpperCase(),
-									size: 'sm'
-								}}
-							/>
-							<Dot size={12} className='text-default-400' />
-							<p className='text-xs text-default-400' suppressHydrationWarning>
-								{timeDifferenceFormatter(new Date(block.updatedAt))}
-							</p>
-						</div>
-					{canDelete && (
-						<Dropdown>
-							<DropdownTrigger>
-								<div className='absolute top-2 right-2 w-fit hover:cursor-pointer hover:bg-default-200 p-2 rounded-full transition-background'>
-									<EllipsisVertical size={16} />
-								</div>
-							</DropdownTrigger>
-							<DropdownMenu onAction={onAction}>
-								<DropdownItem key="Delete" color="danger" className='text-danger' startContent={<TrashIcon size={16} />}>
-                                        Delete
-                                    </DropdownItem>
-							</DropdownMenu>
-						</Dropdown>
-					)}
-					</CardFooter>
-				)
-			}
+
+			{viewMode === 'grid' && (
+				<CardFooter className="flex flex-col items-start gap-3 p-4">
+					<div className="flex justify-between items-start w-full gap-2">
+						<h3 className="text-small text-left font-bold leading-tight line-clamp-2 min-h-10 flex-1">
+							{block.name}
+						</h3>
+						{canDelete && <ActionMenu onAction={onAction} />}
+					</div>
+
+					<div className="flex items-center justify-between w-full border-t border-default-50 pt-3">
+						<User
+							name={block.user.displayName}
+							description={timeDifferenceFormatter(new Date(block.updatedAt))}
+							avatarProps={{ 
+								name: block.user.displayName?.toUpperCase(),
+								size: 'sm',
+								className: "h-6 w-6 text-[10px]"
+							}}
+							classNames={{
+								name: "text-[11px] font-semibold leading-none",
+								description: "text-[10px] text-default-400 mt-0.5"
+							}}
+						/>
+					</div>
+				</CardFooter>
+			)}
 		</Card>
 	)
 }

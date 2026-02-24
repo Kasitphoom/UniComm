@@ -1,11 +1,11 @@
-import type { TemplateWithUser, TemplateListItem } from "@/types/template"
+import type { TemplateWithUser } from "@/types/template"
 import { Template as PDFTemplate } from "@pdfme/common"
 import { Schema } from "@pdfme/common"
 
 export type RequestStatus = "idle" | "loading" | "succeeded" | "failed"
 
 export interface TemplatesListState {
-    items: TemplateListItem[]
+    items: TemplateWithUser[]
     status: RequestStatus
     error: string | null
     query: string

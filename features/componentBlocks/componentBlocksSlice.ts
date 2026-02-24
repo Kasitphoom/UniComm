@@ -187,6 +187,11 @@ const componentBlocksSlice = createSlice({
             state.parsedSchema.error = null
             state.parsedSchema.data = undefined
         },
+        setParsedComponentBlockSchema(state, action: PayloadAction<Template>) {
+            state.parsedSchema.status = "succeeded"
+            state.parsedSchema.error = null
+            state.parsedSchema.data = action.payload
+        },
     },
     extraReducers: (builder) => {
         builder
@@ -241,6 +246,8 @@ const componentBlocksSlice = createSlice({
                             userId: action.payload.userId as string,
                             user: action.payload.user as any,
                             versions: action.payload.versions as any,
+                            requiredFields: action.payload.requiredFields as any,
+                            contactListId: action.payload.contactListId as string | null,
                         },
                         ...state.list.items,
                     ]
@@ -281,6 +288,6 @@ const componentBlocksSlice = createSlice({
     },
 })
 
-export const { setQuery, setPage, setPerPage, resetList, resetCreate, resetParsedComponentBlockSchema } =
+export const { setQuery, setPage, setPerPage, resetList, resetCreate, resetParsedComponentBlockSchema, setParsedComponentBlockSchema } =
     componentBlocksSlice.actions
 export default componentBlocksSlice.reducer

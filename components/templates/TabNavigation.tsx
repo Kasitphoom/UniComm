@@ -24,7 +24,7 @@ const TabNavigation = () => {
         <div className='border-b border-default-300'>
             <Tabs variant='underlined' color='secondary' classNames={{ tabList: "p-0" }} selectedKey={tabSelected} onSelectionChange={setTabSelected}>
                 <Tab key="pdf" title="PDF" />
-                <Tab key="email" title="Email" />
+                <Tab key="email" title="Email" isDisabled />
             </Tabs>
         </div>
     )
