@@ -1,17 +1,21 @@
 {
   "name": "unicomm",
-  "version": "0.3.1",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev --port 4100",
     "build": "next build",
     "start": "next start --port 4100",
-    "prisma-generate": "npx prisma generate --schema=prisma/main.schema.prisma && npx prisma generate "
+    "prisma-generate": "npx prisma generate --schema=prisma/main.schema.prisma && npx prisma generate ",
+    "migrate:db": "tsx scripts/migrations/run.ts --db=both",
+    "migrate:db:main": "tsx scripts/migrations/run.ts --db=main",
+    "migrate:db:business": "tsx scripts/migrations/run.ts --db=business"
   },
   "dependencies": {
     "@heroui/react": "^2.8.6",
     "@heroui/use-infinite-scroll": "^2.2.12",
     "@hookform/resolvers": "^5.2.2",
+    "@internationalized/date": "^3.10.1",
     "@pdfme/common": "^5.4.6",
     "@pdfme/generator": "^5.4.6",
     "@pdfme/schemas": "^5.4.7",
@@ -25,6 +29,7 @@
     "fast-xml-parser": "^5.3.1",
     "framer-motion": "^12.23.24",
     "idb-keyval": "^6.2.2",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.552.0",
     "mailgun.js": "^12.1.1",
     "motion": "^12.23.24",

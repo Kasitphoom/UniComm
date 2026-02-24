@@ -42,7 +42,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
             setActiveBusiness: async (businessId: string | null) => {
                 // Only update when authenticated
                 if (status !== 'authenticated') return
-                await update({ activeBusinessId: businessId })
+                await update({ activeBusinessId: businessId, user: { activeBusinessId: businessId } } as any)
             },
         }
     }, [session, status, update])

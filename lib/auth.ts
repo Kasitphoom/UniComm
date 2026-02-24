@@ -131,15 +131,67 @@ export const authOptions: NextAuthOptions = {
             }
 
             // Support updating the active business id via useSession().update({ activeBusinessId })
-            if (trigger === 'update' && session && (session as any).activeBusinessId) {
-                const requested = (session as any).activeBusinessId as string
-                const allowed: string[] = ((token as any).businessIds as string[]) || []
-                if (allowed.includes(requested)) {
+            if (trigger === 'update' && session) {
+                const requested =
+                    ((session as any).activeBusinessId as string | undefined) ??
+                    (((session as any).user as any)?.activeBusinessId as string | undefined)
+
+                if (!requested) return token
+
+                let allowed: string[] = ((token as any).businessIds as string[]) || []
+                const userId = (token as any).id as string | undefined
+                if (allowed.length === 0) {
+                    try {
+                        if (userId) {
+                            const memberships = await prisma.usersOnBusinesses.findMany({
+                                where: { userId },
+                                select: { businessId: true, role: true },
+                            })
+                            allowed = memberships.map((m) => m.businessId)
+                            ;(token as any).businessIds = allowed
+                            ;(token as any).memberships = memberships
+                        }
+                    } catch {
+                        // ignore membership refresh errors
+                    }
+                }
+
+                let isAllowed = allowed.includes(requested)
+                if (!isAllowed && userId) {
+                    try {
+                        const membership = await prisma.usersOnBusinesses.findFirst({
+                            where: {
+                                userId,
+                                businessId: requested,
+                            },
+                            select: {
+                                businessId: true,
+                                role: true,
+                            },
+                        })
+
+                        if (membership) {
+                            isAllowed = true
+                            if (!allowed.includes(requested)) {
+                                ;(token as any).businessIds = [...allowed, requested]
+                            }
+
+                            const currentMemberships = ((token as any).memberships as Array<{ businessId: string; role: string }> | undefined) || []
+                            const alreadyInMemberships = currentMemberships.some((m) => m.businessId === requested)
+                            if (!alreadyInMemberships) {
+                                ;(token as any).memberships = [...currentMemberships, { businessId: requested, role: membership.role }]
+                            }
+                        }
+                    } catch {
+                        // ignore db validation errors
+                    }
+                }
+
+                if (isAllowed) {
                     ;(token as any).activeBusinessId = requested
 
                     // Update current business profile when active business changes
                     try {
-                        const userId = (token as any).id as string | undefined
                         // Resolve email
                         let email: string | null = (token as any)?.email ?? null
                         if (!email && userId) {
