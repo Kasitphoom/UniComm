@@ -4,16 +4,18 @@ import { AppDispatch } from "@/store/store"
 import {
     getParsedTemplateSchema,
     resetParsedSchema,
+    setParsedTemplate,
     updateTemplate,
 } from "@/features/templates/templatesSlice"
 import { TemplateWithUser } from "@/types/template"
 import { ComponentBlockWithUser } from "@/types/componentBlock"
-import { getParsedComponentBlockSchema, resetParsedComponentBlockSchema, updateComponentBlockTemplate } from "@/features/componentBlocks/componentBlocksSlice"
+import { getParsedComponentBlockSchema, resetParsedComponentBlockSchema, setParsedComponentBlockSchema, updateComponentBlockTemplate } from "@/features/componentBlocks/componentBlocksSlice"
 
 // Adapter interface for the generic Editor component
 export interface EditorAdapter {
     loadParsed: (dispatch: AppDispatch, id: string) => void
     resetParsed: (dispatch: AppDispatch) => void
+    updateParsed: (dispatch: AppDispatch, templateData: Template) => void
     updateResource: (
         dispatch: AppDispatch,
         params: { id: string; templateData: Template },
@@ -29,6 +31,9 @@ export const templateAdapter: EditorAdapter = {
     resetParsed: (dispatch) => {
         dispatch(resetParsedSchema())
     },
+    updateParsed: (dispatch, templateData) => {
+        dispatch(setParsedTemplate(templateData))
+    },
     updateResource: async (dispatch, { id, templateData }) => {
         const action = await dispatch(updateTemplate({ id, templateData }))
         return (action as any).payload
@@ -43,6 +48,9 @@ export const componentBlockAdapter: EditorAdapter = {
     },
     resetParsed: (dispatch) => {
         dispatch(resetParsedComponentBlockSchema())
+    },
+    updateParsed: (dispatch, templateData) => {
+        dispatch(setParsedComponentBlockSchema(templateData))
     },
     updateResource: async (dispatch, { id, templateData }) => {
         const action = await dispatch(updateComponentBlockTemplate({ id, templateData }))

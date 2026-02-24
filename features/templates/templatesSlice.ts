@@ -3,9 +3,9 @@ import { createAsyncThunk, createSlice, PayloadAction } from "@reduxjs/toolkit"
 import type { TemplatesState } from "./types"
 import type {
     Template,
-    TemplateListItem,
     TemplateWithUser,
 } from "@/types/template"
+import type { ApproverWithUser, ApprovalStatus } from "@/types/approver"
 import { Template as PDFTemplateType } from "@pdfme/common"
 
 // Thunk: fetch list of templates
@@ -29,7 +29,7 @@ export const fetchTemplates = createAsyncThunk(
             throw new Error(text || "Failed to fetch templates")
         }
         const data = (await res.json()) as {
-            templates: TemplateListItem[]
+            templates: TemplateWithUser[]
             currentPage: number
             total: number
         }
@@ -55,7 +55,7 @@ export const fetchUserTemplates = createAsyncThunk(
             throw new Error(text || "Failed to fetch user templates")
         }
         const data = (await res.json()) as {
-            templates: TemplateListItem[]
+            templates: TemplateWithUser[]
             currentPage: number
             total: number
         }
@@ -89,6 +89,7 @@ export const createTemplate = createAsyncThunk(
         orientation?: "portrait" | "landscape" | undefined;
         widthCm?: string | undefined;
         heightCm?: string | undefined;
+        customerListId?: string | undefined;
     }) => {
         const res = await fetch("/api/templates", {
             method: "POST",
@@ -103,6 +104,76 @@ export const createTemplate = createAsyncThunk(
         const data = (await res.json()) as TemplateWithUser
         return data
     }
+)
+
+export const updateTemplateSettings = createAsyncThunk(
+    "templates/updateSettings",
+    async (payload: { id: string; title: string; contactListId?: string | null }) => {
+        const res = await fetch(`/api/templates/${payload.id}/settings`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+                title: payload.title,
+                contactListId: payload.contactListId ?? null,
+            }),
+        })
+
+        if (!res.ok) {
+            const text = await res.text()
+            throw new Error(text || "Failed to update template settings")
+        }
+
+        const data = (await res.json()) as Template
+        return data
+    }
+)
+
+export const updateTemplateApprovers = createAsyncThunk(
+    "templates/updateApprovers",
+    async (payload: { id: string; approvers: string[] }) => {
+        const res = await fetch(`/api/templates/${payload.id}/approval`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+                approvers: payload.approvers,
+            }),
+        })
+
+        if (!res.ok) {
+            const text = await res.text()
+            throw new Error(text || "Failed to update template approvers")
+        }
+
+        const data = (await res.json()) as Template
+        return data
+    }
+)
+
+export const updateTemplateApprovalStatus = createAsyncThunk(
+    "templates/updateApprovalStatus",
+    async (payload: { templateId: string; approvalId: string; status: ApprovalStatus }) => {
+        const normalizedStatus = payload.status.toUpperCase() as ApprovalStatus
+
+        const res = await fetch(
+            `/api/templates/${payload.templateId}/approval/${payload.approvalId}`,
+            {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ status: normalizedStatus }),
+            },
+        )
+
+        if (!res.ok) {
+            const text = await res.text()
+            throw new Error(text || "Failed to update approval status")
+        }
+
+        const approval = (await res.json()) as ApproverWithUser
+        return { templateId: payload.templateId, approval }
+    },
 )
 
 export const getParsedTemplateSchema = createAsyncThunk(
@@ -221,7 +292,12 @@ const templatesSlice = createSlice({
             state.parsedTemplate.status = "idle"
             state.parsedTemplate.error = null
             state.parsedTemplate.data = null
-        }
+        },
+        setParsedTemplate(state, action: PayloadAction<PDFTemplateType>) {
+            state.parsedTemplate.status = "succeeded"
+            state.parsedTemplate.error = null
+            state.parsedTemplate.data = action.payload
+        },
     },
     extraReducers: (builder) => {
         // fetchTemplates
@@ -289,11 +365,16 @@ const templatesSlice = createSlice({
                             id: action.payload.id,
                             title: action.payload.title as string,
                             filePath: action.payload.filePath as string,
+                            contactListId: action.payload.contactListId,
                             createdAt: action.payload.createdAt as any,
                             updatedAt: action.payload.updatedAt as any,
                             userId: action.payload.userId as string,
                             user: action.payload.user as any,
                             versions: action.payload.versions as any,
+                            approvers: action.payload.approvers as any,
+                            requireUserApproval: false,
+                            requiredFields: action.payload.requiredFields as any,
+                            contactList: action.payload.contactList as any,
                         },
                         ...state.list.items,
                     ]
@@ -333,9 +414,78 @@ const templatesSlice = createSlice({
                 state.detail.status = "failed"
                 state.detail.error = action.error.message || "Unknown error"
             })
+
+        // updateTemplateSettings
+        builder
+            .addCase(updateTemplateSettings.pending, (state) => {
+                state.detail.status = "loading"
+                state.detail.error = null
+            })
+            .addCase(updateTemplateSettings.fulfilled, (state, action) => {
+                state.detail.status = "succeeded"
+                const updatedTemplate = action.payload
+
+                if (state.detail.data) {
+                    state.detail.data = { ...state.detail.data, ...updatedTemplate } as any
+                } else {
+                    state.detail.data = updatedTemplate as any
+                }
+
+                state.list.items = state.list.items.map((item) =>
+                    item.id === updatedTemplate.id
+                        ? { ...item, title: updatedTemplate.title, updatedAt: updatedTemplate.updatedAt }
+                        : item
+                )
+
+                state.user.list.items = state.user.list.items.map((item) =>
+                    item.id === updatedTemplate.id
+                        ? { ...item, title: updatedTemplate.title, updatedAt: updatedTemplate.updatedAt }
+                        : item
+                )
+            })
+            .addCase(updateTemplateSettings.rejected, (state, action) => {
+                state.detail.status = "failed"
+                state.detail.error = action.error.message || "Failed to update template settings"
+            })
+
+        // updateTemplateApprovalStatus
+        builder
+            .addCase(updateTemplateApprovalStatus.fulfilled, (state, action) => {
+                const { templateId, approval } = action.payload
+
+                const updateApproverCollection = (approvers?: ApproverWithUser[]): ApproverWithUser[] => {
+                    if (!approvers) return []
+                    return approvers.map((existing) =>
+                        existing.id === approval.id ? { ...existing, ...approval } : existing,
+                    )
+                }
+
+                if (state.detail.data && state.detail.data.id === templateId) {
+                    state.detail.data = {
+                        ...state.detail.data,
+                        approvers: updateApproverCollection(state.detail.data.approvers),
+                    } as TemplateWithUser
+                }
+
+                const updateListItems = (items: TemplateWithUser[]) =>
+                    items.map((item) =>
+                        item.id === templateId
+                            ? {
+                                  ...item,
+                                  approvers: updateApproverCollection(item.approvers),
+                              }
+                            : item,
+                    )
+
+                state.list.items = updateListItems(state.list.items)
+                state.user.list.items = updateListItems(state.user.list.items)
+            })
+            .addCase(updateTemplateApprovalStatus.rejected, (state, action) => {
+                state.detail.error = action.error.message || "Failed to update approval status"
+            })
     },
 })
 
-export const { setQuery, setPage, setPerPage, resetList, resetCreate, resetParsedSchema } =
+export const { setQuery, setPage, setPerPage, resetList, resetCreate, resetParsedSchema, setParsedTemplate } =
     templatesSlice.actions
 export default templatesSlice.reducer

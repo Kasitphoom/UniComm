@@ -9,7 +9,7 @@ export default function AppLayout({
     // Note: Only the root layout (`app/layout.tsx`) should render <html> and <body>.
     // This segment layout wraps page content with the app shell.
     return (
-        <div className="flex h-svh">
+        <div className="flex h-dvh">
             <SideBar />
             <div className="flex flex-col w-full min-w-0">
                 <Header />

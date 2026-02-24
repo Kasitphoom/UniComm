@@ -6,12 +6,13 @@ import { Button, ButtonGroup, Dropdown, DropdownMenu, DropdownTrigger, DropdownI
 import { ChevronDown, FilePlusCorner } from 'lucide-react'
 import CreateTemplateModal from './CreateTemplateModal'
 import { useUser } from '@/components/providers/UserProvider'
-import { canCreateResource } from '@/utils/permissions'
+import { canCreateResource, userHasPermissionClient } from '@/utils/permissions'
+import { UserRole } from '@/app/generated/business/prisma'
 
 const ControlBar = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const currentUser = useUser();
-    const canCreate = canCreateResource(currentUser.role);
+    const canCreatePermission = userHasPermissionClient([ UserRole.OWNER, UserRole.ADMIN, UserRole.MEMBER ]);
 
     return (
         <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-end'>
@@ -19,7 +20,7 @@ const ControlBar = () => {
                 <ViewMode />
                 <SearchBar />
             </div>
-            <ButtonGroup className='rounded-xl overflow-hidden' isDisabled={!canCreate}>
+            <ButtonGroup className='rounded-xl overflow-hidden' isDisabled={!canCreatePermission}>
                 <Button className='w-full' color='secondary' startContent={<FilePlusCorner size={16} />} onPress={() => setIsModalOpen(true)}>New Template</Button>
                 <Dropdown placement='bottom-end'>
                     <DropdownTrigger className='min-w-0'>

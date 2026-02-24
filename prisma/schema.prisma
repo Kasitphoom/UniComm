@@ -38,23 +38,65 @@ model BusinessUser {
 
   templates      Templates[]
   ComponentBlock ComponentBlock[]
+  approvals      Approver[]
 }
 
 // ========= TEMPLATE MODELS =========
 model Templates {
-  id        String            @id @default(auto()) @map("_id") @db.ObjectId
-  title     String            @unique
-  filePath  String
-  userId    String
-  user      BusinessUser      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  versions  TemplateVersion[]
-  createdAt DateTime          @default(now())
-  updatedAt DateTime          @updatedAt
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  title    String            @unique
+  filePath String
+  versions TemplateVersion[]
+
+  campaigns CampaignTemplate[]
+
+  userId String       @db.ObjectId
+  user   BusinessUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  approvers Approver[]
+
+  contactList   ContactList? @relation(fields: [contactListId], references: [id])
+  contactListId String?      @db.ObjectId
+
+  requiredFields String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum APPROVAL_STATUS {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Approver {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  // Relations - one of these must be set
+  templateId       String?         @db.ObjectId
+  template         Templates?      @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  componentBlockId String?         @db.ObjectId
+  componentBlock   ComponentBlock? @relation(fields: [componentBlockId], references: [id], onDelete: Cascade)
+
+  userId String       @db.ObjectId
+  user   BusinessUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  status APPROVAL_STATUS @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([templateId, componentBlockId, userId])
+  @@index([templateId])
+  @@index([componentBlockId])
+  @@index([userId])
 }
 
 model TemplateVersion {
   id         String    @id @default(auto()) @map("_id") @db.ObjectId
-  templateId String
+  templateId String    @db.ObjectId
   template   Templates @relation(fields: [templateId], references: [id], onDelete: Cascade)
   version    String
   filePath   String
@@ -66,16 +108,23 @@ model ComponentBlock {
   id        String                  @id @default(auto()) @map("_id") @db.ObjectId
   name      String                  @unique
   filePath  String
-  userId    String
+  userId    String                  @db.ObjectId
   user      BusinessUser            @relation(fields: [userId], references: [id], onDelete: Cascade)
   versions  ComponentBlockVersion[]
-  createdAt DateTime                @default(now())
-  updatedAt DateTime                @updatedAt
+  approvers Approver[]
+
+  contactList   ContactList? @relation(fields: [contactListId], references: [id])
+  contactListId String?      @db.ObjectId
+
+  requiredFields String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model ComponentBlockVersion {
   id               String         @id @default(auto()) @map("_id") @db.ObjectId
-  componentBlockId String
+  componentBlockId String         @db.ObjectId
   componentBlock   ComponentBlock @relation(fields: [componentBlockId], references: [id], onDelete: Cascade)
   version          String
   filePath         String
@@ -102,8 +151,11 @@ model ContactList {
   primaryKey String  @default("")
   upsertMode Boolean @default(true)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  templates       Templates[]
+  componentBlocks ComponentBlock[]
+  campaigns       Campaign[]
 }
 
 model Customer {
@@ -117,4 +169,121 @@ model Customer {
   updatedAt DateTime @updatedAt
 
   @@index([listId])
+}
+
+// ======== CAMPAIGN =========
+
+enum SCHEDULE_STATUS {
+  PENDING
+  TRIGGERED
+  FAILED
+}
+
+enum FILE_STATUS {
+  EMPTY
+  PENDING
+  AVALIABLE
+  FAILED
+  EXPIRED
+}
+
+model Campaign {
+  id   String @id @default(auto()) @map("_id") @db.ObjectId
+  name String @unique
+
+  templates     CampaignTemplate[]
+  contactlist   ContactList        @relation(fields: [contactListId], references: [id])
+  contactListId String             @db.ObjectId
+
+  scheduledAt    DateTime
+  scheduleStatus SCHEDULE_STATUS @default(PENDING)
+  executedAt     DateTime?
+
+  fileStatus FILE_STATUS @default(EMPTY)
+
+  totalRecords Int @default(0)
+
+  logs  CampaignLog[]
+  files CampaignFile[]
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  campaignRunLogs CampaignRunLog[]
+}
+
+model CampaignLog {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  campaignId String   @db.ObjectId
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  status  SCHEDULE_STATUS
+  message String?
+
+  createdAt DateTime @default(now())
+}
+
+model CampaignRunLog {
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  campaignId String?   @db.ObjectId
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  campaignName  String
+  triggerSource String
+  status        SCHEDULE_STATUS
+  success       Boolean
+  errorMessage  String?
+
+  fileId             String?     @db.ObjectId
+  fileStatus         FILE_STATUS
+  generatedDocuments Int         @default(0)
+
+  startedAt  DateTime
+  finishedAt DateTime
+  durationMs Int
+
+  createdAt DateTime @default(now())
+
+  @@index([campaignId])
+  @@index([createdAt])
+  @@index([status])
+}
+
+model CampaignTemplate {
+  id         String @id @default(auto()) @map("_id") @db.ObjectId
+  campaignId String @db.ObjectId
+  templateId String @db.ObjectId
+
+  campaign Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  template Templates @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([campaignId, templateId])
+  @@index([campaignId])
+  @@index([templateId])
+}
+
+model CampaignFile {
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  campaignId String?   @db.ObjectId
+  campaign   Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+
+  fileName             String
+  filePath             String
+  generatedDocuments   Int         @default(0)
+  status               FILE_STATUS @default(PENDING)
+  isDeleted            Boolean     @default(false)
+  generationStartedAt  DateTime?
+  generationFinishedAt DateTime?
+  expiresAt            DateTime?
+
+  createdAt DateTime @default(now())
+}
+
+// ======== MIGRATION MODEL (for tracking applied migrations in each business database) =========
+
+model Migration {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  name      String   @unique
+  appliedAt DateTime @default(now())
 }

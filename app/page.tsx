@@ -10,10 +10,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
 
     const params = await searchParams;
 
-    // if server session exists, redirect to dashboard
     const session = await getServerSession(authOptions);
     if (session) {
-        // Try to honor a cookie that stores the user's preferred/default business
         const jar = await cookies();
         const preferred = jar.get('uc_default_business')?.value;
 
