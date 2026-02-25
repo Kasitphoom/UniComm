@@ -14,9 +14,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ e
     if (session) {
         const jar = await cookies();
         const preferred = jar.get('uc_default_business')?.value;
+        const activeBusinessId = (session as any).activeBusinessId || (session.user as any)?.activeBusinessId;
 
         const userBizIds: string[] = (session.user as any)?.businessIds || [];
-        if (preferred && userBizIds.includes(preferred)) {
+        if (activeBusinessId && preferred && userBizIds.includes(preferred)) {
             redirect(`/dashboard`);
         }
     }
