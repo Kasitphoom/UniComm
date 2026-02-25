@@ -19,7 +19,9 @@ const LoginForm = () => {
     const { status, data: session } = useSession();
     const searchParams = useSearchParams();
 
-    const callbackUrl = searchParams.get("callbackUrl") || "/dashboard";
+    const callbackUrl = searchParams.get("callbackUrl") || "/";
+    const isInviteFlow = callbackUrl.includes('/business/invite');
+    const oauthCallbackUrl = isInviteFlow ? callbackUrl : '/';
 
     const { handleSubmit, control } = useForm({
         resolver: yupResolver(schema),
@@ -49,7 +51,6 @@ const LoginForm = () => {
             // Ask Google Password Manager to store the credential (works on https or localhost)
             await maybeStoreCredential(data.email, data.password)
             // Only show business select modal if not on invitation flow
-            const isInviteFlow = callbackUrl.includes('/business/invite')
             if (isInviteFlow) {
                 router.push(callbackUrl);
             } else {
@@ -67,12 +68,12 @@ const LoginForm = () => {
 
     const googleSignIn = async () => {
         await signOut({ redirect: false });
-        await signIn('google', { callbackUrl, redirect: true });
+        await signIn('google', { callbackUrl: oauthCallbackUrl, redirect: true });
     };
 
     const salesforceSignIn = async () => {
         await signOut({ redirect: false });
-        await signIn('salesforce', { callbackUrl, redirect: true });
+        await signIn('salesforce', { callbackUrl: oauthCallbackUrl, redirect: true });
     };
 
     // After OAuth returns to '/', open the business select if authenticated and no active business set
@@ -80,7 +81,6 @@ const LoginForm = () => {
     useEffect(() => {
         if (status === 'authenticated') {
             const active = (session?.user as any)?.activeBusinessId
-            const isInviteFlow = callbackUrl.includes('/business/invite')
             if (!active && !isInviteFlow) onOpen()
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
