@@ -4,7 +4,6 @@ import { text as textPlugin } from "@pdfme/schemas"
 import { Type } from "lucide"
 import type { UIRenderProps } from "@pdfme/common"
 import { TextWithVariablesPropPanel } from "./propPanel"
-import { TemplateWithUser } from "@/types/template"
 
 export type TextWithVariablesSchema = Schema & {
     fontName?: string
@@ -29,12 +28,71 @@ export type TextWithVariablesSchema = Schema & {
     readOnly?: boolean
 }
 
-// Get template ID from current URL
-const getTemplateIdFromUrl = (): string | null => {
-    if (typeof window === 'undefined') return null
-    const pathname = window.location.pathname
-    const match = pathname.match(/\/templates\/([^/]+)/)
-    return match ? match[1] : null
+type FieldOption = { field: string; type: string }
+type FieldGroup = {
+    listId: string
+    listName: string
+    fields: FieldOption[]
+}
+type DropdownFieldEntry = {
+    field: string
+    type: string
+    sourceListName: string
+}
+
+let cachedFieldGroups: FieldGroup[] | null = null
+let cachedFieldGroupsPromise: Promise<FieldGroup[]> | null = null
+
+const fetchAllCustomerListFields = async (): Promise<FieldGroup[]> => {
+    if (cachedFieldGroups) return cachedFieldGroups
+    if (cachedFieldGroupsPromise) return cachedFieldGroupsPromise
+
+    cachedFieldGroupsPromise = (async () => {
+        const response = await fetch('/api/customer-list/fields', {
+            credentials: 'include',
+        })
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch customer list fields: ${response.statusText}`)
+        }
+
+        const payload = (await response.json()) as {
+            groups?: Array<{
+                listId?: unknown
+                listName?: unknown
+                fields?: Array<{ field?: unknown; type?: unknown }>
+            }>
+        }
+        const groups = Array.isArray(payload.groups)
+            ? payload.groups
+                .filter((group): group is { listId: string; listName: string; fields?: Array<{ field?: unknown; type?: unknown }> } =>
+                    typeof group?.listId === 'string' &&
+                    typeof group?.listName === 'string',
+                )
+                .map((group) => ({
+                    listId: group.listId,
+                    listName: group.listName,
+                    fields: Array.isArray(group.fields)
+                        ? group.fields
+                            .filter((item): item is { field: string; type: string } =>
+                                typeof item?.field === 'string' &&
+                                item.field.trim().length > 0 &&
+                                typeof item?.type === 'string',
+                            )
+                            .map((item) => ({ field: item.field.trim(), type: item.type }))
+                        : [],
+                }))
+            : []
+
+        cachedFieldGroups = groups
+        return groups
+    })()
+
+    try {
+        return await cachedFieldGroupsPromise
+    } finally {
+        cachedFieldGroupsPromise = null
+    }
 }
 
 // Parse text content and replace variables with actual values
@@ -293,29 +351,17 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         // Variable dropdown functionality
         if (mode === 'designer') {
             let dropdown: HTMLDivElement | null = null
-            let fields: Array<{ field: string; type: string }> = []
+            let fieldGroups: FieldGroup[] = []
             let selectedIndex = -1
             let dropdownItems: HTMLDivElement[] = []
+            let selectableFieldEntries: DropdownFieldEntry[] = []
 
-            // Fetch template settings and contact list fields
+            // Fetch all available fields across customer lists
             const fetchFields = async () => {
                 try {
-                    const templateId = getTemplateIdFromUrl()
-                    if (!templateId) {
-                        console.warn("Could not extract template ID from URL")
-                        return
-                    }
-
-                    const response = await fetch(`/api/templates/${templateId}`)
-                    if (!response.ok) {
-                        console.error("Failed to fetch template settings:", response.statusText)
-                        return
-                    }
-
-                    const data = (await response.json()) as TemplateWithUser
-                    fields = (data.contactList?.fields as Array<{ field: string; type: string }>) || []
+                    fieldGroups = await fetchAllCustomerListFields()
                 } catch (err) {
-                    console.error("Failed to fetch template settings:", err)
+                    console.error("Failed to fetch customer list fields:", err)
                 }
             }
 
@@ -362,14 +408,21 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                     dropdown.style.top = `${rect.bottom + 5}px`
                 }
 
-                const filteredFields = fields.filter(f => 
-                    f.field.toLowerCase().includes(filterText.toLowerCase())
-                )
+                const normalizedFilter = filterText.trim().toLowerCase()
+                const filteredGroups = fieldGroups
+                    .map((group) => ({
+                        ...group,
+                        fields: group.fields.filter((f) =>
+                            f.field.toLowerCase().includes(normalizedFilter),
+                        ),
+                    }))
+                    .filter((group) => group.fields.length > 0)
 
                 dropdownItems = []
                 selectedIndex = -1
+                selectableFieldEntries = []
 
-                if (filteredFields.length === 0) {
+                if (filteredGroups.length === 0) {
                     const emptyMsg = document.createElement("div")
                     emptyMsg.textContent = "No fields available"
                     emptyMsg.style.padding = "8px 12px"
@@ -377,29 +430,65 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                     emptyMsg.style.color = "#999"
                     dropdown.appendChild(emptyMsg)
                 } else {
-                    filteredFields.forEach((field, index) => {
-                        const item = document.createElement("div")
-                        item.textContent = field.field
-                        item.style.padding = "8px 12px"
-                        item.style.cursor = "pointer"
-                        item.style.fontSize = "12px"
-                        item.style.borderBottom = "1px solid #f0f0f0"
-                        item.style.transition = "background-color 0.15s"
+                    filteredGroups.forEach((group) => {
+                        const groupHeader = document.createElement('div')
+                        groupHeader.textContent = group.listName
+                        groupHeader.style.padding = '6px 12px'
+                        groupHeader.style.fontSize = '11px'
+                        groupHeader.style.fontWeight = '600'
+                        groupHeader.style.color = '#666'
+                        groupHeader.style.backgroundColor = '#fafafa'
+                        groupHeader.style.borderTop = '1px solid #f0f0f0'
+                        groupHeader.style.borderBottom = '1px solid #f0f0f0'
+                        dropdown?.appendChild(groupHeader)
 
-                        item.onmouseenter = () => { 
-                            selectedIndex = index
-                            updateSelectedItem(index)
-                        }
-                        item.onmouseleave = () => { 
-                            item.style.backgroundColor = selectedIndex === index ? "#e6f7ff" : "transparent"
-                        }
-                        item.onmousedown = (e) => {
-                            e.preventDefault()
-                            insertVariable(field.field)
-                        }
+                        group.fields.forEach((field) => {
+                            const item = document.createElement("div")
+                            const currentItemIndex = dropdownItems.length
+                            item.style.padding = "8px 12px"
+                            item.style.cursor = "pointer"
+                            item.style.fontSize = "12px"
+                            item.style.borderBottom = "1px solid #f5f5f5"
+                            item.style.transition = "background-color 0.15s"
+                            item.style.display = 'flex'
+                            item.style.justifyContent = 'space-between'
+                            item.style.gap = '12px'
 
-                        dropdownItems.push(item)
-                        dropdown?.appendChild(item)
+                            const fieldLabel = document.createElement('span')
+                            fieldLabel.textContent = field.field
+                            fieldLabel.style.color = '#111'
+
+                            const sourceLabel = document.createElement('span')
+                            sourceLabel.textContent = group.listName
+                            sourceLabel.style.color = '#888'
+                            sourceLabel.style.fontSize = '11px'
+
+                            item.appendChild(fieldLabel)
+                            item.appendChild(sourceLabel)
+
+                            item.onmouseenter = () => {
+                                selectedIndex = currentItemIndex
+                                updateSelectedItem(currentItemIndex)
+                            }
+                            item.onmouseleave = () => {
+                                item.style.backgroundColor = selectedIndex === currentItemIndex ? "#e6f7ff" : "transparent"
+                            }
+                            item.onmousedown = (e) => {
+                                e.preventDefault()
+                                const selectedEntry = selectableFieldEntries[currentItemIndex]
+                                if (selectedEntry) {
+                                    insertVariable(selectedEntry.field)
+                                }
+                            }
+
+                            dropdownItems.push(item)
+                            selectableFieldEntries.push({
+                                field: field.field,
+                                type: field.type,
+                                sourceListName: group.listName,
+                            })
+                            dropdown?.appendChild(item)
+                        })
                     })
 
                     // Auto-select first item
@@ -416,6 +505,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                     document.body.removeChild(dropdown)
                     dropdown = null
                     dropdownItems = []
+                    selectableFieldEntries = []
                     selectedIndex = -1
                 }
             }
@@ -504,7 +594,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                         case 'Tab':
                             if (selectedIndex >= 0 && selectedIndex < dropdownItems.length) {
                                 e.preventDefault()
-                                const selectedField = dropdownItems[selectedIndex].textContent
+                                const selectedField = selectableFieldEntries[selectedIndex]?.field
                                 if (selectedField) {
                                     insertVariable(selectedField)
                                 }
