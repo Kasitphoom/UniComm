@@ -6,7 +6,8 @@
             "main": true,
             "staging": true,
             "release/**": true,
-            "feature/**": false
+            "feature/**": false,
+            "bug-fix/**": false
         }
     }
 }
