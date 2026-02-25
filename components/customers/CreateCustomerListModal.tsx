@@ -297,6 +297,8 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
     };
 
     const isLoading = status === "loading";
+    const csvReady = isEditing || sourceValue !== "CSV_UPLOAD" || !!csvFile
+    const canSubmit = userHasPermission && isValid && !isLoading && csvReady
 
     return (
         <Modal
@@ -589,7 +591,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                             form="customer-list-form"
                             color="secondary"
                             isLoading={isLoading}
-                            isDisabled={!userHasPermission || (isValid && !isLoading && (isEditing || sourceValue !== "CSV_UPLOAD" || !!csvFile))}
+                            isDisabled={!canSubmit}
                             startContent={!isLoading && (isEditing ? <Plus size={18} /> : <Plus size={18} />)}
                         >
                             {isEditing ? "Save Changes" : "Create List"}
