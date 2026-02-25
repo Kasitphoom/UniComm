@@ -25,6 +25,20 @@ type CampaignRunResult = {
     pdfCount?: number
 }
 
+type CampaignRunLogPayload = {
+    campaignId: string
+    campaignName: string
+    triggerSource: CampaignRunTrigger
+    status: SCHEDULE_STATUS
+    success: boolean
+    errorMessage?: string
+    fileId?: string
+    fileStatus: FILE_STATUS
+    generatedDocuments: number
+    startedAt: Date
+    finishedAt: Date
+}
+
 type CampaignRunTrigger = "MANUAL" | "CRON" | "SYSTEM"
 
 type CampaignJobResult = {
@@ -53,6 +67,33 @@ const getLogPrefix = (source: CampaignRunTrigger) => {
     if (source === "MANUAL") return "[MANUAL]"
     if (source === "CRON") return "[CRON]"
     return "[SYSTEM]"
+}
+
+const createCampaignRunLog = async (
+    businessPrisma: BusinessPrismaClient,
+    payload: CampaignRunLogPayload,
+) => {
+    const durationMs = Math.max(
+        0,
+        payload.finishedAt.getTime() - payload.startedAt.getTime(),
+    )
+
+    await (businessPrisma as any).campaignRunLog.create({
+        data: {
+            campaignId: payload.campaignId,
+            campaignName: payload.campaignName,
+            triggerSource: payload.triggerSource,
+            status: payload.status,
+            success: payload.success,
+            errorMessage: payload.errorMessage,
+            fileId: payload.fileId,
+            fileStatus: payload.fileStatus,
+            generatedDocuments: payload.generatedDocuments,
+            startedAt: payload.startedAt,
+            finishedAt: payload.finishedAt,
+            durationMs,
+        },
+    })
 }
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
@@ -272,6 +313,8 @@ const createCampaignFile = async (
     campaign: CampaignWithTemplates,
     businessPrisma: BusinessPrismaClient,
 ): Promise<CampaignFileResult | null> => {
+    const generationStartedAt = new Date()
+
     const contactList = campaign.contactlist
     if (!contactList) {
         throw new Error("Campaign is missing a contact list")
@@ -372,17 +415,23 @@ const createCampaignFile = async (
     const zipUrl = await storageService.uploadFile(zipBuffer, zipFileName, {
         contentType: "application/zip",
     })
+    const generationFinishedAt = new Date()
 
     const expiresAt = new Date(Date.now() + ZIP_EXPIRATION_MS)
 
+    const campaignFileData = {
+        campaignId: campaign.id,
+        fileName: zipFileName,
+        filePath: zipUrl,
+        generatedDocuments: pdfArtifacts.length,
+        status: FILE_STATUS.AVALIABLE,
+        generationStartedAt,
+        generationFinishedAt,
+        expiresAt,
+    } as any
+
     const campaignFile = await businessPrisma.campaignFile.create({
-        data: {
-            campaignId: campaign.id,
-            fileName: zipFileName,
-            filePath: zipUrl,
-            status: FILE_STATUS.AVALIABLE,
-            expiresAt,
-        },
+        data: campaignFileData,
     })
 
     return { file: campaignFile, pdfCount: pdfArtifacts.length }
@@ -443,11 +492,13 @@ const runCampaignForBusiness = async (
             `[Campaign Runner][${triggerSource}] Running ${campaignsToRun.length} campaign(s) for business ${business.name} (${business.id})`,
         )
         for (const campaign of campaignsToRun) {
+            const runStartedAt = new Date()
             try {
                 const campaignFileResult = await createCampaignFile(businessId, campaign, businessPrisma)
                 const hasGeneratedFile = Boolean(campaignFileResult?.file?.id)
                 const nextFileStatus = hasGeneratedFile ? FILE_STATUS.AVALIABLE : FILE_STATUS.EMPTY
                 const nextScheduleStatus = SCHEDULE_STATUS.TRIGGERED
+                const runFinishedAt = new Date()
                 const successMessage = hasGeneratedFile
                     ? `${logPrefix} Campaign run successfully`
                     : `${logPrefix} Campaign run completed without generated files`
@@ -476,6 +527,19 @@ const runCampaignForBusiness = async (
                     },
                 })
 
+                await createCampaignRunLog(businessPrisma, {
+                    campaignId: campaign.id,
+                    campaignName: campaign.name,
+                    triggerSource,
+                    status: nextScheduleStatus,
+                    success: true,
+                    fileId: campaignFileResult?.file.id,
+                    fileStatus: nextFileStatus,
+                    generatedDocuments: campaignFileResult?.pdfCount ?? 0,
+                    startedAt: runStartedAt,
+                    finishedAt: runFinishedAt,
+                })
+
                 campaignResults.push({
                     campaignId: campaign.id,
                     success: true,
@@ -488,6 +552,7 @@ const runCampaignForBusiness = async (
                 const errorMessage = campaignError instanceof Error ? campaignError.message : "Unknown error"
                 const nextFileStatus = FILE_STATUS.FAILED
                 const nextScheduleStatus = SCHEDULE_STATUS.FAILED
+                const runFinishedAt = new Date()
 
                 console.error(`[Campaign ${campaign.name}] Failed to run: ${errorMessage}`)
 
@@ -504,6 +569,19 @@ const runCampaignForBusiness = async (
                             },
                         },
                     },
+                })
+
+                await createCampaignRunLog(businessPrisma, {
+                    campaignId: campaign.id,
+                    campaignName: campaign.name,
+                    triggerSource,
+                    status: nextScheduleStatus,
+                    success: false,
+                    errorMessage,
+                    fileStatus: nextFileStatus,
+                    generatedDocuments: 0,
+                    startedAt: runStartedAt,
+                    finishedAt: runFinishedAt,
                 })
 
                 campaignResults.push({

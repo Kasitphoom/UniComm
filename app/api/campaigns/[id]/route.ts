@@ -3,6 +3,7 @@ import { Prisma, UserRole } from "@/app/generated/business/prisma"
 import { requireAuth } from "@/lib/api-auth"
 import { getBusinessPrisma } from "@/lib/prisma-business"
 import { userHasPermissionAPI } from "@/utils/permissions"
+import { getStorageService } from "@/utils/upload/modules"
 
 const normalizeFieldName = (value: string) => value.trim().toLowerCase()
 
@@ -393,6 +394,14 @@ export async function DELETE(req: NextRequest, { params }: PatchContext) {
 
         const existing = await prisma.campaign.findUnique({
             where: { id: campaignId },
+            include: {
+                files: {
+                    select: {
+                        id: true,
+                        filePath: true,
+                    },
+                },
+            },
         })
 
         if (!existing) {
@@ -400,6 +409,30 @@ export async function DELETE(req: NextRequest, { params }: PatchContext) {
                 { error: "Campaign not found" },
                 { status: 404 },
             )
+        }
+
+        if (existing.files.length > 0) {
+            const storageService = getStorageService()
+            if (!storageService) {
+                return NextResponse.json(
+                    {
+                        error: "Storage service not configured, cannot delete campaign files safely",
+                    },
+                    { status: 500 },
+                )
+            }
+
+            for (const file of existing.files) {
+                await storageService.deleteFile(file.filePath)
+            }
+
+            await prisma.campaignFile.deleteMany({
+                where: {
+                    id: {
+                        in: existing.files.map((file) => file.id),
+                    },
+                },
+            })
         }
 
         await prisma.campaign.delete({

@@ -2,9 +2,14 @@ import CustomersControlBar from "@/components/customers/CustomersControlBar"
 import CustomersTable from "@/components/customers/CustomersTable"
 import { getBusinessPrismaByCookie } from "@/lib/prisma-business"
 import { notFound } from "next/navigation"
+import { isValidObjectId } from "@/utils/objectId"
 
 export default async function CustomersListPage({ params }: { params: { id: string } }) {
     const { id } = await params
+
+    if (!id || !isValidObjectId(id)) {
+        notFound()
+    }
 
     const prisma = await getBusinessPrismaByCookie()
     const contactList = await prisma.contactList.findUnique({
