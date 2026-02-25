@@ -1,4 +1,4 @@
-import type { PDFRenderProps, Plugin, Schema, getDefaultFont } from "@pdfme/common"
+import type { PDFRenderProps, Plugin, Schema } from "@pdfme/common"
 import { createSvgStr } from "@pdfme/schemas/utils"
 import { text as textPlugin } from "@pdfme/schemas"
 import { Type } from "lucide"
@@ -239,6 +239,9 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         textBlock.id = `text-${schema.id}`
         textBlock.style.width = "100%"
         textBlock.style.fontFamily = schema.fontName || "sans-serif"
+        const normalizedFontName = (schema.fontName || "").toLowerCase()
+        textBlock.style.fontWeight = /bold/.test(normalizedFontName) ? "700" : "400"
+        textBlock.style.fontStyle = /(italic|oblique)/.test(normalizedFontName) ? "italic" : "normal"
         textBlock.style.fontSize = `${schema.fontSize || 12}pt`
         textBlock.style.color = schema.fontColor || "#000000"
         textBlock.style.textAlign = schema.alignment || "left"
