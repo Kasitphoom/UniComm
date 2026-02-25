@@ -15,6 +15,7 @@ import { clientFetchParsedTemplate, clientFetchTemplate } from '@/utils/template
 import dynamic from 'next/dynamic'
 import { useUser } from '../providers/UserProvider'
 import { ApprovalStatus } from '@/types/approver'
+import { getPdfmeClientFont } from '@/lib/pdfme/fonts'
 
 const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { 
     ssr: false,
@@ -32,6 +33,8 @@ const getContentFromSchema = (schema: any): string => {
 
 // Shared PDF preview generator that produces a Uint8Array for a template
 export const generatePdfPreview = async (template: Template) => {
+    const font = await getPdfmeClientFont()
+
     const mockInputs = getInputFromTemplate(template).map((obj, pageIndex) => {
         const mockInput: Record<string, string> = {}
         const pageSchemas = template.schemas[pageIndex] || []
@@ -47,6 +50,9 @@ export const generatePdfPreview = async (template: Template) => {
         template,
         inputs: mockInputs,
         plugins,
+        options: {
+            font,
+        },
     })
 
     return pdfBytes

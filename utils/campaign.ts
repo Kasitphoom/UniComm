@@ -9,6 +9,7 @@ import { getInputFromTemplate } from "@pdfme/common"
 import type { Schema, Template as PdfTemplate } from "@pdfme/common"
 import type { TextWithVariablesSchema } from "@/lib/template/plugins/textWithVariables"
 import { plugins } from "@/components/Editor/plugins"
+import { getPdfmeServerFont } from "@/lib/pdfme/server-fonts"
 import JSZip from "jszip"
 
 const MAX_PARALLEL_BUSINESSES = 10
@@ -378,6 +379,7 @@ const createCampaignFile = async (
     })()
 
     const pdfArtifacts: PdfArtifact[] = []
+    const font = await getPdfmeServerFont()
 
     for (const template of templates) {
         const fileContent = await storageService.getFileContent(template.filePath!)
@@ -390,6 +392,9 @@ const createCampaignFile = async (
                 template: parsedContent,
                 inputs,
                 plugins,
+                options: {
+                    font,
+                },
             })
 
             const fileName = `campaign-${campaign.name}-customer-${customer.id ?? "unknown"}.pdf`

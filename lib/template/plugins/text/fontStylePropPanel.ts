@@ -60,6 +60,33 @@ const resolveFontNameByStyle = (
     return currentFontName
 }
 
+const getRegularFontCandidate = (familyCandidates: string[], fallbackFontName: string) => {
+    const plainMatch = familyCandidates.find((fontName) => !isBoldName(fontName) && !isItalicName(fontName))
+    if (plainMatch) return plainMatch
+
+    const regularMatch = familyCandidates.find((fontName) => /regular/i.test(fontName))
+    if (regularMatch) return regularMatch
+
+    return familyCandidates[0] || fallbackFontName
+}
+
+const getCollapsedFontOptions = (fontNames: string[], fallbackFontName: string) => {
+    const familyToFontMap = new Map<string, string>()
+
+    for (const fontName of fontNames) {
+        const family = normalizeFamily(fontName) || fontName
+        if (familyToFontMap.has(family)) continue
+
+        const familyCandidates = fontNames.filter((name) => normalizeFamily(name) === family)
+        const regularCandidate = getRegularFontCandidate(familyCandidates, fallbackFontName)
+        familyToFontMap.set(family, regularCandidate)
+    }
+
+    return Array.from(familyToFontMap.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([family, fontName]) => ({ label: family, value: fontName }))
+}
+
 const FontStylePresetWidget = (props: PropPanelWidgetProps) => {
     const { rootElement, options, activeSchema, changeSchemas } = props
 
@@ -190,13 +217,33 @@ export const withFontStylePropPanel = <T extends Schema>(
     defaultSchemaOverride?: Partial<T>,
 ): PropPanel<T> => ({
     schema: (propPanelProps) => {
+        const font = propPanelProps.options.font || {
+            [DEFAULT_FONT_NAME]: { data: "", fallback: true },
+        }
+        const fontNames = Object.keys(font)
+        const fallbackFontName = getFallbackFontName(font)
+
         const parentSchema =
             typeof basePropPanel.schema === "function"
                 ? basePropPanel.schema(propPanelProps)
                 : basePropPanel.schema
 
+        const fontNameSchema = (parentSchema as Record<string, any>).fontName
+        const collapsedFontOptions = getCollapsedFontOptions(fontNames, fallbackFontName)
+
         return {
             ...parentSchema,
+            ...(fontNameSchema
+                ? {
+                    fontName: {
+                        ...fontNameSchema,
+                        props: {
+                            ...(fontNameSchema.props || {}),
+                            options: collapsedFontOptions,
+                        },
+                    },
+                }
+                : {}),
             fontStylePreset: {
                 type: "string",
                 widget: "FontStylePresetWidget",
