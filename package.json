@@ -1,6 +1,6 @@
 {
   "name": "unicomm",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "scripts": {
     "dev": "next dev --port 4100",
@@ -12,6 +12,10 @@
     "migrate:db:business": "tsx scripts/migrations/run.ts --db=business"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/poppins": "^5.2.7",
+    "@fontsource/roboto": "^5.2.10",
+    "@fontsource/tinos": "^5.2.7",
     "@heroui/react": "^2.8.6",
     "@heroui/use-infinite-scroll": "^2.2.12",
     "@hookform/resolvers": "^5.2.2",

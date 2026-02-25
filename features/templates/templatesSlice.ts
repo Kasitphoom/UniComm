@@ -108,14 +108,24 @@ export const createTemplate = createAsyncThunk(
 
 export const updateTemplateSettings = createAsyncThunk(
     "templates/updateSettings",
-    async (payload: { id: string; title: string; contactListId?: string | null }) => {
+    async (payload: {
+        id: string
+        title: string
+        paperSize: "custom" | "a4" | "letter" | "legal"
+        orientation: "portrait" | "landscape"
+        widthCm: string
+        heightCm: string
+    }) => {
         const res = await fetch(`/api/templates/${payload.id}/settings`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             credentials: "include",
             body: JSON.stringify({
                 title: payload.title,
-                contactListId: payload.contactListId ?? null,
+                paperSize: payload.paperSize,
+                orientation: payload.orientation,
+                widthCm: payload.widthCm,
+                heightCm: payload.heightCm,
             }),
         })
 
@@ -424,11 +434,42 @@ const templatesSlice = createSlice({
             .addCase(updateTemplateSettings.fulfilled, (state, action) => {
                 state.detail.status = "succeeded"
                 const updatedTemplate = action.payload
+                const { widthCm, heightCm, orientation } = action.meta.arg
 
                 if (state.detail.data) {
                     state.detail.data = { ...state.detail.data, ...updatedTemplate } as any
                 } else {
                     state.detail.data = updatedTemplate as any
+                }
+
+                if (state.parsedTemplate.data) {
+                    const widthMm = Number.parseFloat(widthCm) * 10
+                    const heightMm = Number.parseFloat(heightCm) * 10
+
+                    if (Number.isFinite(widthMm) && Number.isFinite(heightMm)) {
+                        const [finalWidthMm, finalHeightMm] =
+                            orientation === "landscape"
+                                ? [heightMm, widthMm]
+                                : [widthMm, heightMm]
+
+                        const currentBasePdf =
+                            state.parsedTemplate.data.basePdf &&
+                            typeof state.parsedTemplate.data.basePdf === "object" &&
+                            !(state.parsedTemplate.data.basePdf instanceof ArrayBuffer) &&
+                            !(state.parsedTemplate.data.basePdf instanceof Uint8Array)
+                                ? (state.parsedTemplate.data.basePdf as { width?: number; height?: number; padding?: [number, number, number, number] })
+                                : undefined
+
+                        state.parsedTemplate.data = {
+                            ...state.parsedTemplate.data,
+                            basePdf: {
+                                ...(currentBasePdf ?? {}),
+                                width: finalWidthMm,
+                                height: finalHeightMm,
+                                padding: currentBasePdf?.padding ?? [10, 10, 10, 10],
+                            },
+                        }
+                    }
                 }
 
                 state.list.items = state.list.items.map((item) =>
