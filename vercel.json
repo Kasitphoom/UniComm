@@ -4,8 +4,10 @@
         "deploymentEnabled": {
             "*": false,
             "main": true,
+            "staging": true,
             "release/**": true,
-            "staging": true
+            "feature/**": false,
+            "bug-fix/**": false
         }
     }
 }
