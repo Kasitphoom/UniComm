@@ -520,19 +520,37 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 const textContent = getText(textBlock)
                 const cursorPos = getCaretOffset(textBlock)
 
-                // Find the "{{" before cursor
-                let startPos = cursorPos
+                // Find the opening {{ that we're currently typing in
                 const beforeCursor = textContent.substring(0, cursorPos)
-                const lastBracePos = beforeCursor.lastIndexOf("{{")
+                const lastOpenPos = beforeCursor.lastIndexOf("{{")
                 
-                if (lastBracePos !== -1) {
-                    startPos = lastBracePos
+                // Check if we're inside an unclosed {{
+                let insideUnclosedBraces = false
+                if (lastOpenPos !== -1) {
+                    const textBetween = textContent.substring(lastOpenPos, cursorPos)
+                    if (!textBetween.includes("}}")) {
+                        insideUnclosedBraces = true
+                    }
                 }
 
-                // Create new text with variable inserted
-                const beforeVar = textContent.substring(0, startPos)
+                let newText: string
+                let newCursorPos: number
+
+                const beforeVar = textContent.substring(0, lastOpenPos + 2) // Include the {{
                 const afterVar = textContent.substring(cursorPos)
-                const newText = beforeVar + `{{${fieldName}}}` + afterVar
+                newText = beforeVar + `${fieldName}}}` + afterVar
+                newCursorPos = lastOpenPos + 2 + `${fieldName}}}`.length
+
+                // if (insideUnclosedBraces) {
+                //     // We're inside {{, so keep the {{ and just add fieldName}}
+                    
+                // } else {
+                //     // Not inside {{, so insert the full {{fieldName}}
+                //     const beforeVar = textContent.substring(0, cursorPos)
+                //     const afterVar = textContent.substring(cursorPos)
+                //     newText = beforeVar + `{{${fieldName}}}` + afterVar
+                //     newCursorPos = cursorPos + `{{${fieldName}}}`.length
+                // }
                 
                 textBlock.innerText = newText
                 
@@ -544,26 +562,41 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 textBlock.focus()
                 
                 // Set cursor after the inserted variable
-                const newCursorPos = startPos + `{{${fieldName}}}`.length
                 setCaretOffset(textBlock, newCursorPos)
             }
 
             let lastText = rawText
+            
+            // Get only the text on the current line (from last newline to cursor)
+            // Supports all line ending formats: \n, \r\n, \r
+            const getCurrentLineText = (text: string, cursorPos: number): string => {
+                // Find the last line break before cursor (supports \n, \r\n, \r)
+                let lastNewlinePos = -1
+                for (let i = cursorPos - 1; i >= 0; i--) {
+                    if (text[i] === '\n' || text[i] === '\r') {
+                        lastNewlinePos = i
+                        break
+                    }
+                }
+                const lineStartPos = lastNewlinePos === -1 ? 0 : lastNewlinePos + 1
+                return text.substring(lineStartPos, cursorPos)
+            }
+
             textBlock.addEventListener('input', () => {
                 const currentText = textBlock.textContent || ''
                 const selection = window.getSelection()
                 if (!selection || !selection.rangeCount) return
                 
-                const cursorPos = selection.getRangeAt(0).startOffset
-                const textBefore = currentText.substring(0, cursorPos)
+                const cursorPos = getCaretOffset(textBlock)  // Use the correct function
+                const currentLineText = getCurrentLineText(currentText, cursorPos)
                 
-                // Check if user just typed "{{"
-                if (textBefore.endsWith("{{") && !lastText.endsWith("{{")) {
+                // Check if current line ends with "{{" (just typed it)
+                if (currentLineText.endsWith("{{") && !lastText.endsWith("{{")) {
                     showDropdown("")
-                } else if (textBefore.includes("{{") && !textBefore.substring(textBefore.lastIndexOf("{{")).includes("}}")) {
-                    // User is typing inside {{ }}
-                    const startIdx = textBefore.lastIndexOf("{{")
-                    const filterText = textBefore.substring(startIdx + 2)
+                } else if (currentLineText.includes("{{") && !currentLineText.substring(currentLineText.lastIndexOf("{{")).includes("}}")) {
+                    // User is typing inside {{ }} on the current line only
+                    const startIdx = currentLineText.lastIndexOf("{{")
+                    const filterText = currentLineText.substring(startIdx + 2)
                     showDropdown(filterText)
                 } else {
                     hideDropdown()
