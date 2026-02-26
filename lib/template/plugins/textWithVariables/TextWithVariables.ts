@@ -520,26 +520,42 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 const textContent = getText(textBlock)
                 const cursorPos = getCaretOffset(textBlock)
 
-                // Find the opening {{ that we're currently typing in
-                const beforeCursor = textContent.substring(0, cursorPos)
-                const lastOpenPos = beforeCursor.lastIndexOf("{{")
-                
-                // Check if we're inside an unclosed {{
-                let insideUnclosedBraces = false
-                if (lastOpenPos !== -1) {
-                    const textBetween = textContent.substring(lastOpenPos, cursorPos)
-                    if (!textBetween.includes("}}")) {
-                        insideUnclosedBraces = true
+                // Search backwards from cursor to find the most recent unclosed {{
+                let openPos = -1
+                for (let i = cursorPos - 1; i >= 1; i--) {
+                    if (textContent[i - 1] === '{' && textContent[i] === '{') {
+                        // Found a {{ at position i-1
+                        // Check if there's a }} between it and the cursor
+                        const textAfter = textContent.substring(i + 1, cursorPos)
+                        if (!textAfter.includes('}}')) {
+                            // This {{ is unclosed, we're inside it
+                            openPos = i - 1
+                            break
+                        }
+                        // This {{ has a }} after it, continue searching backwards
                     }
                 }
 
                 let newText: string
                 let newCursorPos: number
 
-                const beforeVar = textContent.substring(0, lastOpenPos + 2) // Include the {{
-                const afterVar = textContent.substring(cursorPos)
-                newText = beforeVar + `${fieldName}}}` + afterVar
-                newCursorPos = lastOpenPos + 2 + `${fieldName}}}`.length
+                if (openPos !== -1) {
+                    // We're inside an unclosed {{
+                    const beforeVar = textContent.substring(0, openPos + 2) // Include the {{
+                    let afterVar = textContent.substring(cursorPos)
+                    
+                    // Clean up: ensure we don't have extra {{ at the start of afterVar
+                    afterVar = afterVar.replace(/^\{\{/, '')
+                    
+                    newText = beforeVar + `${fieldName}}}` + afterVar
+                    newCursorPos = openPos + 2 + `${fieldName}}}`.length
+                } else {
+                    // Not inside {{, insert the full {{fieldName}}
+                    const beforeVar = textContent.substring(0, cursorPos)
+                    const afterVar = textContent.substring(cursorPos)
+                    newText = beforeVar + `{{${fieldName}}}` + afterVar
+                    newCursorPos = cursorPos + `{{${fieldName}}}`.length
+                }
                 
                 textBlock.innerText = newText
                 
