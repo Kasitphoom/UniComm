@@ -2,7 +2,7 @@ import type { PDFRenderProps, Plugin, Schema } from "@pdfme/common"
 import { createSvgStr } from "@pdfme/schemas/utils"
 import { Blocks } from "lucide"
 import type { UIRenderProps } from "@pdfme/common"
-import { text, multiVariableText, image, svg, table, line, rectangle, ellipse, dateTime, date, time, select, radioGroup } from '@pdfme/schemas'
+import { multiVariableText, image, svg, table, line, rectangle, ellipse, dateTime, date, time, select, radioGroup } from '@pdfme/schemas'
 import { TextWithVariables } from '@/lib/template/plugins/textWithVariables'
 import { ComponentBlocksPropPanel } from "./propPanel"
 
@@ -14,8 +14,6 @@ export type ComponentBlocksSchema = Schema & {
 
 // Built-in plugin map for rendering child schemas by their `type`
 const builtinPluginMap: Record<string, Plugin<any>> = {
-    text,
-    multiVariableText,
     TextWithVariables,
     image,
     svg,
