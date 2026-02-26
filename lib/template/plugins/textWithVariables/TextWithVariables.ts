@@ -540,17 +540,6 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 const afterVar = textContent.substring(cursorPos)
                 newText = beforeVar + `${fieldName}}}` + afterVar
                 newCursorPos = lastOpenPos + 2 + `${fieldName}}}`.length
-
-                // if (insideUnclosedBraces) {
-                //     // We're inside {{, so keep the {{ and just add fieldName}}
-                    
-                // } else {
-                //     // Not inside {{, so insert the full {{fieldName}}
-                //     const beforeVar = textContent.substring(0, cursorPos)
-                //     const afterVar = textContent.substring(cursorPos)
-                //     newText = beforeVar + `{{${fieldName}}}` + afterVar
-                //     newCursorPos = cursorPos + `{{${fieldName}}}`.length
-                // }
                 
                 textBlock.innerText = newText
                 
