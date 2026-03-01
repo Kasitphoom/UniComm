@@ -109,7 +109,7 @@ const parseVariables = (text: string, data?: Record<string, any>): string => {
     }
     
     // Remove any unreplaced variables (show field name without braces)
-    result = result.replace(/\{\{([^}]+)\}\}/g, (match, fieldName) => fieldName.trim())
+    result = result.replace(/\{\{([^{}]+)\}\}/g, (match, fieldName) => fieldName.trim())
     
     return result
 }
