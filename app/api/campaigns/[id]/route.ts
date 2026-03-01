@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/api-auth"
 import { getBusinessPrisma } from "@/lib/prisma-business"
 import { userHasPermissionAPI } from "@/utils/permissions"
 import { getStorageService } from "@/utils/upload/modules"
+import { refreshTemplateDependencies } from "@/utils/template/refreshTemplateDependencies"
 
 const normalizeFieldName = (value: string) => value.trim().toLowerCase()
 
@@ -253,16 +254,23 @@ export async function PATCH(req: NextRequest, { params }: PatchContext) {
             )
         }
 
-        const templateRecord = templateIdList
-            ? await prisma.templates.findUnique({
-                  where: { id: nextTemplateId },
-                  select: {
-                      id: true,
-                      title: true,
-                      requiredFields: true,
-                  },
+        const shouldValidateFields = templateIdsProvided || customerListProvided
+        const templateRecord = shouldValidateFields
+            ? await refreshTemplateDependencies({
+                  prisma,
+                  templateId: nextTemplateId,
+                  businessId: auth.businessId,
               })
-            : existing.templates[0]?.template
+            : templateIdList
+              ? await prisma.templates.findUnique({
+                    where: { id: nextTemplateId },
+                    select: {
+                        id: true,
+                        title: true,
+                        requiredFields: true,
+                    },
+                })
+              : existing.templates[0]?.template
 
         if (!templateRecord) {
             return NextResponse.json(
@@ -290,12 +298,12 @@ export async function PATCH(req: NextRequest, { params }: PatchContext) {
             )
         }
 
-        const shouldValidateFields = templateIdsProvided || customerListProvided
         if (shouldValidateFields) {
             const normalizedCustomerFields = toFieldNameSet(contactListRecord.fields)
             const missingFields = Array.isArray(templateRecord.requiredFields)
                 ? templateRecord.requiredFields.filter(
-                      (field) => typeof field === "string" && !normalizedCustomerFields.has(normalizeFieldName(field)),
+                      (field: unknown) =>
+                          typeof field === "string" && !normalizedCustomerFields.has(normalizeFieldName(field)),
                   )
                 : []
 

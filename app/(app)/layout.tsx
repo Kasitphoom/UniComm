@@ -1,11 +1,21 @@
 import SideBar from "@/components/sidebar/SideBar";
 import Header from "@/components/header/Header";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { DEFAULT_BUSINESS_COOKIE } from "@/types/business";
 
-export default function AppLayout({
+export default async function AppLayout({
     children,
 }: Readonly<{
     children: React.ReactNode;
 }>) {
+    const cookieStore = await cookies();
+    const defaultBusiness = cookieStore.get(DEFAULT_BUSINESS_COOKIE)?.value;
+
+    if (!defaultBusiness) {
+        redirect('/');
+    }
+
     // Note: Only the root layout (`app/layout.tsx`) should render <html> and <body>.
     // This segment layout wraps page content with the app shell.
     return (

@@ -2,6 +2,9 @@ import { cookies } from 'next/headers'
 import { PrismaClient } from '../app/generated/business/prisma'
 import { DEFAULT_BUSINESS_COOKIE } from '@/types/business'
 
+// Cache Prisma clients per business ID to avoid opening new connections on every call
+const prismaClientCache = new Map<string, PrismaClient>()
+
 /**
  * Build a MongoDB connection string that points to the provided database name,
  * based on the BUSINESS_DATABASE_URL env var.
@@ -15,12 +18,20 @@ export function buildBusinessDbUrl(id: string): string {
 }
 
 /**
- * Create a Prisma client instance for a specific business database.
- * Do NOT cache globally because each business uses a distinct DB.
+ * Get or create a cached Prisma client instance for a specific business database.
+ * Reuses existing connections to avoid exhausting the connection pool.
  */
 export function getBusinessPrisma(id: string) {
+    // Return cached client if it exists
+    if (prismaClientCache.has(id)) {
+        return prismaClientCache.get(id)!
+    }
+    
+    // Create new client and cache it
     const url = buildBusinessDbUrl(id)
-    return new PrismaClient({ datasources: { db: { url } } })
+    const client = new PrismaClient({ datasources: { db: { url } } })
+    prismaClientCache.set(id, client)
+    return client
 }
 
 export async function getBusinessPrismaByCookie() {
@@ -28,6 +39,24 @@ export async function getBusinessPrismaByCookie() {
     const businessId = cookieStore.get(DEFAULT_BUSINESS_COOKIE)?.value
     if (!businessId) throw new Error('No business ID found in cookies')
     return getBusinessPrisma(businessId)
+}
+
+export async function disconnectAllBusinessPrisma() {
+    const disconnectPromises = Array.from(prismaClientCache.values()).map(client =>
+        client.$disconnect().catch(err => console.error('Error disconnecting Prisma client:', err))
+    )
+    await Promise.all(disconnectPromises)
+    prismaClientCache.clear()
+}
+
+if (typeof process !== 'undefined') {
+    const shutdown = async (signal: string) => {
+        console.log(`${signal} received, disconnecting Prisma clients...`)
+        await disconnectAllBusinessPrisma()
+        process.exit(0)
+    }
+    process.on('SIGTERM', () => shutdown('SIGTERM'))
+    process.on('SIGINT', () => shutdown('SIGINT'))
 }
 
 // Backwards-compatible default export for environments using a single business DB from env

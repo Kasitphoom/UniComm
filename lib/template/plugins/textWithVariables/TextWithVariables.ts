@@ -109,7 +109,7 @@ const parseVariables = (text: string, data?: Record<string, any>): string => {
     }
     
     // Remove any unreplaced variables (show field name without braces)
-    result = result.replace(/\{\{([^}]+)\}\}/g, (match, fieldName) => fieldName.trim())
+    result = result.replace(/\{\{([^{}]+)\}\}/g, (match, fieldName) => fieldName.trim())
     
     return result
 }
@@ -117,7 +117,7 @@ const parseVariables = (text: string, data?: Record<string, any>): string => {
 // Extract all variable names from text (e.g., ["firstName", "lastName"])
 export const extractVariables = (text: string): string[] => {
     if (typeof text !== "string") return []
-    const matches = text.matchAll(/\{\{([^}]+)\}\}/g)
+    const matches = text.matchAll(/\{\{([^{}]+)\}\}/g)
     return Array.from(new Set(Array.from(matches, m => m[1].trim()).filter(Boolean)))
 }
 
@@ -290,11 +290,30 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         const getCaretOffset = (element: HTMLDivElement) => {
             const selection = window.getSelection()
             if (!selection || selection.rangeCount === 0) return 0
-            const range = selection.getRangeAt(0)
-            const preRange = range.cloneRange()
-            preRange.selectNodeContents(element)
-            preRange.setEnd(range.startContainer, range.startOffset)
-            return preRange.toString().length
+
+            const range = selection.getRangeAt(0).cloneRange()
+            range.collapse(true)
+
+            // Unique marker unlikely to exist in user text
+            const markerText = "__CARET_MARKER__"
+            const markerNode = document.createTextNode(markerText)
+
+            range.insertNode(markerNode)
+
+            const fullTextWithMarker = element.innerText
+            const offset = fullTextWithMarker.indexOf(markerText)
+
+            // Build range after marker before removing it
+            const newRange = document.createRange()
+            newRange.setStartAfter(markerNode)
+            newRange.collapse(true)
+
+            markerNode.parentNode?.removeChild(markerNode)
+
+            selection.removeAllRanges()
+            selection.addRange(newRange)
+
+            return offset === -1 ? 0 : offset
         }
 
         const setCaretOffset = (element: HTMLDivElement, offset: number) => {
@@ -388,6 +407,44 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 }
             }
 
+            const getCaretClientRect = () => {
+                const selection = window.getSelection()
+                if (!selection || selection.rangeCount === 0) return null
+
+                const range = selection.getRangeAt(0).cloneRange()
+                range.collapse(true)
+
+                // Try native rect first
+                let rect = range.getBoundingClientRect()
+                if (rect && (rect.width !== 0 || rect.height !== 0)) {
+                    return rect
+                }
+
+                // Fallback: insert a marker to measure exact caret position
+                const marker = document.createElement("span")
+                marker.textContent = "\u200b"
+                marker.style.display = "inline-block"
+                marker.style.width = "0"
+                marker.style.overflow = "hidden"
+                marker.style.lineHeight = "1"
+
+                range.insertNode(marker)
+
+                rect = marker.getBoundingClientRect()
+
+                // Restore caret after marker
+                const newRange = document.createRange()
+                newRange.setStartAfter(marker)
+                newRange.collapse(true)
+
+                marker.parentNode?.removeChild(marker)
+
+                selection.removeAllRanges()
+                selection.addRange(newRange)
+
+                return rect
+            }
+
             const showDropdown = (filterText: string = "") => {
                 if (dropdown) hideDropdown()
 
@@ -403,12 +460,10 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 dropdown.style.minWidth = "150px"
 
                 // Position dropdown near cursor
-                const selection = window.getSelection()
-                if (selection && selection.rangeCount > 0) {
-                    const range = selection.getRangeAt(0)
-                    const rect = range.getBoundingClientRect()
-                    dropdown.style.left = `${rect.left}px`
-                    dropdown.style.top = `${rect.bottom + 5}px`
+                const rect = getCaretClientRect()
+                if (rect) {
+                    dropdown.style.left = `${Math.round(rect.left)}px`
+                    dropdown.style.top = `${Math.round(rect.bottom + 5)}px`
                 }
 
                 const normalizedFilter = filterText.trim().toLowerCase()
@@ -520,19 +575,64 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 const textContent = getText(textBlock)
                 const cursorPos = getCaretOffset(textBlock)
 
-                // Find the "{{" before cursor
-                let startPos = cursorPos
-                const beforeCursor = textContent.substring(0, cursorPos)
-                const lastBracePos = beforeCursor.lastIndexOf("{{")
-                
-                if (lastBracePos !== -1) {
-                    startPos = lastBracePos
-                }
+                // find the current line start so replacements stay on the active line
+                const lineStartPos =
+                    Math.max(
+                        textContent.lastIndexOf("\n", cursorPos - 1),
+                        textContent.lastIndexOf("\r", cursorPos - 1),
+                    ) + 1
 
-                // Create new text with variable inserted
-                const beforeVar = textContent.substring(0, startPos)
-                const afterVar = textContent.substring(cursorPos)
-                const newText = beforeVar + `{{${fieldName}}}` + afterVar
+                console.log("start pos:", lineStartPos, "Cursor pos", cursorPos)
+                const lineText = textContent.slice(lineStartPos, cursorPos + 1)
+                const lastOpenInLine = lineText.lastIndexOf("{{")
+                console.log("Line text:", JSON.stringify(lineText), "Last {{ in line at:", lastOpenInLine)
+
+                const hasUnclosedOpenInLine =
+                    lastOpenInLine !== -1 &&
+                    lineText.indexOf("}}", lastOpenInLine + 2) === -1
+
+                const openPos = hasUnclosedOpenInLine
+                    ? lineStartPos + lastOpenInLine
+                    : -1
+
+                const immediateOpenPos =
+                    cursorPos >= 2 &&
+                    textContent.slice(cursorPos - 2, cursorPos) === "{{"
+                        ? cursorPos - 2
+                        : -1
+
+                const forwardOpenPos =
+                    textContent.slice(cursorPos, cursorPos + 2) === "{{"
+                        ? cursorPos
+                        : -1
+
+                const effectiveOpenPos =
+                    openPos !== -1
+                        ? openPos
+                        : immediateOpenPos !== -1
+                            ? immediateOpenPos
+                            : forwardOpenPos
+
+                let newText: string
+                let newCursorPos: number
+
+                if (effectiveOpenPos !== -1) {
+                    // We're inside an unclosed {{
+                    const beforeVar = textContent.substring(0, effectiveOpenPos + 2) // Include the {{
+                    let afterVar = textContent.substring(cursorPos)
+                    
+                    // Clean up: remove repeated opening braces left around the cursor
+                    afterVar = afterVar.replace(/^(?:\{\{)+/, '')
+                    
+                    newText = beforeVar + `${fieldName}}}` + afterVar
+                    newCursorPos = effectiveOpenPos + 2 + `${fieldName}}}`.length
+                } else {
+                    // Not inside {{, insert the full {{fieldName}}
+                    const beforeVar = textContent.substring(0, cursorPos)
+                    const afterVar = textContent.substring(cursorPos)
+                    newText = beforeVar + `{{${fieldName}}}` + afterVar
+                    newCursorPos = cursorPos + `{{${fieldName}}}`.length
+                }
                 
                 textBlock.innerText = newText
                 
@@ -544,26 +644,41 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 textBlock.focus()
                 
                 // Set cursor after the inserted variable
-                const newCursorPos = startPos + `{{${fieldName}}}`.length
                 setCaretOffset(textBlock, newCursorPos)
             }
 
             let lastText = rawText
+            
+            // Get only the text on the current line (from last newline to cursor)
+            // Supports all line ending formats: \n, \r\n, \r
+            const getCurrentLineText = (text: string, cursorPos: number): string => {
+                // Find the last line break before cursor (supports \n, \r\n, \r)
+                let lastNewlinePos = -1
+                for (let i = cursorPos - 1; i >= 0; i--) {
+                    if (text[i] === '\n' || text[i] === '\r') {
+                        lastNewlinePos = i
+                        break
+                    }
+                }
+                const lineStartPos = lastNewlinePos === -1 ? 0 : lastNewlinePos + 1
+                return text.substring(lineStartPos, cursorPos)
+            }
+
             textBlock.addEventListener('input', () => {
                 const currentText = textBlock.textContent || ''
                 const selection = window.getSelection()
                 if (!selection || !selection.rangeCount) return
                 
-                const cursorPos = selection.getRangeAt(0).startOffset
-                const textBefore = currentText.substring(0, cursorPos)
+                const cursorPos = getCaretOffset(textBlock)  // Use the correct function
+                const currentLineText = getCurrentLineText(currentText, cursorPos)
                 
-                // Check if user just typed "{{"
-                if (textBefore.endsWith("{{") && !lastText.endsWith("{{")) {
+                // Check if current line ends with "{{" (just typed it)
+                if (currentLineText.endsWith("{{") && !lastText.endsWith("{{")) {
                     showDropdown("")
-                } else if (textBefore.includes("{{") && !textBefore.substring(textBefore.lastIndexOf("{{")).includes("}}")) {
-                    // User is typing inside {{ }}
-                    const startIdx = textBefore.lastIndexOf("{{")
-                    const filterText = textBefore.substring(startIdx + 2)
+                } else if (currentLineText.includes("{{") && !currentLineText.substring(currentLineText.lastIndexOf("{{")).includes("}}")) {
+                    // User is typing inside {{ }} on the current line only
+                    const startIdx = currentLineText.lastIndexOf("{{")
+                    const filterText = currentLineText.substring(startIdx + 2)
                     showDropdown(filterText)
                 } else {
                     hideDropdown()

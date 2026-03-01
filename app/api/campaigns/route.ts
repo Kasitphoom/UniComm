@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/api-auth"
 import { getBusinessPrisma } from "@/lib/prisma-business"
 import { sanitizeQuery } from "@/utils/sanitizer"
 import { userHasPermissionAPI } from "@/utils/permissions"
+import { refreshTemplateDependencies } from "@/utils/template/refreshTemplateDependencies"
 
 const MAX_PER_PAGE = 50
 const DEFAULT_PER_PAGE = 10
@@ -391,13 +392,10 @@ export async function POST(req: NextRequest) {
             )
         }
 
-        const templateRecord = await prisma.templates.findUnique({
-            where: { id: selectedTemplateId },
-            select: {
-                id: true,
-                title: true,
-                requiredFields: true,
-            },
+        const templateRecord = await refreshTemplateDependencies({
+            prisma,
+            templateId: selectedTemplateId,
+            businessId: auth.businessId,
         })
 
         if (!templateRecord) {
@@ -409,7 +407,7 @@ export async function POST(req: NextRequest) {
 
         const normalizedCustomerFields = toFieldNameSet(contactList.fields)
         const missingFields = Array.isArray(templateRecord.requiredFields)
-            ? templateRecord.requiredFields.filter((field) =>
+            ? templateRecord.requiredFields.filter((field: unknown) =>
                   typeof field === "string" && !normalizedCustomerFields.has(normalizeFieldName(field)),
               )
             : []
