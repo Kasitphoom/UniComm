@@ -117,7 +117,7 @@ const parseVariables = (text: string, data?: Record<string, any>): string => {
 // Extract all variable names from text (e.g., ["firstName", "lastName"])
 export const extractVariables = (text: string): string[] => {
     if (typeof text !== "string") return []
-    const matches = text.matchAll(/\{\{([^}]+)\}\}/g)
+    const matches = text.matchAll(/\{\{([^{}]+)\}\}/g)
     return Array.from(new Set(Array.from(matches, m => m[1].trim()).filter(Boolean)))
 }
 
