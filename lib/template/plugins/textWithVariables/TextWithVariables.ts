@@ -520,35 +520,56 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 const textContent = getText(textBlock)
                 const cursorPos = getCaretOffset(textBlock)
 
-                // Search backwards from cursor to find the most recent unclosed {{
-                let openPos = -1
-                for (let i = cursorPos - 1; i >= 1; i--) {
-                    if (textContent[i - 1] === '{' && textContent[i] === '{') {
-                        // Found a {{ at position i-1
-                        // Check if there's a }} between it and the cursor
-                        const textAfter = textContent.substring(i + 1, cursorPos)
-                        if (!textAfter.includes('}}')) {
-                            // This {{ is unclosed, we're inside it
-                            openPos = i - 1
-                            break
-                        }
-                        // This {{ has a }} after it, continue searching backwards
-                    }
-                }
+                // find the current line start so replacements stay on the active line
+                const lineStartPos =
+                    Math.max(
+                        textContent.lastIndexOf("\n", cursorPos - 1),
+                        textContent.lastIndexOf("\r", cursorPos - 1),
+                    ) + 1
+
+                const lineText = textContent.slice(lineStartPos, cursorPos)
+                const lastOpenInLine = lineText.lastIndexOf("{{")
+                console.log("Line text:", JSON.stringify(lineText), "Last {{ in line at:", lastOpenInLine)
+
+                const hasUnclosedOpenInLine =
+                    lastOpenInLine !== -1 &&
+                    lineText.indexOf("}}", lastOpenInLine + 2) === -1
+
+                const openPos = hasUnclosedOpenInLine
+                    ? lineStartPos + lastOpenInLine
+                    : -1
+
+                const immediateOpenPos =
+                    cursorPos >= 2 &&
+                    textContent.slice(cursorPos - 2, cursorPos) === "{{"
+                        ? cursorPos - 2
+                        : -1
+
+                const forwardOpenPos =
+                    textContent.slice(cursorPos, cursorPos + 2) === "{{"
+                        ? cursorPos
+                        : -1
+
+                const effectiveOpenPos =
+                    openPos !== -1
+                        ? openPos
+                        : immediateOpenPos !== -1
+                            ? immediateOpenPos
+                            : forwardOpenPos
 
                 let newText: string
                 let newCursorPos: number
 
-                if (openPos !== -1) {
+                if (effectiveOpenPos !== -1) {
                     // We're inside an unclosed {{
-                    const beforeVar = textContent.substring(0, openPos + 2) // Include the {{
+                    const beforeVar = textContent.substring(0, effectiveOpenPos + 2) // Include the {{
                     let afterVar = textContent.substring(cursorPos)
                     
-                    // Clean up: ensure we don't have extra {{ at the start of afterVar
-                    afterVar = afterVar.replace(/^\{\{/, '')
+                    // Clean up: remove repeated opening braces left around the cursor
+                    afterVar = afterVar.replace(/^(?:\{\{)+/, '')
                     
                     newText = beforeVar + `${fieldName}}}` + afterVar
-                    newCursorPos = openPos + 2 + `${fieldName}}}`.length
+                    newCursorPos = effectiveOpenPos + 2 + `${fieldName}}}`.length
                 } else {
                     // Not inside {{, insert the full {{fieldName}}
                     const beforeVar = textContent.substring(0, cursorPos)
