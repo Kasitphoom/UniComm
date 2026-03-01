@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { Select, SelectItem, Card, CardBody, Chip } from '@heroui/react'
 import { Users, FileText, CheckCircle2, AlertTriangle, Link2, Database } from 'lucide-react'
 import { useAppSelector } from '@/store/hooks'
-import { clientFetchTemplate } from '@/utils/template/utils'
+import { clientFetchTemplate, clientRefreshTemplateDependencies } from '@/utils/template/utils'
 import { TemplateWithUser } from '@/types/template'
 import type { Selection } from '@react-types/shared'
 import TemplateSelectionCard from './TemplateSelectionCard'
@@ -87,9 +87,15 @@ export const CustomerListSelectorStep = ({
 
     const fetchTemplateDetails = async (id: string) => {
         setIsTemplateLoading(true)
-        const result = await clientFetchTemplate(id)
-        setTemplate(result)
-        setIsTemplateLoading(false)
+        try {
+            await clientRefreshTemplateDependencies(id)
+            const result = await clientFetchTemplate(id)
+            setTemplate(result)
+        } catch {
+            setTemplate(null)
+        } finally {
+            setIsTemplateLoading(false)
+        }
     }
 
     useEffect(() => {
