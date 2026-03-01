@@ -290,11 +290,30 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         const getCaretOffset = (element: HTMLDivElement) => {
             const selection = window.getSelection()
             if (!selection || selection.rangeCount === 0) return 0
-            const range = selection.getRangeAt(0)
-            const preRange = range.cloneRange()
-            preRange.selectNodeContents(element)
-            preRange.setEnd(range.startContainer, range.startOffset)
-            return preRange.toString().length
+
+            const range = selection.getRangeAt(0).cloneRange()
+            range.collapse(true)
+
+            // Unique marker unlikely to exist in user text
+            const markerText = "__CARET_MARKER__"
+            const markerNode = document.createTextNode(markerText)
+
+            range.insertNode(markerNode)
+
+            const fullTextWithMarker = element.innerText
+            const offset = fullTextWithMarker.indexOf(markerText)
+
+            // Build range after marker before removing it
+            const newRange = document.createRange()
+            newRange.setStartAfter(markerNode)
+            newRange.collapse(true)
+
+            markerNode.parentNode?.removeChild(markerNode)
+
+            selection.removeAllRanges()
+            selection.addRange(newRange)
+
+            return offset === -1 ? 0 : offset
         }
 
         const setCaretOffset = (element: HTMLDivElement, offset: number) => {
@@ -388,6 +407,44 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 }
             }
 
+            const getCaretClientRect = () => {
+                const selection = window.getSelection()
+                if (!selection || selection.rangeCount === 0) return null
+
+                const range = selection.getRangeAt(0).cloneRange()
+                range.collapse(true)
+
+                // Try native rect first
+                let rect = range.getBoundingClientRect()
+                if (rect && (rect.width !== 0 || rect.height !== 0)) {
+                    return rect
+                }
+
+                // Fallback: insert a marker to measure exact caret position
+                const marker = document.createElement("span")
+                marker.textContent = "\u200b"
+                marker.style.display = "inline-block"
+                marker.style.width = "0"
+                marker.style.overflow = "hidden"
+                marker.style.lineHeight = "1"
+
+                range.insertNode(marker)
+
+                rect = marker.getBoundingClientRect()
+
+                // Restore caret after marker
+                const newRange = document.createRange()
+                newRange.setStartAfter(marker)
+                newRange.collapse(true)
+
+                marker.parentNode?.removeChild(marker)
+
+                selection.removeAllRanges()
+                selection.addRange(newRange)
+
+                return rect
+            }
+
             const showDropdown = (filterText: string = "") => {
                 if (dropdown) hideDropdown()
 
@@ -403,12 +460,10 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 dropdown.style.minWidth = "150px"
 
                 // Position dropdown near cursor
-                const selection = window.getSelection()
-                if (selection && selection.rangeCount > 0) {
-                    const range = selection.getRangeAt(0)
-                    const rect = range.getBoundingClientRect()
-                    dropdown.style.left = `${rect.left}px`
-                    dropdown.style.top = `${rect.bottom + 5}px`
+                const rect = getCaretClientRect()
+                if (rect) {
+                    dropdown.style.left = `${Math.round(rect.left)}px`
+                    dropdown.style.top = `${Math.round(rect.bottom + 5)}px`
                 }
 
                 const normalizedFilter = filterText.trim().toLowerCase()
@@ -527,7 +582,8 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                         textContent.lastIndexOf("\r", cursorPos - 1),
                     ) + 1
 
-                const lineText = textContent.slice(lineStartPos, cursorPos)
+                console.log("start pos:", lineStartPos, "Cursor pos", cursorPos)
+                const lineText = textContent.slice(lineStartPos, cursorPos + 1)
                 const lastOpenInLine = lineText.lastIndexOf("{{")
                 console.log("Line text:", JSON.stringify(lineText), "Last {{ in line at:", lastOpenInLine)
 
