@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react'
 import { Select, SelectItem, Card, CardBody, Chip } from '@heroui/react'
 import { Users, FileText, CheckCircle2, AlertTriangle, Link2, Database } from 'lucide-react'
 import { useAppSelector } from '@/store/hooks'
-import { clientFetchTemplate } from '@/utils/template/utils'
+import { clientFetchTemplate, clientRefreshTemplateDependencies } from '@/utils/template/utils'
 import { TemplateWithUser } from '@/types/template'
 import type { Selection } from '@react-types/shared'
 import TemplateSelectionCard from './TemplateSelectionCard'
@@ -57,21 +57,14 @@ export const CustomerListSelectorStep = ({
     const [isTemplateLoading, setIsTemplateLoading] = useState(false)
     const [selectedKeys, setSelectedKeys] = useState<Selection>(new Set([]))
 
-    const handleSelection = useCallback((keys: Selection) => {
-        if (keys === 'all') return
-
-        setSelectedKeys(keys)
-        const id = Array.from(keys)[0] as string | undefined
-        const normalizedId = id ?? null
-        onCustomerListChange(normalizedId)
-
-        if (!template || !normalizedId) {
+    const evaluateCompatibility = useCallback((customerListId: string | null) => {
+        if (!template || !customerListId) {
             setIsCompatible(null)
             onCompatibilityChange(null)
             return
         }
 
-        const selectedList = customerLists.find((list) => list.id === normalizedId)
+        const selectedList = customerLists.find((list) => list.id === customerListId)
         const listFields = Array.isArray(selectedList?.fields)
             ? selectedList.fields.filter(isListField).map((field) => normalizeFieldName(field.field))
             : []
@@ -83,13 +76,30 @@ export const CustomerListSelectorStep = ({
 
         setIsCompatible(compatibilityResult)
         onCompatibilityChange(compatibilityResult)
-    }, [customerLists, onCompatibilityChange, onCustomerListChange, template])
+    }, [customerLists, onCompatibilityChange, template])
+
+    const handleSelection = useCallback((keys: Selection) => {
+        if (keys === 'all') return
+
+        setSelectedKeys(keys)
+        const id = Array.from(keys)[0] as string | undefined
+        const normalizedId = id ?? null
+        onCustomerListChange(normalizedId)
+
+        evaluateCompatibility(normalizedId)
+    }, [evaluateCompatibility, onCustomerListChange])
 
     const fetchTemplateDetails = async (id: string) => {
         setIsTemplateLoading(true)
-        const result = await clientFetchTemplate(id)
-        setTemplate(result)
-        setIsTemplateLoading(false)
+        try {
+            await clientRefreshTemplateDependencies(id)
+            const result = await clientFetchTemplate(id)
+            setTemplate(result)
+        } catch {
+            setTemplate(null)
+        } finally {
+            setIsTemplateLoading(false)
+        }
     }
 
     useEffect(() => {
@@ -117,6 +127,16 @@ export const CustomerListSelectorStep = ({
             setIsCompatible(null)
         }
     }, [selectedCustomerListId])
+
+    useEffect(() => {
+        if (!selectedCustomerListId) {
+            setIsCompatible(null)
+            onCompatibilityChange(null)
+            return
+        }
+
+        evaluateCompatibility(selectedCustomerListId)
+    }, [customerLists, evaluateCompatibility, onCompatibilityChange, selectedCustomerListId, template])
 
     const TemplateCardSkeleton = () => (
         <div className="relative flex flex-col rounded-xl border-2 border-default-100 bg-white overflow-hidden">

@@ -1,5 +1,6 @@
 import { Schema, Template } from "@pdfme/common"
 import { XMLBuilder, XMLParser } from "fast-xml-parser"
+import { migrateTemplateSchemas } from "@/lib/template/plugins/textMigration"
 
 export type XMLOutput = {
     Document: {
@@ -203,8 +204,11 @@ export const transformXmlToTemplate = async (
         options?.resolveComponentSchemas,
     )
 
+    // Migrate any text schemas to TextWithVariables
+    const migratedSchemas = migrateTemplateSchemas(resolvedSchemas)
+
     const template: Template = {
-        schemas: resolvedSchemas,
+        schemas: migratedSchemas,
         basePdf: {
             width: widthMm,
             height: heightMm,
