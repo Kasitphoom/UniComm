@@ -43,6 +43,8 @@ type DropdownFieldEntry = {
 let cachedFieldGroups: FieldGroup[] | null = null
 let cachedFieldGroupsPromise: Promise<FieldGroup[]> | null = null
 
+const stripHtmlTags = (html: string): string => html.replace(/<[^>]*>/g, "")
+
 const fetchAllCustomerListFields = async (): Promise<FieldGroup[]> => {
     if (cachedFieldGroups) return cachedFieldGroups
     if (cachedFieldGroupsPromise) return cachedFieldGroupsPromise
@@ -114,6 +116,21 @@ const parseVariables = (text: string, data?: Record<string, any>): string => {
     return result
 }
 
+// Replace variables inside HTML while keeping markup intact
+const applyVariablesToHtml = (html: string, data?: Record<string, any>): string => {
+    const wrapper = document.createElement("div")
+    wrapper.innerHTML = html
+
+    const walker = document.createTreeWalker(wrapper, NodeFilter.SHOW_TEXT)
+    let node: Node | null = walker.nextNode()
+    while (node) {
+        node.textContent = parseVariables(node.textContent || "", data)
+        node = walker.nextNode()
+    }
+
+    return wrapper.innerHTML
+}
+
 // Extract all variable names from text (e.g., ["firstName", "lastName"])
 export const extractVariables = (text: string): string[] => {
     if (typeof text !== "string") return []
@@ -125,11 +142,6 @@ export const extractVariables = (text: string): string[] => {
 const makeElementPlainTextContentEditable = (element: HTMLElement) => {
     const isFirefox = () => navigator.userAgent.toLowerCase().indexOf('firefox') > -1
     
-    if (!isFirefox()) {
-        element.contentEditable = 'plaintext-only'
-        return
-    }
-
     element.contentEditable = 'true'
     element.addEventListener('keydown', (e: KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -155,8 +167,10 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
     pdf: async (arg: PDFRenderProps<TextWithVariablesSchema>) => {
         const { schema, value, ...rest } = arg
 
-        // Get the text content with variables replaced
-        const rawText = schema.text || ""
+        const rawContent = (schema.content && schema.content.trim().length > 0)
+            ? schema.content
+            : (schema.text || "")
+        const rawText = stripHtmlTags(rawContent)
         // Parse value - it could be a string (JSON) or already an object
         let valueData: Record<string, any> | undefined
         if (typeof value === 'string' && value) {
@@ -180,11 +194,12 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
     ui: async (arg: UIRenderProps<TextWithVariablesSchema>) => {
         const { rootElement, schema, onChange, mode, value, tabIndex, placeholder, stopEditing, theme } = arg
 
-        // Get text from schema.text
         const rawText = schema.text || ""
+        const initialHtml = (schema.content && schema.content.trim().length > 0) ? schema.content : rawText
+        const initialPlainText = stripHtmlTags(initialHtml)
         
         // Extract variables from text and update schema if needed
-        const variables = extractVariables(rawText)
+        const variables = extractVariables(initialPlainText)
         const currentVariables = Array.isArray(schema.variables) ? schema.variables : []
         if (mode === 'designer' && JSON.stringify(variables) !== JSON.stringify(currentVariables)) {
             if (onChange) {
@@ -208,7 +223,9 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
 
         // In designer mode, show raw text with {{variables}}; otherwise render with data
         const isEditableMode = mode === 'designer'
-        const displayText = isEditableMode ? rawText : parseVariables(rawText, valueData)
+        const displayHtml = isEditableMode
+            ? initialHtml
+            : (schema.content ? applyVariablesToHtml(schema.content, valueData) : parseVariables(rawText, valueData))
 
         // Clear root element
         rootElement.innerHTML = ''
@@ -269,14 +286,14 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
 
         if (!isEditableMode) {
             // Read-only mode - just display the text
-            textBlock.textContent = displayText
+            textBlock.innerHTML = displayHtml
             return
         }
 
         // Editable mode - make contenteditable
         makeElementPlainTextContentEditable(textBlock)
         textBlock.tabIndex = tabIndex || 0
-        textBlock.innerText = rawText
+        textBlock.innerHTML = initialHtml
 
         // Helper to get clean text
         const getText = (element: HTMLDivElement) => {
@@ -341,18 +358,27 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             selection.addRange(range)
         }
 
-        // Handle blur event - save text and update variables
-        textBlock.addEventListener('blur', (e: Event) => {
-            const newText = getText(e.target as HTMLDivElement)
-            const newVariables = extractVariables(newText)
-            
+        let lastText = getText(textBlock)
+
+        const commitContentChange = () => {
+            const plainText = getText(textBlock)
+            const newVariables = extractVariables(plainText)
+
             if (onChange) {
-                // Update both text and variables
                 onChange([
-                    { key: 'text', value: newText },
-                    { key: 'variables', value: newVariables }
+                    { key: 'content', value: textBlock.innerHTML },
+                    { key: 'text', value: plainText },
+                    { key: 'variables', value: newVariables },
                 ])
             }
+
+            lastText = plainText
+        }
+
+        // Handle blur event - save text and update variables
+        textBlock.addEventListener('blur', () => {
+            commitContentChange()
+            hideToolbar()
         })
 
         // Focus in designer mode
@@ -377,6 +403,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             let selectedIndex = -1
             let dropdownItems: HTMLDivElement[] = []
             let selectableFieldEntries: DropdownFieldEntry[] = []
+            let dropdownKeyListenerAttached = false
 
             // Fetch all available fields across customer lists
             const fetchFields = async () => {
@@ -388,6 +415,169 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             }
 
             fetchFields()
+
+            // Floating toolbar for inline formatting
+            const toolbar = document.createElement("div")
+            toolbar.style.position = "fixed"
+            toolbar.style.display = "none"
+            toolbar.style.backgroundColor = "#fff"
+            toolbar.style.border = "1px solid #d9d9d9"
+            toolbar.style.borderRadius = "8px"
+            toolbar.style.boxShadow = "0 6px 16px rgba(0,0,0,0.12)"
+            toolbar.style.padding = "6px 8px"
+            toolbar.style.gap = "6px"
+            toolbar.style.zIndex = "10001"
+            toolbar.style.alignItems = "center"
+            toolbar.style.whiteSpace = "nowrap"
+            toolbar.style.fontSize = "12px"
+            toolbar.style.lineHeight = "1"
+            toolbar.style.userSelect = "none"
+
+            const createIconButton = (label: string) => {
+                const btn = document.createElement('button')
+                btn.type = 'button'
+                btn.textContent = label
+                btn.style.border = '1px solid #d9d9d9'
+                btn.style.background = '#fafafa'
+                btn.style.borderRadius = '6px'
+                btn.style.padding = '4px 8px'
+                btn.style.cursor = 'pointer'
+                btn.style.fontSize = '12px'
+                btn.style.lineHeight = '1'
+                btn.style.minWidth = '32px'
+                btn.onmouseenter = () => btn.style.background = '#f0f0f0'
+                btn.onmouseleave = () => btn.style.background = '#fafafa'
+                return btn
+            }
+
+            const fontSizeDisplay = document.createElement('span')
+            fontSizeDisplay.style.padding = '0 4px'
+            fontSizeDisplay.style.minWidth = '36px'
+            fontSizeDisplay.style.display = 'inline-block'
+            fontSizeDisplay.style.textAlign = 'center'
+
+            const getSelectionFontSize = () => {
+                const selection = window.getSelection()
+                const node = selection?.focusNode
+                const element = (node instanceof HTMLElement ? node : node?.parentElement) || textBlock
+                const computed = window.getComputedStyle(element)
+                const px = parseFloat(computed.fontSize || "")
+                if (Number.isNaN(px)) return schema.fontSize || 12
+                return Math.max(6, Math.round(px * 0.75))
+            }
+
+            const isSelectionBold = () => {
+                const selection = window.getSelection()
+                const node = selection?.focusNode
+                const element = (node instanceof HTMLElement ? node : node?.parentElement) || textBlock
+                const weight = window.getComputedStyle(element).fontWeight
+                const numericWeight = parseInt(weight, 10)
+                return Number.isNaN(numericWeight) ? weight.toLowerCase() === 'bold' : numericWeight >= 600
+            }
+
+            const applyInlineStyle = (styleBuilder: (el: HTMLSpanElement) => void) => {
+                const selection = window.getSelection()
+                if (!selection || selection.rangeCount === 0) return
+                const range = selection.getRangeAt(0)
+                if (range.collapsed) return
+
+                const wrapper = document.createElement('span')
+                styleBuilder(wrapper)
+
+                wrapper.appendChild(range.extractContents())
+                range.insertNode(wrapper)
+
+                // Keep selection at end of the styled text
+                const newRange = document.createRange()
+                newRange.selectNodeContents(wrapper)
+                newRange.collapse(false)
+                selection.removeAllRanges()
+                selection.addRange(newRange)
+
+                commitContentChange()
+                updateToolbarPosition()
+            }
+
+            const updateFontSizeDisplay = () => {
+                fontSizeDisplay.textContent = `${getSelectionFontSize()}pt`
+            }
+
+            const changeFontSize = (delta: number) => {
+                const nextSize = Math.max(6, getSelectionFontSize() + delta)
+                applyInlineStyle((el) => {
+                    el.style.fontSize = `${nextSize}pt`
+                })
+                updateFontSizeDisplay()
+            }
+
+            const toggleBold = () => {
+                const currentlyBold = isSelectionBold()
+                applyInlineStyle((el) => {
+                    el.style.fontWeight = currentlyBold ? '400' : '700'
+                })
+            }
+
+            const hideToolbar = () => {
+                toolbar.style.display = 'none'
+            }
+
+            const updateToolbarPosition = () => {
+                const selection = window.getSelection()
+                if (!selection || selection.rangeCount === 0) return
+                const range = selection.getRangeAt(0)
+                const rect = range.getBoundingClientRect()
+                if (!rect || (rect.width === 0 && rect.height === 0)) return
+
+                const offset = 8
+                toolbar.style.left = `${Math.round(rect.left)}px`
+                toolbar.style.top = `${Math.round(rect.top - toolbar.offsetHeight - offset)}px`
+            }
+
+            const showToolbar = () => {
+                if (!document.body.contains(toolbar)) {
+                    document.body.appendChild(toolbar)
+                }
+                toolbar.style.display = 'flex'
+                updateToolbarPosition()
+            }
+
+            const handleSelectionChange = () => {
+                const selection = window.getSelection()
+                if (!selection || selection.rangeCount === 0) {
+                    hideToolbar()
+                    return
+                }
+
+                const range = selection.getRangeAt(0)
+                if (!textBlock.contains(range.commonAncestorContainer) || range.collapsed) {
+                    hideToolbar()
+                    return
+                }
+
+                updateFontSizeDisplay()
+                showToolbar()
+            }
+
+            const boldButton = createIconButton('B')
+            boldButton.style.fontWeight = '700'
+            boldButton.onclick = () => {
+                toggleBold()
+            }
+
+            const decreaseSizeButton = createIconButton('-')
+            decreaseSizeButton.onclick = () => changeFontSize(-1)
+
+            const increaseSizeButton = createIconButton('+')
+            increaseSizeButton.onclick = () => changeFontSize(1)
+
+            toolbar.appendChild(boldButton)
+            toolbar.appendChild(decreaseSizeButton)
+            toolbar.appendChild(fontSizeDisplay)
+            toolbar.appendChild(increaseSizeButton)
+
+            document.addEventListener('selectionchange', handleSelectionChange)
+            textBlock.addEventListener('mouseup', handleSelectionChange)
+            textBlock.addEventListener('keyup', handleSelectionChange)
 
             const updateSelectedItem = (index: number) => {
                 // Clear previous selection
@@ -556,6 +746,11 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 }
 
                 document.body.appendChild(dropdown)
+
+                if (!dropdownKeyListenerAttached) {
+                    document.addEventListener('keydown', handleDropdownKeydown, true)
+                    dropdownKeyListenerAttached = true
+                }
             }
 
             const hideDropdown = () => {
@@ -566,89 +761,50 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                     selectableFieldEntries = []
                     selectedIndex = -1
                 }
+
+                if (dropdownKeyListenerAttached) {
+                    document.removeEventListener('keydown', handleDropdownKeydown, true)
+                    dropdownKeyListenerAttached = false
+                }
+            }
+
+            const handleDropdownKeydown = (e: KeyboardEvent) => {
+                if (!dropdown || dropdownItems.length === 0) return
+                if (e.key !== 'Enter' && e.key !== 'Tab') return
+
+                e.preventDefault()
+                e.stopPropagation()
+
+                const index = selectedIndex >= 0 ? selectedIndex : 0
+                updateSelectedItem(index)
+
+                const selectedField = selectableFieldEntries[index]?.field
+                if (selectedField) {
+                    insertVariable(selectedField)
+                }
             }
 
             const insertVariable = (fieldName: string) => {
                 const selection = window.getSelection()
                 if (!selection || !selection.rangeCount) return
 
-                const textContent = getText(textBlock)
-                const cursorPos = getCaretOffset(textBlock)
+                const range = selection.getRangeAt(0)
+                const variableNode = document.createTextNode(`{{${fieldName}}}`)
 
-                // find the current line start so replacements stay on the active line
-                const lineStartPos =
-                    Math.max(
-                        textContent.lastIndexOf("\n", cursorPos - 1),
-                        textContent.lastIndexOf("\r", cursorPos - 1),
-                    ) + 1
+                range.deleteContents()
+                range.insertNode(variableNode)
 
-                console.log("start pos:", lineStartPos, "Cursor pos", cursorPos)
-                const lineText = textContent.slice(lineStartPos, cursorPos + 1)
-                const lastOpenInLine = lineText.lastIndexOf("{{")
-                console.log("Line text:", JSON.stringify(lineText), "Last {{ in line at:", lastOpenInLine)
+                // Move caret to the end of the inserted variable
+                range.setStartAfter(variableNode)
+                range.collapse(true)
+                selection.removeAllRanges()
+                selection.addRange(range)
 
-                const hasUnclosedOpenInLine =
-                    lastOpenInLine !== -1 &&
-                    lineText.indexOf("}}", lastOpenInLine + 2) === -1
-
-                const openPos = hasUnclosedOpenInLine
-                    ? lineStartPos + lastOpenInLine
-                    : -1
-
-                const immediateOpenPos =
-                    cursorPos >= 2 &&
-                    textContent.slice(cursorPos - 2, cursorPos) === "{{"
-                        ? cursorPos - 2
-                        : -1
-
-                const forwardOpenPos =
-                    textContent.slice(cursorPos, cursorPos + 2) === "{{"
-                        ? cursorPos
-                        : -1
-
-                const effectiveOpenPos =
-                    openPos !== -1
-                        ? openPos
-                        : immediateOpenPos !== -1
-                            ? immediateOpenPos
-                            : forwardOpenPos
-
-                let newText: string
-                let newCursorPos: number
-
-                if (effectiveOpenPos !== -1) {
-                    // We're inside an unclosed {{
-                    const beforeVar = textContent.substring(0, effectiveOpenPos + 2) // Include the {{
-                    let afterVar = textContent.substring(cursorPos)
-                    
-                    // Clean up: remove repeated opening braces left around the cursor
-                    afterVar = afterVar.replace(/^(?:\{\{)+/, '')
-                    
-                    newText = beforeVar + `${fieldName}}}` + afterVar
-                    newCursorPos = effectiveOpenPos + 2 + `${fieldName}}}`.length
-                } else {
-                    // Not inside {{, insert the full {{fieldName}}
-                    const beforeVar = textContent.substring(0, cursorPos)
-                    const afterVar = textContent.substring(cursorPos)
-                    newText = beforeVar + `{{${fieldName}}}` + afterVar
-                    newCursorPos = cursorPos + `{{${fieldName}}}`.length
-                }
-                
-                textBlock.innerText = newText
-                
-                if (onChange) {
-                    onChange({ key: 'text', value: newText })
-                }
-                
+                commitContentChange()
                 hideDropdown()
                 textBlock.focus()
-                
-                // Set cursor after the inserted variable
-                setCaretOffset(textBlock, newCursorPos)
             }
 
-            let lastText = rawText
-            
             // Get only the text on the current line (from last newline to cursor)
             // Supports all line ending formats: \n, \r\n, \r
             const getCurrentLineText = (text: string, cursorPos: number): string => {
@@ -685,6 +841,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 }
                 
                 lastText = currentText
+                handleSelectionChange()
             })
 
             textBlock.addEventListener('blur', () => {
@@ -710,13 +867,9 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                         
                         case 'Enter':
                         case 'Tab':
-                            if (selectedIndex >= 0 && selectedIndex < dropdownItems.length) {
-                                e.preventDefault()
-                                const selectedField = selectableFieldEntries[selectedIndex]?.field
-                                if (selectedField) {
-                                    insertVariable(selectedField)
-                                }
-                            }
+                            // Handled globally when dropdown open
+                            e.preventDefault()
+                            e.stopPropagation()
                             break
                         
                         case 'Escape':
