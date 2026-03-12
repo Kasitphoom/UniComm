@@ -358,6 +358,25 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             selection.addRange(range)
         }
 
+        const findTextPosition = (
+            element: HTMLDivElement,
+            targetOffset: number,
+        ): { node: Node; offset: number } => {
+            let current = 0
+            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+            let node: Node | null = null
+
+            while ((node = walker.nextNode())) {
+                const length = node.textContent?.length || 0
+                if (current + length >= targetOffset) {
+                    return { node, offset: Math.max(0, targetOffset - current) }
+                }
+                current += length
+            }
+
+            return { node: element, offset: element.childNodes.length }
+        }
+
         let lastText = getText(textBlock)
 
         const commitContentChange = () => {
@@ -788,9 +807,26 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 const selection = window.getSelection()
                 if (!selection || !selection.rangeCount) return
 
-                const range = selection.getRangeAt(0)
+                // Remove a preceding "{{" if the caret is right after it to avoid duplicating braces
+                const initialRange = selection.getRangeAt(0)
+                if (initialRange.collapsed) {
+                    const caretOffset = getCaretOffset(textBlock)
+                    if (caretOffset >= 2 && textBlock.innerText.slice(caretOffset - 2, caretOffset) === "{{") {
+                        const startPos = findTextPosition(textBlock, caretOffset - 2)
+                        const endPos = findTextPosition(textBlock, caretOffset)
+                        const removeRange = document.createRange()
+                        removeRange.setStart(startPos.node, startPos.offset)
+                        removeRange.setEnd(endPos.node, endPos.offset)
+                        removeRange.deleteContents()
+
+                        selection.removeAllRanges()
+                        selection.addRange(removeRange)
+                    }
+                }
+
                 const variableNode = document.createTextNode(`{{${fieldName}}}`)
 
+                const range = selection.getRangeAt(0)
                 range.deleteContents()
                 range.insertNode(variableNode)
 
