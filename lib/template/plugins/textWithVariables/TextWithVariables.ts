@@ -940,12 +940,10 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
 
                 // Advanced bold toggle logic
                 const entirelyBold = isEntirelyBold(textRange.start, textRange.end, currentBoldRanges)
-                const partialOverlap = hasPartialOverlap(textRange.start, textRange.end, currentBoldRanges)
                 const overlappingRanges = getOverlappingRanges(textRange.start, textRange.end, currentBoldRanges)
                 
                 console.log('[TextWithVariables] Advanced bold analysis:', {
                     entirelyBold,
-                    partialOverlap,
                     overlappingRanges: overlappingRanges.length
                 })
 
@@ -954,9 +952,9 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                     console.log('[TextWithVariables] Selection entirely bold - removing bold (may split ranges)')
                     newBoldRanges = removeBoldRange(textRange.start, textRange.end, currentBoldRanges)
                     shouldMakeBold = false
-                } else if (partialOverlap) {
-                    // Case 2: Selection partially overlaps - extend to make entire selection bold.
-                    console.log('[TextWithVariables] Partial overlap detected - extending to make entire selection bold')
+                } else if (overlappingRanges.length > 0) {
+                    // Case 2: Any overlap exists - extend to make entire selection bold.
+                    console.log('[TextWithVariables] Overlap detected - extending to make entire selection bold')
                     newBoldRanges = extendBoldRangeToInclude(textRange.start, textRange.end, currentBoldRanges)
                     shouldMakeBold = true
                 } else {
