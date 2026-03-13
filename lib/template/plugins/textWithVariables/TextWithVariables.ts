@@ -149,6 +149,8 @@ const renderBoldRanges = (text: string, boldRanges: Array<{ start: number; end: 
     let result = ''
     let lastEnd = 0
 
+    console.log(sortedRanges)
+
     for (const range of sortedRanges) {
         // Add text before this bold range
         if (lastEnd < range.start) {
@@ -156,10 +158,10 @@ const renderBoldRanges = (text: string, boldRanges: Array<{ start: number; end: 
         }
         
         // Add bold text
-        const boldText = text.slice(range.start, range.end)
+        const boldText = text.slice(range.start, range.end + 1)
         result += `<span style="font-weight: 700">${boldText}</span>`
         
-        lastEnd = range.end
+        lastEnd = range.end + 1
     }
     
     // Add remaining text after the last bold range
@@ -341,6 +343,10 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             }
             return text
         }
+
+        let activeBoldRanges = Array.isArray(schema.bold)
+            ? schema.bold.map((range) => ({ ...range }))
+            : []
 
         const getCaretOffset = (element: HTMLDivElement) => {
             const selection = window.getSelection()
@@ -533,7 +539,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 if (range.collapsed) {
                     // For collapsed selection (caret), check if cursor is in a bold range
                     const caretPos = getCaretOffset(textBlock)
-                    const boldRanges = schema.bold || []
+                    const boldRanges = activeBoldRanges
                     
                     for (const boldRange of boldRanges) {
                         if (caretPos >= boldRange.start && caretPos <= boldRange.end) {
@@ -547,7 +553,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 const textRange = getTextRangeFromSelection()
                 if (!textRange) return false
                 
-                const boldRanges = schema.bold || []
+                const boldRanges = activeBoldRanges
                 const isRangeBoldInSchema = isRangeBold(textRange.start, textRange.end, boldRanges)
                 
                 console.log('[TextWithVariables] isSelectionBold check:', {
@@ -556,23 +562,27 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                     isRangeBoldInSchema
                 })
                 
-                // If no spans in selection, check context around selection
-                const spansInSelection = getSpansInSelection()
-                if (spansInSelection.length === 0) {
-                    const context = checkSpansAroundSelection()
-                    console.log('[TextWithVariables] No spans in selection, checking context:', context)
-                    
-                    // If there are context spans (left or right), consider it bold
-                    if (context.hasContext) {
-                        return true
-                    }
-                    
-                    // Otherwise, use schema-based check
-                    return isRangeBoldInSchema
+                // Use advanced bold detection
+                const entirelyBold = isEntirelyBold(textRange.start, textRange.end, boldRanges)
+                const partialOverlap = hasPartialOverlap(textRange.start, textRange.end, boldRanges)
+                
+                console.log('[TextWithVariables] Advanced bold detection:', {
+                    entirelyBold,
+                    partialOverlap,
+                    isRangeBoldInSchema
+                })
+                
+                // If entirely bold, return true
+                if (entirelyBold) {
+                    return true
                 }
                 
-                // If there are spans in selection, use schema check
-                return isRangeBoldInSchema
+                // If partial overlap, consider it "mixed" state - we'll treat as not bold for toggle
+                if (partialOverlap) {
+                    return false
+                }
+
+                return false
             }
 
             const applyInlineStyle = (styleBuilder: (el: HTMLSpanElement) => void) => {
@@ -621,8 +631,8 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                     const current = sorted[i]
                     const last = merged[merged.length - 1]
                     
-                    if (current.start <= last.end) {
-                        // Overlapping ranges - merge them
+                    if (current.start <= last.end + 1) {
+                        // Overlapping or adjacent inclusive ranges - merge them
                         last.end = Math.max(last.end, current.end)
                     } else {
                         // Non-overlapping range - add it
@@ -642,6 +652,36 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 return false
             }
 
+            const isEntirelyBold = (start: number, end: number, boldRanges: Array<{ start: number; end: number }>): boolean => {
+                // Check if the entire inclusive selection is covered by bold ranges.
+                let currentPos = start
+                const sortedRanges = [...boldRanges].sort((a, b) => a.start - b.start)
+                
+                for (const range of sortedRanges) {
+                    if (range.start <= currentPos && range.end >= currentPos) {
+                        currentPos = range.end + 1
+                        if (currentPos > end) {
+                            return true
+                        }
+                    }
+                }
+                
+                return false
+            }
+
+            const hasPartialOverlap = (start: number, end: number, boldRanges: Array<{ start: number; end: number }>): boolean => {
+                for (const range of boldRanges) {
+                    if (range.start <= end && range.end >= start) {
+                        return !(range.start <= start && range.end >= end)
+                    }
+                }
+                return false
+            }
+
+            const getOverlappingRanges = (start: number, end: number, boldRanges: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> => {
+                return boldRanges.filter(range => range.start <= end && range.end >= start)
+            }
+
             const addBoldRange = (start: number, end: number, currentRanges: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> => {
                 const newRanges = [...currentRanges, { start, end }]
                 return mergeBoldRanges(newRanges)
@@ -651,23 +691,42 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 const result: Array<{ start: number; end: number }> = []
                 
                 for (const range of currentRanges) {
-                    if (range.end <= start || range.start >= end) {
+                    if (range.end < start || range.start > end) {
                         // No overlap - keep the range
                         result.push(range)
                     } else {
                         // There is overlap - split if needed
                         if (range.start < start) {
                             // Keep the part before the removed range
-                            result.push({ start: range.start, end: start })
+                            result.push({ start: range.start, end: start - 1 })
                         }
                         if (range.end > end) {
                             // Keep the part after the removed range
-                            result.push({ start: end, end: range.end })
+                            result.push({ start: end + 1, end: range.end })
                         }
                     }
                 }
                 
                 return result
+            }
+
+            const extendBoldRangeToInclude = (start: number, end: number, currentRanges: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> => {
+                // Remove overlapping ranges and create a new range that includes the selection
+                const nonOverlapping = currentRanges.filter(range => !(range.start <= end && range.end >= start))
+                const overlapping = getOverlappingRanges(start, end, currentRanges)
+                
+                // Find the extended bounds
+                let extendedStart = start
+                let extendedEnd = end
+                
+                for (const range of overlapping) {
+                    extendedStart = Math.min(extendedStart, range.start)
+                    extendedEnd = Math.max(extendedEnd, range.end)
+                }
+                
+                // Add the extended range
+                const newRanges = [...nonOverlapping, { start: extendedStart, end: extendedEnd }]
+                return mergeBoldRanges(newRanges)
             }
 
             const getTextRangeFromSelection = (): { start: number; end: number } | null => {
@@ -712,7 +771,11 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 }
                 endPos += range.endOffset
 
-                return { start: Math.min(startPos, endPos), end: Math.max(startPos, endPos) }
+                const normalizedStart = Math.min(startPos, endPos)
+                const normalizedEnd = Math.max(startPos, endPos) - 1
+                if (normalizedEnd < normalizedStart) return null
+
+                return { start: normalizedStart, end: normalizedEnd }
             }
 
             const getSpansInSelection = (): HTMLSpanElement[] => {
@@ -761,6 +824,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
 
                 // Log current bold ranges from schema
                 console.log('[TextWithVariables] Bold ranges in schema:', schema.bold || [])
+                console.log('[TextWithVariables] Active bold ranges:', activeBoldRanges)
                 
                 // Log selection details
                 if (selection && selection.rangeCount > 0) {
@@ -810,9 +874,9 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 // Check for span immediately after selection  
                 let rightSpan: HTMLSpanElement | null = null
                 const fullText = textBlock.innerText || ''
-                if (textRange.end < fullText.length) {
+                if (textRange.end < fullText.length - 1) {
                     try {
-                        const afterPosition = findTextPosition(textBlock, textRange.end)
+                        const afterPosition = findTextPosition(textBlock, textRange.end + 1)
                         const afterRange = document.createRange()
                         afterRange.setStart(afterPosition.node, afterPosition.offset)
                         afterRange.setEnd(afterPosition.node, afterPosition.offset + 1)
@@ -833,12 +897,13 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
 
             const renderContentWithBold = (boldRanges?: Array<{ start: number; end: number }>) => {
                 const plainText = getText(textBlock)
-                const ranges = boldRanges || schema.bold || []
+                const ranges = boldRanges || activeBoldRanges
                 
                 console.log('[TextWithVariables] renderContentWithBold:', {
                     plainText,
                     ranges,
-                    schemaRanges: schema.bold
+                    schemaRanges: schema.bold,
+                    activeBoldRanges,
                 })
                 
                 // Clear existing content and render with bold ranges
@@ -861,7 +926,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 // Get current state and context
                 const spansInSelection = getSpansInSelection()
                 const context = checkSpansAroundSelection()
-                const currentBoldRanges = schema.bold || []
+                const currentBoldRanges = activeBoldRanges
                 
                 console.log('[TextWithVariables] toggleBold state:', {
                     textRange,
@@ -873,34 +938,32 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 let newBoldRanges: Array<{ start: number; end: number }>
                 let shouldMakeBold = false
 
-                // Determine action based on spans in selection and context
-                if (spansInSelection.length === 0) {
-                    // No spans in selection - check context
-                    if (context.hasContext) {
-                        // Context spans exist - remove bold (remove spans)
-                        console.log('[TextWithVariables] No spans in selection but context exists - removing bold')
-                        newBoldRanges = removeBoldRange(textRange.start, textRange.end, currentBoldRanges)
-                        shouldMakeBold = false
-                    } else {
-                        // No context spans - add bold (create new span)
-                        console.log('[TextWithVariables] No spans in selection and no context - making bold')
-                        newBoldRanges = addBoldRange(textRange.start, textRange.end, currentBoldRanges)
-                        shouldMakeBold = true
-                    }
+                // Advanced bold toggle logic
+                const entirelyBold = isEntirelyBold(textRange.start, textRange.end, currentBoldRanges)
+                const partialOverlap = hasPartialOverlap(textRange.start, textRange.end, currentBoldRanges)
+                const overlappingRanges = getOverlappingRanges(textRange.start, textRange.end, currentBoldRanges)
+                
+                console.log('[TextWithVariables] Advanced bold analysis:', {
+                    entirelyBold,
+                    partialOverlap,
+                    overlappingRanges: overlappingRanges.length
+                })
+
+                if (entirelyBold) {
+                    // Case 1: Selection is entirely bold - remove only this part.
+                    console.log('[TextWithVariables] Selection entirely bold - removing bold (may split ranges)')
+                    newBoldRanges = removeBoldRange(textRange.start, textRange.end, currentBoldRanges)
+                    shouldMakeBold = false
+                } else if (partialOverlap) {
+                    // Case 2: Selection partially overlaps - extend to make entire selection bold.
+                    console.log('[TextWithVariables] Partial overlap detected - extending to make entire selection bold')
+                    newBoldRanges = extendBoldRangeToInclude(textRange.start, textRange.end, currentBoldRanges)
+                    shouldMakeBold = true
                 } else {
-                    // Spans exist in selection - use schema-based logic
-                    const isBold = isRangeBold(textRange.start, textRange.end, currentBoldRanges)
-                    console.log('[TextWithVariables] Spans exist in selection, schema says bold:', isBold)
-                    
-                    if (isBold) {
-                        // Remove bold from the selected range
-                        newBoldRanges = removeBoldRange(textRange.start, textRange.end, currentBoldRanges)
-                        shouldMakeBold = false
-                    } else {
-                        // Add bold to the selected range
-                        newBoldRanges = addBoldRange(textRange.start, textRange.end, currentBoldRanges)
-                        shouldMakeBold = true
-                    }
+                    // Case 3: No overlap - make bold
+                    console.log('[TextWithVariables] No overlap - making selection bold')
+                    newBoldRanges = addBoldRange(textRange.start, textRange.end, currentBoldRanges)
+                    shouldMakeBold = true
                 }
 
                 console.log('[TextWithVariables] toggleBold result:', {
@@ -909,17 +972,19 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                     newRanges: newBoldRanges
                 })
 
+                activeBoldRanges = newBoldRanges.map((range) => ({ ...range }))
+
                 // Re-render the content with new bold ranges FIRST
-                renderContentWithBold(newBoldRanges)
+                renderContentWithBold(activeBoldRanges)
 
                 // Update the schema with new bold ranges
                 if (onChange) {
-                    onChange({ key: 'bold', value: newBoldRanges })
+                    onChange({ key: 'bold', value: activeBoldRanges })
                 }
 
                 // Restore selection
                 setTimeout(() => {
-                    setCaretOffset(textBlock, textRange.end)
+                    setCaretOffset(textBlock, textRange.end + 1)
                 }, 0)
 
                 updateToolbarPosition()
