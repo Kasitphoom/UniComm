@@ -402,6 +402,24 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             selection.addRange(range)
         }
 
+        const setSelectionOffsets = (element: HTMLDivElement, startOffset: number, endOffsetExclusive: number) => {
+            const selection = window.getSelection()
+            if (!selection) return
+
+            const safeStart = Math.max(0, startOffset)
+            const safeEnd = Math.max(safeStart, endOffsetExclusive)
+
+            const startPos = findTextPosition(element, safeStart)
+            const endPos = findTextPosition(element, safeEnd)
+
+            const range = document.createRange()
+            range.setStart(startPos.node, startPos.offset)
+            range.setEnd(endPos.node, endPos.offset)
+
+            selection.removeAllRanges()
+            selection.addRange(range)
+        }
+
         const findTextPosition = (
             element: HTMLDivElement,
             targetOffset: number,
@@ -982,7 +1000,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
 
                 // Restore selection
                 setTimeout(() => {
-                    setCaretOffset(textBlock, textRange.end + 1)
+                    setSelectionOffsets(textBlock, textRange.start, textRange.end + 1)
                 }, 0)
 
                 updateToolbarPosition()
