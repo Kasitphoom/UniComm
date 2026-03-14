@@ -8,15 +8,20 @@ import type { UIRenderProps } from "@pdfme/common"
 import { TextWithVariablesPropPanel } from "./propPanel"
 import {
     getFontSizeAtIndex,
+    isIndexInStyleRanges,
     isIndexBold,
     normalizeBoldRanges,
     normalizeFontSizeRanges,
+    normalizeStyleRanges,
     projectBoldRangesBySourceMap,
     projectFontSizeRangesBySourceMap,
+    projectStyleRangesBySourceMap,
     renderStyledRanges,
     setFontSizeRange,
     type BoldRange,
     type FontSizeRange,
+    type StyleRange,
+    toggleStyleRanges,
 } from "./textStyleRanges"
 
 export type TextWithVariablesSchema = Schema & {
@@ -42,6 +47,9 @@ export type TextWithVariablesSchema = Schema & {
     readOnly?: boolean
     bold?: Array<{ start: number; end: number }>
     fontSizeRanges?: Array<{ start: number; end: number; size: number }>
+    italicRanges?: Array<{ start: number; end: number }>
+    underlineRanges?: Array<{ start: number; end: number }>
+    strikeRanges?: Array<{ start: number; end: number }>
 }
 
 type FieldOption = { field: string; type: string }
@@ -59,7 +67,12 @@ type DropdownFieldEntry = {
 let cachedFieldGroups: FieldGroup[] | null = null
 let cachedFieldGroupsPromise: Promise<FieldGroup[]> | null = null
 
-const getBoldFontName = (fontName: string | undefined, font: Font): string => {
+const getFontVariantName = (
+    fontName: string | undefined,
+    font: Font,
+    bold: boolean,
+    italic: boolean,
+): string => {
     const fallback = getFallbackFontName(font)
     const current = fontName || fallback
     const names = Object.keys(font)
@@ -68,10 +81,20 @@ const getBoldFontName = (fontName: string | undefined, font: Font): string => {
         .replace(/-BoldItalic|-Bold|-Italic|-Regular/gi, '')
         .trim()
 
-    const isItalic = /italic|oblique/i.test(current)
-    const candidates = isItalic
-        ? [`${family}-BoldItalic`, `${family}-Bold`, `${family} Bold Italic`, `${family} Bold`]
-        : [`${family}-Bold`, `${family} Bold`, `${family}-BoldItalic`]
+    const candidates = bold && italic
+        ? [
+            `${family}-BoldItalic`,
+            `${family} Bold Italic`,
+            `${family}-ItalicBold`,
+            `${family} Italic Bold`,
+            `${family}-Bold`,
+            `${family}-Italic`,
+        ]
+        : bold
+            ? [`${family}-Bold`, `${family} Bold`, `${family}-BoldItalic`]
+            : italic
+                ? [`${family}-Italic`, `${family} Italic`, `${family}-Oblique`, `${family} Oblique`]
+                : [current, `${family}-Regular`, `${family} Regular`]
 
     for (const candidate of candidates) {
         if (font[candidate]) return candidate
@@ -79,7 +102,10 @@ const getBoldFontName = (fontName: string | undefined, font: Font): string => {
 
     const fuzzy = names.find((name) => {
         const lower = name.toLowerCase()
-        return lower.includes(family.toLowerCase()) && lower.includes('bold')
+        if (!lower.includes(family.toLowerCase())) return false
+        if (bold && !lower.includes('bold')) return false
+        if (italic && !(lower.includes('italic') || lower.includes('oblique'))) return false
+        return true
     })
 
     return fuzzy || current
@@ -126,12 +152,23 @@ const splitLinesForMixedText = (
     maxWidth: number,
     baseFontSize: number,
     charSpacing: number,
-    normalFont: PDFFont,
-    boldFont: PDFFont,
+    getFontForStyle: (isBold: boolean, isItalic: boolean) => PDFFont,
     boldRanges: BoldRange[],
     fontSizeRanges: FontSizeRange[],
+    italicRanges: StyleRange[],
+    underlineRanges: StyleRange[],
+    strikeRanges: StyleRange[],
 ) => {
-    type CharEntry = { char: string; index: number; bold: boolean; fontSize: number; width: number }
+    type CharEntry = {
+        char: string
+        index: number
+        bold: boolean
+        italic: boolean
+        underline: boolean
+        strike: boolean
+        fontSize: number
+        width: number
+    }
     type Line = CharEntry[]
 
     const lines: Line[] = []
@@ -155,8 +192,11 @@ const splitLinesForMixedText = (
         }
 
         const isBold = isIndexBold(index, boldRanges)
+        const isItalic = isIndexInStyleRanges(index, italicRanges)
+        const isUnderline = isIndexInStyleRanges(index, underlineRanges)
+        const isStrike = isIndexInStyleRanges(index, strikeRanges)
         const charFontSize = getFontSizeAtIndex(index, fontSizeRanges, baseFontSize)
-        const font = isBold ? boldFont : normalFont
+        const font = getFontForStyle(isBold, isItalic)
         const charWidth = font.widthOfTextAtSize(char, charFontSize)
         const additionalSpacing = currentLine.length > 0 ? charSpacing : 0
         const nextWidth = currentLineWidth + charWidth + additionalSpacing
@@ -169,6 +209,9 @@ const splitLinesForMixedText = (
             char,
             index,
             bold: isBold,
+            italic: isItalic,
+            underline: isUnderline,
+            strike: isStrike,
             fontSize: charFontSize,
             width: charWidth,
         }
@@ -366,22 +409,38 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         const sourceBoldRanges = normalizeBoldRanges(schema.bold)
         const baseFontSize = schema.fontSize || 12
         const sourceFontSizeRanges = normalizeFontSizeRanges(schema.fontSizeRanges)
+        const sourceItalicRanges = normalizeStyleRanges(schema.italicRanges)
+        const sourceUnderlineRanges = normalizeStyleRanges(schema.underlineRanges)
+        const sourceStrikeRanges = normalizeStyleRanges(schema.strikeRanges)
         const boldRanges = projectBoldRangesBySourceMap(sourceBoldRanges, parsedText.sourceIndexByOutputIndex)
         const fontSizeRanges = projectFontSizeRangesBySourceMap(
             sourceFontSizeRanges,
             parsedText.sourceIndexByOutputIndex,
             baseFontSize,
         )
+        const italicRanges = projectStyleRangesBySourceMap(sourceItalicRanges, parsedText.sourceIndexByOutputIndex)
+        const underlineRanges = projectStyleRangesBySourceMap(sourceUnderlineRanges, parsedText.sourceIndexByOutputIndex)
+        const strikeRanges = projectStyleRangesBySourceMap(sourceStrikeRanges, parsedText.sourceIndexByOutputIndex)
 
         const { pdfDoc, page, options, pdfLib } = rest
         const fontMap = options.font || getDefaultFont()
         const baseFontName = schema.fontName || getFallbackFontName(fontMap)
-        const boldFontName = getBoldFontName(baseFontName, fontMap)
+        const boldFontName = getFontVariantName(baseFontName, fontMap, true, false)
+        const italicFontName = getFontVariantName(baseFontName, fontMap, false, true)
+        const boldItalicFontName = getFontVariantName(baseFontName, fontMap, true, true)
 
         const baseFontData = await toUint8Array(fontMap[baseFontName]?.data)
         const boldFontData = await toUint8Array((fontMap[boldFontName] || fontMap[baseFontName])?.data)
+        const italicFontData = await toUint8Array((fontMap[italicFontName] || fontMap[baseFontName])?.data)
+        const boldItalicFontData = await toUint8Array((fontMap[boldItalicFontName] || fontMap[boldFontName] || fontMap[baseFontName])?.data)
 
-        if (boldRanges.length === 0 && fontSizeRanges.length === 0) {
+        if (
+            boldRanges.length === 0 &&
+            fontSizeRanges.length === 0 &&
+            italicRanges.length === 0 &&
+            underlineRanges.length === 0 &&
+            strikeRanges.length === 0
+        ) {
             await textPlugin.pdf({
                 value: processedText,
                 schema: schema as unknown as Parameters<typeof textPlugin.pdf>[0]['schema'],
@@ -392,6 +451,15 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
 
         const normalFont = await pdfDoc.embedFont(baseFontData, { subset: true })
         const boldFont = await pdfDoc.embedFont(boldFontData, { subset: true })
+        const italicFont = await pdfDoc.embedFont(italicFontData, { subset: true })
+        const boldItalicFont = await pdfDoc.embedFont(boldItalicFontData, { subset: true })
+
+        const getFontForStyle = (isBold: boolean, isItalic: boolean) => {
+            if (isBold && isItalic) return boldItalicFont
+            if (isBold) return boldFont
+            if (isItalic) return italicFont
+            return normalFont
+        }
 
         const lineHeight = schema.lineHeight || 1
         const charSpacing = schema.characterSpacing || 0
@@ -408,10 +476,12 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             width,
             baseFontSize,
             charSpacing,
-            normalFont,
-            boldFont,
+            getFontForStyle,
             boldRanges,
             fontSizeRanges,
+            italicRanges,
+            underlineRanges,
+            strikeRanges,
         )
 
         const lineMetrics = lines.map((line) => {
@@ -446,7 +516,8 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             else if (schema.alignment === 'right') cursorX += width - totalLineWidth;
 
             line.forEach((entry) => {
-                const font = entry.bold ? boldFont : normalFont;
+                const font = getFontForStyle(entry.bold, entry.italic)
+                const lineThickness = Math.max(0.5, entry.fontSize * 0.05)
                 if (entry.char.trim() !== "") {
                     page.drawText(entry.char, {
                         x: cursorX,
@@ -457,6 +528,28 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                         opacity: schema.opacity ?? 1,
                     });
                 }
+
+                const startX = cursorX
+                const endX = cursorX + entry.width
+                if (entry.underline) {
+                    page.drawLine({
+                        start: { x: startX, y: lineY - entry.fontSize * 0.12 },
+                        end: { x: endX, y: lineY - entry.fontSize * 0.12 },
+                        thickness: lineThickness,
+                        color,
+                        opacity: schema.opacity ?? 1,
+                    })
+                }
+                if (entry.strike) {
+                    page.drawLine({
+                        start: { x: startX, y: lineY + entry.fontSize * 0.3 },
+                        end: { x: endX, y: lineY + entry.fontSize * 0.3 },
+                        thickness: lineThickness,
+                        color,
+                        opacity: schema.opacity ?? 1,
+                    })
+                }
+
                 cursorX += entry.width + charSpacing;
             });
 
@@ -494,6 +587,9 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         const normalizedSchemaBoldRanges = normalizeBoldRanges(schema.bold)
         const baseFontSize = schema.fontSize || 12
         const normalizedSchemaFontSizeRanges = normalizeFontSizeRanges(schema.fontSizeRanges)
+        const normalizedSchemaItalicRanges = normalizeStyleRanges(schema.italicRanges)
+        const normalizedSchemaUnderlineRanges = normalizeStyleRanges(schema.underlineRanges)
+        const normalizedSchemaStrikeRanges = normalizeStyleRanges(schema.strikeRanges)
         const parsedRawText = parseVariablesWithMapping(rawText, valueData)
         const projectedReadOnlyBoldRanges = projectBoldRangesBySourceMap(
             normalizedSchemaBoldRanges,
@@ -504,13 +600,37 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             parsedRawText.sourceIndexByOutputIndex,
             baseFontSize,
         )
+        const projectedReadOnlyItalicRanges = projectStyleRangesBySourceMap(
+            normalizedSchemaItalicRanges,
+            parsedRawText.sourceIndexByOutputIndex,
+        )
+        const projectedReadOnlyUnderlineRanges = projectStyleRangesBySourceMap(
+            normalizedSchemaUnderlineRanges,
+            parsedRawText.sourceIndexByOutputIndex,
+        )
+        const projectedReadOnlyStrikeRanges = projectStyleRangesBySourceMap(
+            normalizedSchemaStrikeRanges,
+            parsedRawText.sourceIndexByOutputIndex,
+        )
         let displayHtml = isEditableMode
             ? initialHtml
             : (schema.content ? applyVariablesToHtml(schema.content, valueData) : parsedRawText.text)
 
         if (
-            (isEditableMode && (normalizedSchemaBoldRanges.length > 0 || normalizedSchemaFontSizeRanges.length > 0)) ||
-            (!isEditableMode && (projectedReadOnlyBoldRanges.length > 0 || projectedReadOnlyFontSizeRanges.length > 0))
+            (isEditableMode && (
+                normalizedSchemaBoldRanges.length > 0 ||
+                normalizedSchemaFontSizeRanges.length > 0 ||
+                normalizedSchemaItalicRanges.length > 0 ||
+                normalizedSchemaUnderlineRanges.length > 0 ||
+                normalizedSchemaStrikeRanges.length > 0
+            )) ||
+            (!isEditableMode && (
+                projectedReadOnlyBoldRanges.length > 0 ||
+                projectedReadOnlyFontSizeRanges.length > 0 ||
+                projectedReadOnlyItalicRanges.length > 0 ||
+                projectedReadOnlyUnderlineRanges.length > 0 ||
+                projectedReadOnlyStrikeRanges.length > 0
+            ))
         ) {
             const plainText = stripHtmlTags(displayHtml)
             displayHtml = renderStyledRanges(
@@ -518,6 +638,9 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 isEditableMode ? normalizedSchemaBoldRanges : projectedReadOnlyBoldRanges,
                 isEditableMode ? normalizedSchemaFontSizeRanges : projectedReadOnlyFontSizeRanges,
                 baseFontSize,
+                isEditableMode ? normalizedSchemaItalicRanges : projectedReadOnlyItalicRanges,
+                isEditableMode ? normalizedSchemaUnderlineRanges : projectedReadOnlyUnderlineRanges,
+                isEditableMode ? normalizedSchemaStrikeRanges : projectedReadOnlyStrikeRanges,
             )
         }
 
@@ -594,6 +717,43 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
 
         let activeBoldRanges = normalizedSchemaBoldRanges.map((range) => ({ ...range }))
         let activeFontSizeRanges = normalizedSchemaFontSizeRanges.map((range) => ({ ...range }))
+        let activeItalicRanges = normalizedSchemaItalicRanges.map((range) => ({ ...range }))
+        let activeUnderlineRanges = normalizedSchemaUnderlineRanges.map((range) => ({ ...range }))
+        let activeStrikeRanges = normalizedSchemaStrikeRanges.map((range) => ({ ...range }))
+
+        type FormatRangeMap = {
+            bold: Array<{ start: number; end: number }>
+            fontSizeRanges: Array<{ start: number; end: number; size: number }>
+            italicRanges: Array<{ start: number; end: number }>
+            underlineRanges: Array<{ start: number; end: number }>
+            strikeRanges: Array<{ start: number; end: number }>
+        }
+
+        type FormatRangeKey = keyof FormatRangeMap
+
+        const getFormatRanges = (): FormatRangeMap => ({
+            bold: activeBoldRanges,
+            fontSizeRanges: activeFontSizeRanges,
+            italicRanges: activeItalicRanges,
+            underlineRanges: activeUnderlineRanges,
+            strikeRanges: activeStrikeRanges,
+        })
+
+        const setFormatRange = <K extends FormatRangeKey>(key: K, value: FormatRangeMap[K]) => {
+            if (key === 'bold') activeBoldRanges = value as FormatRangeMap['bold']
+            else if (key === 'fontSizeRanges') activeFontSizeRanges = value as FormatRangeMap['fontSizeRanges']
+            else if (key === 'italicRanges') activeItalicRanges = value as FormatRangeMap['italicRanges']
+            else if (key === 'underlineRanges') activeUnderlineRanges = value as FormatRangeMap['underlineRanges']
+            else activeStrikeRanges = value as FormatRangeMap['strikeRanges']
+        }
+
+        const createFormatRangeUpdates = () => {
+            const ranges = getFormatRanges()
+            return (Object.keys(ranges) as FormatRangeKey[]).map((key) => ({
+                key,
+                value: ranges[key].map((entry) => ({ ...entry })),
+            }))
+        }
 
         const getCaretOffset = (element: HTMLDivElement) => {
             const selection = window.getSelection()
@@ -697,8 +857,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                     { key: 'content', value: textBlock.innerHTML },
                     { key: 'text', value: plainText },
                     { key: 'variables', value: newVariables },
-                    { key: 'bold', value: activeBoldRanges.map((range) => ({ ...range })) },
-                    { key: 'fontSizeRanges', value: activeFontSizeRanges.map((range) => ({ ...range })) },
+                    ...createFormatRangeUpdates(),
                 ])
             }
 
@@ -778,6 +937,26 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 return btn
             }
 
+            const createSvgIconButton = (svgMarkup: string, ariaLabel: string) => {
+                const btn = createIconButton('')
+                btn.innerHTML = svgMarkup
+                btn.setAttribute('aria-label', ariaLabel)
+                btn.style.display = 'inline-flex'
+                btn.style.alignItems = 'center'
+                btn.style.justifyContent = 'center'
+
+                const svg = btn.querySelector('svg')
+                if (svg) {
+                    svg.setAttribute('width', '12')
+                    svg.setAttribute('height', '12')
+                    svg.style.width = '12px'
+                    svg.style.height = '12px'
+                    svg.style.display = 'block'
+                }
+
+                return btn
+            }
+
             const fontSizeDisplay = document.createElement('span')
             fontSizeDisplay.style.padding = '0 4px'
             fontSizeDisplay.style.minWidth = '36px'
@@ -806,41 +985,6 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 }
 
                 return firstSize
-            }
-
-            const isSelectionBold = () => {
-                const selection = window.getSelection()
-                if (!selection || selection.rangeCount === 0) return false
-                
-                const range = selection.getRangeAt(0)
-                if (range.collapsed) {
-                    const caretPos = getCaretOffset(textBlock)
-                    const boldRanges = activeBoldRanges
-                    
-                    for (const boldRange of boldRanges) {
-                        if (caretPos >= boldRange.start && caretPos <= boldRange.end) {
-                            return true
-                        }
-                    }
-                    return false
-                }
-                
-                const textRange = getTextRangeFromSelection()
-                if (!textRange) return false
-                
-                const boldRanges = activeBoldRanges
-                const entirelyBold = isEntirelyBold(textRange.start, textRange.end, boldRanges)
-                const partialOverlap = hasPartialOverlap(textRange.start, textRange.end, boldRanges)
-
-                if (entirelyBold) {
-                    return true
-                }
-
-                if (partialOverlap) {
-                    return false
-                }
-
-                return false
             }
 
             const updateFontSizeDisplay = () => {
@@ -889,7 +1033,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 renderContentWithStyles(activeBoldRanges, activeFontSizeRanges)
 
                 if (onChange) {
-                    onChange({ key: 'fontSizeRanges', value: activeFontSizeRanges.map((entry) => ({ ...entry })) })
+                    onChange({ key: 'fontSizeRanges', value: getFormatRanges().fontSizeRanges.map((entry) => ({ ...entry })) })
                 }
 
                 setTimeout(() => {
@@ -898,125 +1042,6 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
 
                 updateFontSizeDisplay()
                 updateToolbarPosition()
-            }
-
-            const applyInlineCommand = (command: 'italic' | 'underline' | 'strikeThrough') => {
-                const selection = window.getSelection()
-                if (!selection || selection.rangeCount === 0) return
-                const range = selection.getRangeAt(0)
-                if (range.collapsed) return
-
-                textBlock.focus()
-                document.execCommand('styleWithCSS', false, 'true')
-                document.execCommand(command, false)
-
-                commitContentChange()
-                updateToolbarPosition()
-            }
-
-            const mergeBoldRanges = (ranges: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> => {
-                if (ranges.length === 0) return []
-                
-                const sorted = [...ranges].sort((a, b) => a.start - b.start)
-                const merged = [sorted[0]]
-                
-                for (let i = 1; i < sorted.length; i++) {
-                    const current = sorted[i]
-                    const last = merged[merged.length - 1]
-                    
-                    if (current.start <= last.end + 1) {
-                        last.end = Math.max(last.end, current.end)
-                    } else {
-                        merged.push(current)
-                    }
-                }
-                
-                return merged
-            }
-
-            const isRangeBold = (start: number, end: number, boldRanges: Array<{ start: number; end: number }>): boolean => {
-                for (const range of boldRanges) {
-                    if (range.start <= start && range.end >= end) {
-                        return true
-                    }
-                }
-                return false
-            }
-
-            const isEntirelyBold = (start: number, end: number, boldRanges: Array<{ start: number; end: number }>): boolean => {
-                let currentPos = start
-                const sortedRanges = [...boldRanges].sort((a, b) => a.start - b.start)
-                
-                for (const range of sortedRanges) {
-                    if (range.start <= currentPos && range.end >= currentPos) {
-                        currentPos = range.end + 1
-                        if (currentPos > end) {
-                            return true
-                        }
-                    }
-                }
-                
-                return false
-            }
-
-            const hasPartialOverlap = (start: number, end: number, boldRanges: Array<{ start: number; end: number }>): boolean => {
-                for (const range of boldRanges) {
-                    if (range.start <= end && range.end >= start) {
-                        return !(range.start <= start && range.end >= end)
-                    }
-                }
-                return false
-            }
-
-            const getOverlappingRanges = (start: number, end: number, boldRanges: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> => {
-                return boldRanges.filter(range => range.start <= end && range.end >= start)
-            }
-
-            const addBoldRange = (start: number, end: number, currentRanges: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> => {
-                const newRanges = [...currentRanges, { start, end }]
-                return mergeBoldRanges(newRanges)
-            }
-
-            const removeBoldRange = (start: number, end: number, currentRanges: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> => {
-                const result: Array<{ start: number; end: number }> = []
-                
-                for (const range of currentRanges) {
-                    if (range.end < start || range.start > end) {
-                        // No overlap - keep the range
-                        result.push(range)
-                    } else {
-                        // There is overlap - split if needed
-                        if (range.start < start) {
-                            // Keep the part before the removed range
-                            result.push({ start: range.start, end: start - 1 })
-                        }
-                        if (range.end > end) {
-                            // Keep the part after the removed range
-                            result.push({ start: end + 1, end: range.end })
-                        }
-                    }
-                }
-                
-                return result
-            }
-
-            const extendBoldRangeToInclude = (start: number, end: number, currentRanges: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> => {
-                // Remove overlapping ranges and create a new range that includes the selection
-                const nonOverlapping = currentRanges.filter(range => !(range.start <= end && range.end >= start))
-                const overlapping = getOverlappingRanges(start, end, currentRanges)
-                
-                // Find the extended bounds
-                let extendedStart = start
-                let extendedEnd = end
-                
-                for (const range of overlapping) {
-                    extendedStart = Math.min(extendedStart, range.start)
-                    extendedEnd = Math.max(extendedEnd, range.end)
-                }
-                
-                // Add the extended range
-                const newRanges = [...nonOverlapping, { start: extendedStart, end: extendedEnd }]
-                return mergeBoldRanges(newRanges)
             }
 
             const getTextRangeFromSelection = (): { start: number; end: number } | null => {
@@ -1068,16 +1093,25 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             const renderContentWithStyles = (
                 boldRanges?: Array<{ start: number; end: number }>,
                 fontRanges?: Array<{ start: number; end: number; size: number }>,
+                italicRanges?: Array<{ start: number; end: number }>,
+                underlineRanges?: Array<{ start: number; end: number }>,
+                strikeRanges?: Array<{ start: number; end: number }>,
             ) => {
                 const plainText = getText(textBlock)
                 const resolvedBoldRanges = boldRanges || activeBoldRanges
                 const resolvedFontRanges = fontRanges || activeFontSizeRanges
+                const resolvedItalicRanges = italicRanges || activeItalicRanges
+                const resolvedUnderlineRanges = underlineRanges || activeUnderlineRanges
+                const resolvedStrikeRanges = strikeRanges || activeStrikeRanges
 
                 const renderedHtml = renderStyledRanges(
                     plainText,
                     resolvedBoldRanges,
                     resolvedFontRanges,
                     baseFontSize,
+                    resolvedItalicRanges,
+                    resolvedUnderlineRanges,
+                    resolvedStrikeRanges,
                 )
                 textBlock.innerHTML = renderedHtml
             }
@@ -1091,33 +1125,121 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 const textRange = getTextRangeFromSelection()
                 if (!textRange) return
 
-                const currentBoldRanges = activeBoldRanges
-
-                let newBoldRanges: Array<{ start: number; end: number }>
-
-                const entirelyBold = isEntirelyBold(textRange.start, textRange.end, currentBoldRanges)
-                const overlappingRanges = getOverlappingRanges(textRange.start, textRange.end, currentBoldRanges)
-
-                if (entirelyBold) {
-                    newBoldRanges = removeBoldRange(textRange.start, textRange.end, currentBoldRanges)
-                } else if (overlappingRanges.length > 0) {
-                    newBoldRanges = extendBoldRangeToInclude(textRange.start, textRange.end, currentBoldRanges)
-                } else {
-                    newBoldRanges = addBoldRange(textRange.start, textRange.end, currentBoldRanges)
-                }
-
-                activeBoldRanges = newBoldRanges.map((range) => ({ ...range }))
+                activeBoldRanges = toggleStyleRanges(textRange.start, textRange.end, activeBoldRanges)
 
                 renderContentWithStyles(activeBoldRanges, activeFontSizeRanges)
 
                 if (onChange) {
-                    onChange({ key: 'bold', value: activeBoldRanges })
+                    onChange({ key: 'bold', value: getFormatRanges().bold.map((entry) => ({ ...entry })) })
                 }
 
                 setTimeout(() => {
                     setSelectionOffsets(textBlock, textRange.start, textRange.end + 1)
                 }, 0)
 
+                updateToolbarPosition()
+            }
+
+            const toggleStyle = (style: 'italic' | 'underline' | 'strike') => {
+                const selection = window.getSelection()
+                if (!selection || selection.rangeCount === 0) return
+                const range = selection.getRangeAt(0)
+                if (range.collapsed) return
+
+                const textRange = getTextRangeFromSelection()
+                if (!textRange) return
+
+                if (style === 'italic') {
+                    activeItalicRanges = toggleStyleRanges(textRange.start, textRange.end, activeItalicRanges)
+                    if (onChange) onChange({ key: 'italicRanges', value: getFormatRanges().italicRanges.map((entry) => ({ ...entry })) })
+                } else if (style === 'underline') {
+                    activeUnderlineRanges = toggleStyleRanges(textRange.start, textRange.end, activeUnderlineRanges)
+                    if (onChange) onChange({ key: 'underlineRanges', value: getFormatRanges().underlineRanges.map((entry) => ({ ...entry })) })
+                } else {
+                    activeStrikeRanges = toggleStyleRanges(textRange.start, textRange.end, activeStrikeRanges)
+                    if (onChange) onChange({ key: 'strikeRanges', value: getFormatRanges().strikeRanges.map((entry) => ({ ...entry })) })
+                }
+
+                renderContentWithStyles(
+                    activeBoldRanges,
+                    activeFontSizeRanges,
+                    activeItalicRanges,
+                    activeUnderlineRanges,
+                    activeStrikeRanges,
+                )
+
+                setTimeout(() => {
+                    setSelectionOffsets(textBlock, textRange.start, textRange.end + 1)
+                }, 0)
+
+                updateToolbarPosition()
+            }
+
+            const clearStyleRangeSelection = (
+                ranges: Array<{ start: number; end: number }>,
+                selectionStart: number,
+                selectionEnd: number,
+            ) => {
+                const result: Array<{ start: number; end: number }> = []
+
+                for (const range of ranges) {
+                    if (range.end < selectionStart || range.start > selectionEnd) {
+                        result.push({ ...range })
+                        continue
+                    }
+
+                    if (range.start < selectionStart) {
+                        result.push({ start: range.start, end: selectionStart - 1 })
+                    }
+                    if (range.end > selectionEnd) {
+                        result.push({ start: selectionEnd + 1, end: range.end })
+                    }
+                }
+
+                return result
+            }
+
+            const clearSelectionFormatting = () => {
+                const selection = window.getSelection()
+                if (!selection || selection.rangeCount === 0) return
+                const range = selection.getRangeAt(0)
+                if (range.collapsed) return
+
+                const textRange = getTextRangeFromSelection()
+                if (!textRange) return
+
+                setFormatRange('bold', clearStyleRangeSelection(getFormatRanges().bold, textRange.start, textRange.end))
+                setFormatRange('italicRanges', clearStyleRangeSelection(getFormatRanges().italicRanges, textRange.start, textRange.end))
+                setFormatRange('underlineRanges', clearStyleRangeSelection(getFormatRanges().underlineRanges, textRange.start, textRange.end))
+                setFormatRange('strikeRanges', clearStyleRangeSelection(getFormatRanges().strikeRanges, textRange.start, textRange.end))
+                setFormatRange(
+                    'fontSizeRanges',
+                    setFontSizeRange(
+                        textRange.start,
+                        textRange.end,
+                        baseFontSize,
+                        getFormatRanges().fontSizeRanges,
+                        baseFontSize,
+                    ),
+                )
+
+                renderContentWithStyles(
+                    getFormatRanges().bold,
+                    getFormatRanges().fontSizeRanges,
+                    getFormatRanges().italicRanges,
+                    getFormatRanges().underlineRanges,
+                    getFormatRanges().strikeRanges,
+                )
+
+                if (onChange) {
+                    onChange(createFormatRangeUpdates())
+                }
+
+                setTimeout(() => {
+                    setSelectionOffsets(textBlock, textRange.start, textRange.end + 1)
+                }, 0)
+
+                updateFontSizeDisplay()
                 updateToolbarPosition()
             }
 
@@ -1185,7 +1307,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             }
             italicButton.onclick = (e) => {
                 e.preventDefault()
-                applyInlineCommand('italic')
+                toggleStyle('italic')
             }
 
             const underlineButton = createIconButton('U')
@@ -1196,7 +1318,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             }
             underlineButton.onclick = (e) => {
                 e.preventDefault()
-                applyInlineCommand('underline')
+                toggleStyle('underline')
             }
 
             const strikeButton = createIconButton('S')
@@ -1207,7 +1329,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             }
             strikeButton.onclick = (e) => {
                 e.preventDefault()
-                applyInlineCommand('strikeThrough')
+                toggleStyle('strike')
             }
 
             const decreaseSizeButton = createIconButton('-')
@@ -1224,6 +1346,19 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             }
             increaseSizeButton.onclick = () => changeFontSize(1)
 
+            const clearFormatButton = createSvgIconButton(
+                '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-remove-formatting-icon lucide-remove-formatting"><path d="M4 7V4h16v3"/><path d="M5 20h6"/><path d="M13 4 8 20"/><path d="m15 15 5 5"/><path d="m20 15-5 5"/></svg>',
+                'Clear formatting',
+            )
+            clearFormatButton.onmousedown = (e) => {
+                e.preventDefault()
+                textBlock.focus()
+            }
+            clearFormatButton.onclick = (e) => {
+                e.preventDefault()
+                clearSelectionFormatting()
+            }
+
             toolbar.appendChild(boldButton)
             toolbar.appendChild(italicButton)
             toolbar.appendChild(underlineButton)
@@ -1231,6 +1366,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             toolbar.appendChild(decreaseSizeButton)
             toolbar.appendChild(fontSizeDisplay)
             toolbar.appendChild(increaseSizeButton)
+            toolbar.appendChild(clearFormatButton)
 
             document.addEventListener('selectionchange', handleSelectionChange)
             textBlock.addEventListener('mouseup', handleSelectionChange)
