@@ -891,6 +891,20 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 updateFontSizeDisplay()
             }
 
+            const applyInlineCommand = (command: 'italic' | 'underline' | 'strikeThrough') => {
+                const selection = window.getSelection()
+                if (!selection || selection.rangeCount === 0) return
+                const range = selection.getRangeAt(0)
+                if (range.collapsed) return
+
+                textBlock.focus()
+                document.execCommand('styleWithCSS', false, 'true')
+                document.execCommand(command, false)
+
+                commitContentChange()
+                updateToolbarPosition()
+            }
+
             const mergeBoldRanges = (ranges: Array<{ start: number; end: number }>): Array<{ start: number; end: number }> => {
                 if (ranges.length === 0) return []
                 
@@ -1145,6 +1159,39 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 }, 10)
             }
 
+            const italicButton = createIconButton('I')
+            italicButton.style.fontStyle = 'italic'
+            italicButton.onmousedown = (e) => {
+                e.preventDefault()
+                textBlock.focus()
+            }
+            italicButton.onclick = (e) => {
+                e.preventDefault()
+                applyInlineCommand('italic')
+            }
+
+            const underlineButton = createIconButton('U')
+            underlineButton.style.textDecoration = 'underline'
+            underlineButton.onmousedown = (e) => {
+                e.preventDefault()
+                textBlock.focus()
+            }
+            underlineButton.onclick = (e) => {
+                e.preventDefault()
+                applyInlineCommand('underline')
+            }
+
+            const strikeButton = createIconButton('S')
+            strikeButton.style.textDecoration = 'line-through'
+            strikeButton.onmousedown = (e) => {
+                e.preventDefault()
+                textBlock.focus()
+            }
+            strikeButton.onclick = (e) => {
+                e.preventDefault()
+                applyInlineCommand('strikeThrough')
+            }
+
             const decreaseSizeButton = createIconButton('-')
             decreaseSizeButton.onclick = () => changeFontSize(-1)
 
@@ -1152,6 +1199,9 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             increaseSizeButton.onclick = () => changeFontSize(1)
 
             toolbar.appendChild(boldButton)
+            toolbar.appendChild(italicButton)
+            toolbar.appendChild(underlineButton)
+            toolbar.appendChild(strikeButton)
             toolbar.appendChild(decreaseSizeButton)
             toolbar.appendChild(fontSizeDisplay)
             toolbar.appendChild(increaseSizeButton)
