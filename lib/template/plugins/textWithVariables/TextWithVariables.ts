@@ -138,69 +138,58 @@ const splitLinesForMixedText = (
     boldFont: PDFFont,
     boldRanges: BoldRange[],
 ) => {
-    type CharEntry = { char: string; index: number; bold: boolean; width: number };
-    type Line = CharEntry[];
-    
-    const lines: Line[] = [];
-    let currentLine: Line = [];
-    let currentLineWidth = 0;
+    type CharEntry = { char: string; index: number; bold: boolean; width: number }
+    type Line = CharEntry[]
 
-    // 1. Split by hard newlines to respect manual formatting
-    const paragraphs = text.split(/\r?\n/);
+    const lines: Line[] = []
+    let currentLine: Line = []
+    let currentLineWidth = 0
 
-    paragraphs.forEach((paragraph, pIdx) => {
-        // Find the starting index of this paragraph in the original text for correct bold mapping
-        // This is a simplified search; for production, a global counter is safer.
-        let paragraphStartOffset = text.indexOf(paragraph); 
+    const chars = Array.from(text)
 
-        // 2. Split paragraph into words and whitespace so we wrap at word boundaries
-        const words = paragraph.split(/(\s+)/); 
-        let localOffset = 0;
+    const pushCurrentLine = () => {
+        lines.push(currentLine)
+        currentLine = []
+        currentLineWidth = 0
+    }
 
-        words.forEach((word) => {
-            if (word === "") return;
+    for (let index = 0; index < chars.length; index++) {
+        const char = chars[index]
 
-            const wordEntries: CharEntry[] = [];
-            let wordWidth = 0;
+        // Respect hard line breaks from content
+        if (char === '\n' || char === '\r') {
+            pushCurrentLine()
+            continue
+        }
 
-            // Calculate metrics for the whole word
-            for (const char of Array.from(word)) {
-                const globalIndex = paragraphStartOffset + localOffset;
-                const isBold = isIndexInRanges(globalIndex, boldRanges);
-                const font = isBold ? boldFont : normalFont;
-                const charWidth = font.widthOfTextAtSize(char, fontSize);
-                
-                wordEntries.push({ 
-                    char, 
-                    index: globalIndex, 
-                    bold: isBold, 
-                    width: charWidth 
-                });
-                wordWidth += charWidth + charSpacing;
-                localOffset += char.length;
-            }
+        const isBold = isIndexInRanges(index, boldRanges)
+        const font = isBold ? boldFont : normalFont
+        const charWidth = font.widthOfTextAtSize(char, fontSize)
+        const additionalSpacing = currentLine.length > 0 ? charSpacing : 0
+        const nextWidth = currentLineWidth + charWidth + additionalSpacing
 
-            // 3. Check if word fits on current line
-            if (currentLineWidth + wordWidth > maxWidth && currentLine.length > 0) {
-                lines.push(currentLine);
-                currentLine = [];
-                currentLineWidth = 0;
-                
-                // Optional: If word starts with space, skip that space at the start of a new line
-                if (wordEntries[0].char.trim() === "") return;
-            }
+        // Soft wrap when next char exceeds available width
+        if (currentLine.length > 0 && nextWidth > maxWidth) {
+            pushCurrentLine()
+        }
 
-            currentLine.push(...wordEntries);
-            currentLineWidth += wordWidth;
-        });
+        const entry: CharEntry = {
+            char,
+            index,
+            bold: isBold,
+            width: charWidth,
+        }
 
-        // End of paragraph: push line and reset for next paragraph
-        lines.push(currentLine);
-        currentLine = [];
-        currentLineWidth = 0;
-    });
+        currentLine.push(entry)
+        currentLineWidth += entry.width + (currentLine.length > 1 ? charSpacing : 0)
+    }
 
-    return lines;
+    // Keep final line (including empty line for empty content)
+    if (currentLine.length > 0 || lines.length === 0) {
+        lines.push(currentLine)
+    }
+
+    return lines
 };
 
 const stripHtmlTags = (html: string): string => html.replace(/<[^>]*>/g, "")
