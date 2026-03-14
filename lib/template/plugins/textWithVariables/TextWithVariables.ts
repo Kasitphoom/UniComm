@@ -1,4 +1,6 @@
-import type { PDFRenderProps, Plugin, Schema } from "@pdfme/common"
+import type { PDFRenderProps, Plugin, Schema, Font } from "@pdfme/common"
+import { getDefaultFont, getFallbackFontName, mm2pt } from "@pdfme/common"
+import type { PDFFont } from "@pdfme/pdf-lib"
 import { createSvgStr } from "@pdfme/schemas/utils"
 import { text as textPlugin } from "@pdfme/schemas"
 import { Type } from "lucide"
@@ -43,6 +45,163 @@ type DropdownFieldEntry = {
 
 let cachedFieldGroups: FieldGroup[] | null = null
 let cachedFieldGroupsPromise: Promise<FieldGroup[]> | null = null
+
+type BoldRange = { start: number; end: number }
+
+const mergeRanges = (ranges: BoldRange[]): BoldRange[] => {
+    if (ranges.length === 0) return []
+    const sorted = [...ranges].sort((a, b) => a.start - b.start)
+    const merged: BoldRange[] = [{ ...sorted[0] }]
+    for (let i = 1; i < sorted.length; i++) {
+        const last = merged[merged.length - 1]
+        const current = sorted[i]
+        if (current.start <= last.end + 1) {
+            last.end = Math.max(last.end, current.end)
+        } else {
+            merged.push({ ...current })
+        }
+    }
+    return merged
+}
+
+const isIndexInRanges = (index: number, ranges: BoldRange[]) =>
+    ranges.some((range) => index >= range.start && index <= range.end)
+
+const getBoldFontName = (fontName: string | undefined, font: Font): string => {
+    const fallback = getFallbackFontName(font)
+    const current = fontName || fallback
+    const names = Object.keys(font)
+
+    const family = current
+        .replace(/-BoldItalic|-Bold|-Italic|-Regular/gi, '')
+        .trim()
+
+    const isItalic = /italic|oblique/i.test(current)
+    const candidates = isItalic
+        ? [`${family}-BoldItalic`, `${family}-Bold`, `${family} Bold Italic`, `${family} Bold`]
+        : [`${family}-Bold`, `${family} Bold`, `${family}-BoldItalic`]
+
+    for (const candidate of candidates) {
+        if (font[candidate]) return candidate
+    }
+
+    const fuzzy = names.find((name) => {
+        const lower = name.toLowerCase()
+        return lower.includes(family.toLowerCase()) && lower.includes('bold')
+    })
+
+    return fuzzy || current
+}
+
+const toUint8Array = async (fontData: unknown): Promise<Uint8Array<ArrayBuffer>> => {
+    if (fontData instanceof Uint8Array) {
+        return fontData as Uint8Array<ArrayBuffer>
+    }
+    if (fontData instanceof ArrayBuffer) {
+        return new Uint8Array(fontData) as Uint8Array<ArrayBuffer>
+    }
+    if (typeof fontData === 'string') {
+        if (fontData.startsWith('http')) {
+            const buffer = await fetch(fontData).then((res) => res.arrayBuffer())
+            return new Uint8Array(buffer) as Uint8Array<ArrayBuffer>
+        }
+        try {
+            const base64 = fontData.includes(',') ? fontData.split(',')[1] : fontData
+            const binary = atob(base64)
+            const bytes = new Uint8Array(binary.length)
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+            return bytes as Uint8Array<ArrayBuffer>
+        } catch {
+            return new Uint8Array() as Uint8Array<ArrayBuffer>
+        }
+    }
+    return new Uint8Array() as Uint8Array<ArrayBuffer>
+}
+
+const hexToPdfColor = (hex: string | undefined, pdfLib: PDFRenderProps<TextWithVariablesSchema>["pdfLib"]) => {
+    const value = (hex || '#000000').replace('#', '')
+    const normalized = value.length === 3
+        ? value.split('').map((c) => c + c).join('')
+        : value
+    const r = parseInt(normalized.slice(0, 2), 16)
+    const g = parseInt(normalized.slice(2, 4), 16)
+    const b = parseInt(normalized.slice(4, 6), 16)
+    return pdfLib.rgb((Number.isNaN(r) ? 0 : r) / 255, (Number.isNaN(g) ? 0 : g) / 255, (Number.isNaN(b) ? 0 : b) / 255)
+}
+
+const splitLinesForMixedText = (
+    text: string,
+    maxWidth: number,
+    fontSize: number,
+    charSpacing: number,
+    normalFont: PDFFont,
+    boldFont: PDFFont,
+    boldRanges: BoldRange[],
+) => {
+    type CharEntry = { char: string; index: number; bold: boolean; width: number };
+    type Line = CharEntry[];
+    
+    const lines: Line[] = [];
+    let currentLine: Line = [];
+    let currentLineWidth = 0;
+
+    // 1. Split by hard newlines to respect manual formatting
+    const paragraphs = text.split(/\r?\n/);
+
+    paragraphs.forEach((paragraph, pIdx) => {
+        // Find the starting index of this paragraph in the original text for correct bold mapping
+        // This is a simplified search; for production, a global counter is safer.
+        let paragraphStartOffset = text.indexOf(paragraph); 
+
+        // 2. Split paragraph into words and whitespace so we wrap at word boundaries
+        const words = paragraph.split(/(\s+)/); 
+        let localOffset = 0;
+
+        words.forEach((word) => {
+            if (word === "") return;
+
+            const wordEntries: CharEntry[] = [];
+            let wordWidth = 0;
+
+            // Calculate metrics for the whole word
+            for (const char of Array.from(word)) {
+                const globalIndex = paragraphStartOffset + localOffset;
+                const isBold = isIndexInRanges(globalIndex, boldRanges);
+                const font = isBold ? boldFont : normalFont;
+                const charWidth = font.widthOfTextAtSize(char, fontSize);
+                
+                wordEntries.push({ 
+                    char, 
+                    index: globalIndex, 
+                    bold: isBold, 
+                    width: charWidth 
+                });
+                wordWidth += charWidth + charSpacing;
+                localOffset += char.length;
+            }
+
+            // 3. Check if word fits on current line
+            if (currentLineWidth + wordWidth > maxWidth && currentLine.length > 0) {
+                lines.push(currentLine);
+                currentLine = [];
+                currentLineWidth = 0;
+                
+                // Optional: If word starts with space, skip that space at the start of a new line
+                if (wordEntries[0].char.trim() === "") return;
+            }
+
+            currentLine.push(...wordEntries);
+            currentLineWidth += wordWidth;
+        });
+
+        // End of paragraph: push line and reset for next paragraph
+        lines.push(currentLine);
+        currentLine = [];
+        currentLineWidth = 0;
+    });
+
+    return lines;
+};
 
 const stripHtmlTags = (html: string): string => html.replace(/<[^>]*>/g, "")
 
@@ -172,6 +331,62 @@ const renderBoldRanges = (text: string, boldRanges: Array<{ start: number; end: 
     return result
 }
 
+const toUnicodeBoldChar = (char: string): string => {
+    const code = char.codePointAt(0)
+    if (!code) return char
+
+    if (code >= 0x41 && code <= 0x5a) {
+        return String.fromCodePoint(0x1d400 + (code - 0x41))
+    }
+
+    if (code >= 0x61 && code <= 0x7a) {
+        return String.fromCodePoint(0x1d41a + (code - 0x61))
+    }
+
+    if (code >= 0x30 && code <= 0x39) {
+        return String.fromCodePoint(0x1d7ce + (code - 0x30))
+    }
+
+    return char
+}
+
+const applyBoldRangesForPdf = (text: string, boldRanges: Array<{ start: number; end: number }>): string => {
+    if (!boldRanges || boldRanges.length === 0 || text.length === 0) {
+        return text
+    }
+
+    const mergedRanges = [...boldRanges]
+        .sort((a, b) => a.start - b.start)
+        .reduce<Array<{ start: number; end: number }>>((acc, range) => {
+            if (acc.length === 0) {
+                acc.push({ start: range.start, end: range.end })
+                return acc
+            }
+
+            const last = acc[acc.length - 1]
+            if (range.start <= last.end + 1) {
+                last.end = Math.max(last.end, range.end)
+            } else {
+                acc.push({ start: range.start, end: range.end })
+            }
+            return acc
+        }, [])
+
+    const characters = Array.from(text)
+
+    for (const range of mergedRanges) {
+        const start = Math.max(0, range.start)
+        const end = Math.min(characters.length - 1, range.end)
+        if (end < start) continue
+
+        for (let index = start; index <= end; index++) {
+            characters[index] = toUnicodeBoldChar(characters[index])
+        }
+    }
+
+    return characters.join('')
+}
+
 // Make element plain text contenteditable (supports Firefox)
 const makeElementPlainTextContentEditable = (element: HTMLElement) => {
     const isFirefox = () => navigator.userAgent.toLowerCase().indexOf('firefox') > -1
@@ -217,12 +432,93 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             valueData = value as Record<string, any>
         }
         const processedText = parseVariables(rawText, valueData)
+        const boldRanges = mergeRanges(schema.bold || [])
 
-        await textPlugin.pdf({
-            value: processedText,
-            schema: schema as unknown as Parameters<typeof textPlugin.pdf>[0]['schema'],
-            ...rest,
-        })
+        const { pdfDoc, page, options, pdfLib } = rest
+        const fontMap = options.font || getDefaultFont()
+        const baseFontName = schema.fontName || getFallbackFontName(fontMap)
+        const boldFontName = getBoldFontName(baseFontName, fontMap)
+
+        const baseFontData = await toUint8Array(fontMap[baseFontName]?.data)
+        const boldFontData = await toUint8Array((fontMap[boldFontName] || fontMap[baseFontName])?.data)
+
+        console.log('Base Name:', baseFontName, '| Bold Name:', boldFontName)
+        console.log('Are buffers identical?', baseFontData.byteLength === boldFontData.byteLength)
+        console.log('Bold Ranges:', boldRanges, schema)
+
+        if (boldRanges.length === 0) {
+            await textPlugin.pdf({
+                value: processedText,
+                schema: schema as unknown as Parameters<typeof textPlugin.pdf>[0]['schema'],
+                ...rest,
+            })
+            return
+        }
+
+        const normalFont = await pdfDoc.embedFont(baseFontData, { subset: true })
+        const boldFont = await pdfDoc.embedFont(boldFontData, { subset: true })
+
+        const fontSize = schema.fontSize || 12
+        const lineHeight = schema.lineHeight || 1
+        const charSpacing = schema.characterSpacing || 0
+        const color = hexToPdfColor(schema.fontColor, pdfLib)
+
+        const x = mm2pt(schema.position.x)
+        const yTop = mm2pt(schema.position.y)
+        const width = mm2pt(schema.width)
+        const height = mm2pt(schema.height)
+        const pageHeight = page.getHeight()
+
+        const lines = splitLinesForMixedText(
+            processedText,
+            width,
+            fontSize,
+            charSpacing,
+            normalFont,
+            boldFont,
+            boldRanges,
+        )
+
+        const lineHeightPt = lineHeight * fontSize
+        const contentHeight = Math.max(lineHeightPt, lines.length * lineHeightPt)
+
+        let baselineY = pageHeight - yTop - fontSize
+        if (schema.verticalAlignment === 'middle') {
+            baselineY = pageHeight - yTop - (height - contentHeight) / 2 - fontSize
+        } else if (schema.verticalAlignment === 'bottom') {
+            baselineY = pageHeight - yTop - height + contentHeight - fontSize
+        }
+
+        lines.forEach((line, rowIndex) => {
+            // 1. Calculate the Y position for this row (even if empty)
+            const lineY = baselineY - rowIndex * lineHeightPt;
+
+            // 2. Skip drawing logic if the line is empty, but don't skip the row index
+            if (line.length === 0) return; 
+
+            // 3. Calculate width for alignment (center/right)
+            const totalLineWidth = line.reduce((acc, c) => acc + c.width + charSpacing, 0) - charSpacing;
+
+            let cursorX = x;
+            if (schema.alignment === 'center') cursorX += (width - totalLineWidth) / 2;
+            else if (schema.alignment === 'right') cursorX += width - totalLineWidth;
+
+            // 4. Draw each character
+            line.forEach((entry) => {
+                const font = entry.bold ? boldFont : normalFont;
+                if (entry.char.trim() !== "") { // Don't call drawText for spaces (optimization)
+                    page.drawText(entry.char, {
+                        x: cursorX,
+                        y: lineY,
+                        size: fontSize,
+                        font,
+                        color,
+                        opacity: schema.opacity ?? 1,
+                    });
+                }
+                cursorX += entry.width + charSpacing;
+            });
+        });
     },
 
     ui: async (arg: UIRenderProps<TextWithVariablesSchema>) => {
@@ -451,7 +747,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                     { key: 'content', value: textBlock.innerHTML },
                     { key: 'text', value: plainText },
                     { key: 'variables', value: newVariables },
-                    { key: 'bold', value: schema.bold || [] }, // Keep existing bold ranges
+                    { key: 'bold', value: activeBoldRanges.map((range) => ({ ...range })) },
                 ])
             }
 
