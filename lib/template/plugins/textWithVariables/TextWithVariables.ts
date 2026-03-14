@@ -48,6 +48,29 @@ let cachedFieldGroupsPromise: Promise<FieldGroup[]> | null = null
 
 type BoldRange = { start: number; end: number }
 
+const normalizeBoldRanges = (input: unknown): BoldRange[] => {
+    if (input == null) return []
+
+    const source = Array.isArray(input) ? input : [input]
+
+    const normalized = source
+        .filter((item): item is { start: unknown; end: unknown } =>
+            typeof item === 'object' && item !== null && 'start' in item && 'end' in item,
+        )
+        .map((item) => {
+            const start = Number(item.start)
+            const end = Number(item.end)
+            const safeStart = Number.isFinite(start) ? Math.max(0, Math.floor(start)) : 0
+            const safeEnd = Number.isFinite(end) ? Math.max(0, Math.floor(end)) : safeStart
+            return {
+                start: Math.min(safeStart, safeEnd),
+                end: Math.max(safeStart, safeEnd),
+            }
+        })
+
+    return mergeRanges(normalized)
+}
+
 const mergeRanges = (ranges: BoldRange[]): BoldRange[] => {
     if (ranges.length === 0) return []
     const sorted = [...ranges].sort((a, b) => a.start - b.start)
@@ -421,7 +444,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             valueData = value as Record<string, any>
         }
         const processedText = parseVariables(rawText, valueData)
-        const boldRanges = mergeRanges(schema.bold || [])
+        const boldRanges = normalizeBoldRanges(schema.bold)
 
         const { pdfDoc, page, options, pdfLib } = rest
         const fontMap = options.font || getDefaultFont()
@@ -513,6 +536,8 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
     ui: async (arg: UIRenderProps<TextWithVariablesSchema>) => {
         const { rootElement, schema, onChange, mode, value, tabIndex, placeholder, stopEditing, theme } = arg
 
+        console.log(schema)
+
         const rawText = schema.text || ""
         const initialHtml = (schema.content && schema.content.trim().length > 0) ? schema.content : rawText
         const initialPlainText = stripHtmlTags(initialHtml)
@@ -542,14 +567,15 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
 
         // In designer mode, show raw text with {{variables}}; otherwise render with data
         const isEditableMode = mode === 'designer'
+        const normalizedSchemaBoldRanges = normalizeBoldRanges(schema.bold)
         let displayHtml = isEditableMode
             ? initialHtml
             : (schema.content ? applyVariablesToHtml(schema.content, valueData) : parseVariables(rawText, valueData))
 
         // Apply bold ranges if they exist in the schema
-        if (isEditableMode && schema.bold && schema.bold.length > 0) {
+        if (isEditableMode && normalizedSchemaBoldRanges.length > 0) {
             const plainText = stripHtmlTags(displayHtml)
-            displayHtml = renderBoldRanges(plainText, schema.bold)
+            displayHtml = renderBoldRanges(plainText, normalizedSchemaBoldRanges)
         }
 
         // Clear root element
@@ -629,9 +655,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             return text
         }
 
-        let activeBoldRanges = Array.isArray(schema.bold)
-            ? schema.bold.map((range) => ({ ...range }))
-            : []
+        let activeBoldRanges = normalizedSchemaBoldRanges.map((range) => ({ ...range }))
 
         const getCaretOffset = (element: HTMLDivElement) => {
             const selection = window.getSelection()
@@ -1126,7 +1150,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 }
 
                 // Log current bold ranges from schema
-                console.log('[TextWithVariables] Bold ranges in schema:', schema.bold || [])
+                console.log('[TextWithVariables] Bold ranges in schema:', normalizedSchemaBoldRanges)
                 console.log('[TextWithVariables] Active bold ranges:', activeBoldRanges)
                 
                 // Log selection details
@@ -1205,7 +1229,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 console.log('[TextWithVariables] renderContentWithBold:', {
                     plainText,
                     ranges,
-                    schemaRanges: schema.bold,
+                    schemaRanges: normalizedSchemaBoldRanges,
                     activeBoldRanges,
                 })
                 
