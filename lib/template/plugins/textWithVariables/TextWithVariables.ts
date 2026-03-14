@@ -6,6 +6,16 @@ import { text as textPlugin } from "@pdfme/schemas"
 import { Type } from "lucide"
 import type { UIRenderProps } from "@pdfme/common"
 import { TextWithVariablesPropPanel } from "./propPanel"
+import {
+    getFontSizeAtIndex,
+    isIndexBold,
+    normalizeBoldRanges,
+    normalizeFontSizeRanges,
+    renderStyledRanges,
+    setFontSizeRange,
+    type BoldRange,
+    type FontSizeRange,
+} from "./textStyleRanges"
 
 export type TextWithVariablesSchema = Schema & {
     fontName?: string
@@ -29,6 +39,7 @@ export type TextWithVariablesSchema = Schema & {
     content?: string
     readOnly?: boolean
     bold?: Array<{ start: number; end: number }>
+    fontSizeRanges?: Array<{ start: number; end: number; size: number }>
 }
 
 type FieldOption = { field: string; type: string }
@@ -45,50 +56,6 @@ type DropdownFieldEntry = {
 
 let cachedFieldGroups: FieldGroup[] | null = null
 let cachedFieldGroupsPromise: Promise<FieldGroup[]> | null = null
-
-type BoldRange = { start: number; end: number }
-
-const normalizeBoldRanges = (input: unknown): BoldRange[] => {
-    if (input == null) return []
-
-    const source = Array.isArray(input) ? input : [input]
-
-    const normalized = source
-        .filter((item): item is { start: unknown; end: unknown } =>
-            typeof item === 'object' && item !== null && 'start' in item && 'end' in item,
-        )
-        .map((item) => {
-            const start = Number(item.start)
-            const end = Number(item.end)
-            const safeStart = Number.isFinite(start) ? Math.max(0, Math.floor(start)) : 0
-            const safeEnd = Number.isFinite(end) ? Math.max(0, Math.floor(end)) : safeStart
-            return {
-                start: Math.min(safeStart, safeEnd),
-                end: Math.max(safeStart, safeEnd),
-            }
-        })
-
-    return mergeRanges(normalized)
-}
-
-const mergeRanges = (ranges: BoldRange[]): BoldRange[] => {
-    if (ranges.length === 0) return []
-    const sorted = [...ranges].sort((a, b) => a.start - b.start)
-    const merged: BoldRange[] = [{ ...sorted[0] }]
-    for (let i = 1; i < sorted.length; i++) {
-        const last = merged[merged.length - 1]
-        const current = sorted[i]
-        if (current.start <= last.end + 1) {
-            last.end = Math.max(last.end, current.end)
-        } else {
-            merged.push({ ...current })
-        }
-    }
-    return merged
-}
-
-const isIndexInRanges = (index: number, ranges: BoldRange[]) =>
-    ranges.some((range) => index >= range.start && index <= range.end)
 
 const getBoldFontName = (fontName: string | undefined, font: Font): string => {
     const fallback = getFallbackFontName(font)
@@ -155,13 +122,14 @@ const hexToPdfColor = (hex: string | undefined, pdfLib: PDFRenderProps<TextWithV
 const splitLinesForMixedText = (
     text: string,
     maxWidth: number,
-    fontSize: number,
+    baseFontSize: number,
     charSpacing: number,
     normalFont: PDFFont,
     boldFont: PDFFont,
     boldRanges: BoldRange[],
+    fontSizeRanges: FontSizeRange[],
 ) => {
-    type CharEntry = { char: string; index: number; bold: boolean; width: number }
+    type CharEntry = { char: string; index: number; bold: boolean; fontSize: number; width: number }
     type Line = CharEntry[]
 
     const lines: Line[] = []
@@ -179,19 +147,18 @@ const splitLinesForMixedText = (
     for (let index = 0; index < chars.length; index++) {
         const char = chars[index]
 
-        // Respect hard line breaks from content
         if (char === '\n' || char === '\r') {
             pushCurrentLine()
             continue
         }
 
-        const isBold = isIndexInRanges(index, boldRanges)
+        const isBold = isIndexBold(index, boldRanges)
+        const charFontSize = getFontSizeAtIndex(index, fontSizeRanges, baseFontSize)
         const font = isBold ? boldFont : normalFont
-        const charWidth = font.widthOfTextAtSize(char, fontSize)
+        const charWidth = font.widthOfTextAtSize(char, charFontSize)
         const additionalSpacing = currentLine.length > 0 ? charSpacing : 0
         const nextWidth = currentLineWidth + charWidth + additionalSpacing
 
-        // Soft wrap when next char exceeds available width
         if (currentLine.length > 0 && nextWidth > maxWidth) {
             pushCurrentLine()
         }
@@ -200,6 +167,7 @@ const splitLinesForMixedText = (
             char,
             index,
             bold: isBold,
+            fontSize: charFontSize,
             width: charWidth,
         }
 
@@ -207,7 +175,6 @@ const splitLinesForMixedText = (
         currentLineWidth += entry.width + (currentLine.length > 1 ? charSpacing : 0)
     }
 
-    // Keep final line (including empty line for empty content)
     if (currentLine.length > 0 || lines.length === 0) {
         lines.push(currentLine)
     }
@@ -310,90 +277,6 @@ export const extractVariables = (text: string): string[] => {
     return Array.from(new Set(Array.from(matches, m => m[1].trim()).filter(Boolean)))
 }
 
-// Render text with bold ranges as HTML spans
-const renderBoldRanges = (text: string, boldRanges: Array<{ start: number; end: number }>): string => {
-    if (!boldRanges || boldRanges.length === 0) {
-        return text
-    }
-
-    const sortedRanges = [...boldRanges].sort((a, b) => a.start - b.start)
-    let result = ''
-    let lastEnd = 0
-
-    for (const range of sortedRanges) {
-        if (lastEnd < range.start) {
-            result += text.slice(lastEnd, range.start)
-        }
-
-        const boldText = text.slice(range.start, range.end + 1)
-        result += `<span style="font-weight: 700">${boldText}</span>`
-
-        lastEnd = range.end + 1
-    }
-
-    if (lastEnd < text.length) {
-        result += text.slice(lastEnd)
-    }
-    
-    return result
-}
-
-const toUnicodeBoldChar = (char: string): string => {
-    const code = char.codePointAt(0)
-    if (!code) return char
-
-    if (code >= 0x41 && code <= 0x5a) {
-        return String.fromCodePoint(0x1d400 + (code - 0x41))
-    }
-
-    if (code >= 0x61 && code <= 0x7a) {
-        return String.fromCodePoint(0x1d41a + (code - 0x61))
-    }
-
-    if (code >= 0x30 && code <= 0x39) {
-        return String.fromCodePoint(0x1d7ce + (code - 0x30))
-    }
-
-    return char
-}
-
-const applyBoldRangesForPdf = (text: string, boldRanges: Array<{ start: number; end: number }>): string => {
-    if (!boldRanges || boldRanges.length === 0 || text.length === 0) {
-        return text
-    }
-
-    const mergedRanges = [...boldRanges]
-        .sort((a, b) => a.start - b.start)
-        .reduce<Array<{ start: number; end: number }>>((acc, range) => {
-            if (acc.length === 0) {
-                acc.push({ start: range.start, end: range.end })
-                return acc
-            }
-
-            const last = acc[acc.length - 1]
-            if (range.start <= last.end + 1) {
-                last.end = Math.max(last.end, range.end)
-            } else {
-                acc.push({ start: range.start, end: range.end })
-            }
-            return acc
-        }, [])
-
-    const characters = Array.from(text)
-
-    for (const range of mergedRanges) {
-        const start = Math.max(0, range.start)
-        const end = Math.min(characters.length - 1, range.end)
-        if (end < start) continue
-
-        for (let index = start; index <= end; index++) {
-            characters[index] = toUnicodeBoldChar(characters[index])
-        }
-    }
-
-    return characters.join('')
-}
-
 // Make element plain text contenteditable (supports Firefox)
 const makeElementPlainTextContentEditable = (element: HTMLElement) => {
     const isFirefox = () => navigator.userAgent.toLowerCase().indexOf('firefox') > -1
@@ -440,6 +323,8 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         }
         const processedText = parseVariables(rawText, valueData)
         const boldRanges = normalizeBoldRanges(schema.bold)
+        const baseFontSize = schema.fontSize || 12
+        const fontSizeRanges = normalizeFontSizeRanges(schema.fontSizeRanges)
 
         const { pdfDoc, page, options, pdfLib } = rest
         const fontMap = options.font || getDefaultFont()
@@ -449,7 +334,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         const baseFontData = await toUint8Array(fontMap[baseFontName]?.data)
         const boldFontData = await toUint8Array((fontMap[boldFontName] || fontMap[baseFontName])?.data)
 
-        if (boldRanges.length === 0) {
+        if (boldRanges.length === 0 && fontSizeRanges.length === 0) {
             await textPlugin.pdf({
                 value: processedText,
                 schema: schema as unknown as Parameters<typeof textPlugin.pdf>[0]['schema'],
@@ -461,7 +346,6 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         const normalFont = await pdfDoc.embedFont(baseFontData, { subset: true })
         const boldFont = await pdfDoc.embedFont(boldFontData, { subset: true })
 
-        const fontSize = schema.fontSize || 12
         const lineHeight = schema.lineHeight || 1
         const charSpacing = schema.characterSpacing || 0
         const color = hexToPdfColor(schema.fontColor, pdfLib)
@@ -475,26 +359,39 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         const lines = splitLinesForMixedText(
             processedText,
             width,
-            fontSize,
+            baseFontSize,
             charSpacing,
             normalFont,
             boldFont,
             boldRanges,
+            fontSizeRanges,
         )
 
-        const lineHeightPt = lineHeight * fontSize
-        const contentHeight = Math.max(lineHeightPt, lines.length * lineHeightPt)
+        const lineMetrics = lines.map((line) => {
+            const maxFontSize = line.reduce((max, entry) => Math.max(max, entry.fontSize), baseFontSize)
+            return {
+                maxFontSize,
+                lineHeightPt: maxFontSize * lineHeight,
+            }
+        })
+        const contentHeight = lineMetrics.reduce((sum, metric) => sum + metric.lineHeightPt, 0)
+        const verticalOffset = Math.max(0, height - contentHeight)
 
-        let baselineY = pageHeight - yTop - fontSize
+        let contentTop = pageHeight - yTop
         if (schema.verticalAlignment === 'middle') {
-            baselineY = pageHeight - yTop - (height - contentHeight) / 2 - fontSize
+            contentTop = pageHeight - yTop - verticalOffset / 2
         } else if (schema.verticalAlignment === 'bottom') {
-            baselineY = pageHeight - yTop - height + contentHeight - fontSize
+            contentTop = pageHeight - yTop - verticalOffset
         }
 
+        let consumedHeight = 0
         lines.forEach((line, rowIndex) => {
-            const lineY = baselineY - rowIndex * lineHeightPt;
-            if (line.length === 0) return; 
+            const metric = lineMetrics[rowIndex]
+            const lineY = contentTop - consumedHeight - metric.maxFontSize
+            if (line.length === 0) {
+                consumedHeight += metric.lineHeightPt
+                return
+            }
             const totalLineWidth = line.reduce((acc, c) => acc + c.width + charSpacing, 0) - charSpacing;
 
             let cursorX = x;
@@ -507,7 +404,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                     page.drawText(entry.char, {
                         x: cursorX,
                         y: lineY,
-                        size: fontSize,
+                        size: entry.fontSize,
                         font,
                         color,
                         opacity: schema.opacity ?? 1,
@@ -515,6 +412,8 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 }
                 cursorX += entry.width + charSpacing;
             });
+
+            consumedHeight += metric.lineHeightPt
         });
     },
 
@@ -546,13 +445,20 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
 
         const isEditableMode = mode === 'designer'
         const normalizedSchemaBoldRanges = normalizeBoldRanges(schema.bold)
+        const baseFontSize = schema.fontSize || 12
+        const normalizedSchemaFontSizeRanges = normalizeFontSizeRanges(schema.fontSizeRanges)
         let displayHtml = isEditableMode
             ? initialHtml
             : (schema.content ? applyVariablesToHtml(schema.content, valueData) : parseVariables(rawText, valueData))
 
-        if (isEditableMode && normalizedSchemaBoldRanges.length > 0) {
+        if (normalizedSchemaBoldRanges.length > 0 || normalizedSchemaFontSizeRanges.length > 0) {
             const plainText = stripHtmlTags(displayHtml)
-            displayHtml = renderBoldRanges(plainText, normalizedSchemaBoldRanges)
+            displayHtml = renderStyledRanges(
+                plainText,
+                normalizedSchemaBoldRanges,
+                normalizedSchemaFontSizeRanges,
+                baseFontSize,
+            )
         }
 
         rootElement.innerHTML = ''
@@ -616,7 +522,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
 
         makeElementPlainTextContentEditable(textBlock)
         textBlock.tabIndex = tabIndex || 0
-        textBlock.innerHTML = initialHtml
+        textBlock.innerHTML = displayHtml
 
         const getText = (element: HTMLDivElement) => {
             let text = element.innerText
@@ -627,6 +533,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         }
 
         let activeBoldRanges = normalizedSchemaBoldRanges.map((range) => ({ ...range }))
+        let activeFontSizeRanges = normalizedSchemaFontSizeRanges.map((range) => ({ ...range }))
 
         const getCaretOffset = (element: HTMLDivElement) => {
             const selection = window.getSelection()
@@ -731,6 +638,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                     { key: 'text', value: plainText },
                     { key: 'variables', value: newVariables },
                     { key: 'bold', value: activeBoldRanges.map((range) => ({ ...range })) },
+                    { key: 'fontSizeRanges', value: activeFontSizeRanges.map((range) => ({ ...range })) },
                 ])
             }
 
@@ -788,6 +696,10 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             toolbar.style.fontSize = "12px"
             toolbar.style.lineHeight = "1"
             toolbar.style.userSelect = "none"
+            toolbar.addEventListener('mousedown', (event) => {
+                event.preventDefault()
+                textBlock.focus()
+            })
 
             const createIconButton = (label: string) => {
                 const btn = document.createElement('button')
@@ -812,14 +724,28 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             fontSizeDisplay.style.display = 'inline-block'
             fontSizeDisplay.style.textAlign = 'center'
 
-            const getSelectionFontSize = () => {
+            const getSelectionFontSize = (): number | null => {
                 const selection = window.getSelection()
-                const node = selection?.focusNode
-                const element = (node instanceof HTMLElement ? node : node?.parentElement) || textBlock
-                const computed = window.getComputedStyle(element)
-                const px = parseFloat(computed.fontSize || "")
-                if (Number.isNaN(px)) return schema.fontSize || 12
-                return Math.max(6, Math.round(px * 0.75))
+                if (!selection || selection.rangeCount === 0) return baseFontSize
+
+                const range = selection.getRangeAt(0)
+                if (range.collapsed) {
+                    const caretPos = getCaretOffset(textBlock)
+                    return getFontSizeAtIndex(caretPos, activeFontSizeRanges, baseFontSize)
+                }
+
+                const textRange = getTextRangeFromSelection()
+                if (!textRange) return baseFontSize
+
+                const firstSize = getFontSizeAtIndex(textRange.start, activeFontSizeRanges, baseFontSize)
+                for (let index = textRange.start + 1; index <= textRange.end; index++) {
+                    const currentSize = getFontSizeAtIndex(index, activeFontSizeRanges, baseFontSize)
+                    if (currentSize !== firstSize) {
+                        return null
+                    }
+                }
+
+                return firstSize
             }
 
             const isSelectionBold = () => {
@@ -857,38 +783,61 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 return false
             }
 
-            const applyInlineStyle = (styleBuilder: (el: HTMLSpanElement) => void) => {
+            const updateFontSizeDisplay = () => {
+                const selectedSize = getSelectionFontSize()
+                fontSizeDisplay.textContent = selectedSize === null ? '- px' : `${selectedSize} px`
+            }
+
+            const changeFontSize = (delta: number) => {
                 const selection = window.getSelection()
                 if (!selection || selection.rangeCount === 0) return
                 const range = selection.getRangeAt(0)
                 if (range.collapsed) return
 
-                const wrapper = document.createElement('span')
-                styleBuilder(wrapper)
+                const textRange = getTextRangeFromSelection()
+                if (!textRange) return
 
-                wrapper.appendChild(range.extractContents())
-                range.insertNode(wrapper)
+                const currentRanges = activeFontSizeRanges.map((entry) => ({ ...entry }))
+                const segments: Array<{ start: number; end: number; size: number }> = []
 
-                const newRange = document.createRange()
-                newRange.selectNodeContents(wrapper)
-                newRange.collapse(false)
-                selection.removeAllRanges()
-                selection.addRange(newRange)
+                let segmentStart = textRange.start
+                let segmentSize = getFontSizeAtIndex(segmentStart, currentRanges, baseFontSize)
 
-                commitContentChange()
-                updateToolbarPosition()
-            }
+                for (let index = textRange.start + 1; index <= textRange.end; index++) {
+                    const indexSize = getFontSizeAtIndex(index, currentRanges, baseFontSize)
+                    if (indexSize !== segmentSize) {
+                        segments.push({ start: segmentStart, end: index - 1, size: segmentSize })
+                        segmentStart = index
+                        segmentSize = indexSize
+                    }
+                }
+                segments.push({ start: segmentStart, end: textRange.end, size: segmentSize })
 
-            const updateFontSizeDisplay = () => {
-                fontSizeDisplay.textContent = `${getSelectionFontSize()}pt`
-            }
+                let nextRanges = currentRanges
+                for (const segment of segments) {
+                    nextRanges = setFontSizeRange(
+                        segment.start,
+                        segment.end,
+                        segment.size + delta,
+                        nextRanges,
+                        baseFontSize,
+                    )
+                }
 
-            const changeFontSize = (delta: number) => {
-                const nextSize = Math.max(6, getSelectionFontSize() + delta)
-                applyInlineStyle((el) => {
-                    el.style.fontSize = `${nextSize}pt`
-                })
+                activeFontSizeRanges = nextRanges
+
+                renderContentWithStyles(activeBoldRanges, activeFontSizeRanges)
+
+                if (onChange) {
+                    onChange({ key: 'fontSizeRanges', value: activeFontSizeRanges.map((entry) => ({ ...entry })) })
+                }
+
+                setTimeout(() => {
+                    setSelectionOffsets(textBlock, textRange.start, textRange.end + 1)
+                }, 0)
+
                 updateFontSizeDisplay()
+                updateToolbarPosition()
             }
 
             const applyInlineCommand = (command: 'italic' | 'underline' | 'strikeThrough') => {
@@ -1056,11 +1005,20 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 return { start: normalizedStart, end: normalizedEnd }
             }
 
-            const renderContentWithBold = (boldRanges?: Array<{ start: number; end: number }>) => {
+            const renderContentWithStyles = (
+                boldRanges?: Array<{ start: number; end: number }>,
+                fontRanges?: Array<{ start: number; end: number; size: number }>,
+            ) => {
                 const plainText = getText(textBlock)
-                const ranges = boldRanges || activeBoldRanges
+                const resolvedBoldRanges = boldRanges || activeBoldRanges
+                const resolvedFontRanges = fontRanges || activeFontSizeRanges
 
-                const renderedHtml = renderBoldRanges(plainText, ranges)
+                const renderedHtml = renderStyledRanges(
+                    plainText,
+                    resolvedBoldRanges,
+                    resolvedFontRanges,
+                    baseFontSize,
+                )
                 textBlock.innerHTML = renderedHtml
             }
 
@@ -1090,7 +1048,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
 
                 activeBoldRanges = newBoldRanges.map((range) => ({ ...range }))
 
-                renderContentWithBold(activeBoldRanges)
+                renderContentWithStyles(activeBoldRanges, activeFontSizeRanges)
 
                 if (onChange) {
                     onChange({ key: 'bold', value: activeBoldRanges })
@@ -1193,9 +1151,17 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             }
 
             const decreaseSizeButton = createIconButton('-')
+            decreaseSizeButton.onmousedown = (e) => {
+                e.preventDefault()
+                textBlock.focus()
+            }
             decreaseSizeButton.onclick = () => changeFontSize(-1)
 
             const increaseSizeButton = createIconButton('+')
+            increaseSizeButton.onmousedown = (e) => {
+                e.preventDefault()
+                textBlock.focus()
+            }
             increaseSizeButton.onclick = () => changeFontSize(1)
 
             toolbar.appendChild(boldButton)
