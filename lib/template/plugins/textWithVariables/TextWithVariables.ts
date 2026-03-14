@@ -11,6 +11,8 @@ import {
     isIndexBold,
     normalizeBoldRanges,
     normalizeFontSizeRanges,
+    projectBoldRangesBySourceMap,
+    projectFontSizeRangesBySourceMap,
     renderStyledRanges,
     setFontSizeRange,
     type BoldRange,
@@ -237,22 +239,60 @@ const fetchAllCustomerListFields = async (): Promise<FieldGroup[]> => {
 }
 
 // Parse text content and replace variables with actual values
-const parseVariables = (text: string, data?: Record<string, any>): string => {
-    if (typeof text !== "string") return text
-    
-    // Match {{fieldName}} patterns and replace with values
-    let result = text
-    if (data) {
-        Object.keys(data).forEach((fieldName) => {
-            const regex = new RegExp(`\\{\\{\\s*${fieldName.replace(/[/\-\\^$*+?.()|[\]{}]/g, '\\$&')}\\s*\\}\\}`, 'g')
-            result = result.replace(regex, String(data[fieldName]))
-        })
+const parseVariablesWithMapping = (text: string, data?: Record<string, any>): { text: string; sourceIndexByOutputIndex: number[] } => {
+    if (typeof text !== "string") {
+        return { text: '', sourceIndexByOutputIndex: [] }
     }
-    
-    // Remove any unreplaced variables (show field name without braces)
-    result = result.replace(/\{\{([^{}]+)\}\}/g, (match, fieldName) => fieldName.trim())
-    
-    return result
+
+    const regex = /\{\{([^{}]+)\}\}/g
+    let outputText = ''
+    const sourceIndexByOutputIndex: number[] = []
+    let sourceCursor = 0
+
+    let match: RegExpExecArray | null = null
+    while ((match = regex.exec(text)) !== null) {
+        const matchStart = match.index
+        const matchFull = match[0]
+        const matchEnd = matchStart + matchFull.length
+
+        if (sourceCursor < matchStart) {
+            const plainChunk = text.slice(sourceCursor, matchStart)
+            outputText += plainChunk
+            for (let offset = 0; offset < plainChunk.length; offset++) {
+                sourceIndexByOutputIndex.push(sourceCursor + offset)
+            }
+        }
+
+        const rawFieldName = match[1]
+        const trimmedFieldName = rawFieldName.trim()
+        const replacement = data && Object.prototype.hasOwnProperty.call(data, trimmedFieldName)
+            ? String(data[trimmedFieldName])
+            : trimmedFieldName
+
+        const leftTrim = rawFieldName.length - rawFieldName.trimStart().length
+        const sourceAnchorStart = Math.min(matchEnd - 1, matchStart + 2 + leftTrim)
+
+        outputText += replacement
+        for (let offset = 0; offset < replacement.length; offset++) {
+            sourceIndexByOutputIndex.push(sourceAnchorStart + offset)
+        }
+
+        sourceCursor = matchEnd
+    }
+
+    if (sourceCursor < text.length) {
+        const tailChunk = text.slice(sourceCursor)
+        outputText += tailChunk
+        for (let offset = 0; offset < tailChunk.length; offset++) {
+            sourceIndexByOutputIndex.push(sourceCursor + offset)
+        }
+    }
+
+    return { text: outputText, sourceIndexByOutputIndex }
+}
+
+const parseVariables = (text: string, data?: Record<string, any>): string => {
+    return parseVariablesWithMapping(text, data).text
 }
 
 // Replace variables inside HTML while keeping markup intact
@@ -321,10 +361,17 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         } else if (typeof value === 'object' && value !== null) {
             valueData = value as Record<string, any>
         }
-        const processedText = parseVariables(rawText, valueData)
-        const boldRanges = normalizeBoldRanges(schema.bold)
+        const parsedText = parseVariablesWithMapping(rawText, valueData)
+        const processedText = parsedText.text
+        const sourceBoldRanges = normalizeBoldRanges(schema.bold)
         const baseFontSize = schema.fontSize || 12
-        const fontSizeRanges = normalizeFontSizeRanges(schema.fontSizeRanges)
+        const sourceFontSizeRanges = normalizeFontSizeRanges(schema.fontSizeRanges)
+        const boldRanges = projectBoldRangesBySourceMap(sourceBoldRanges, parsedText.sourceIndexByOutputIndex)
+        const fontSizeRanges = projectFontSizeRangesBySourceMap(
+            sourceFontSizeRanges,
+            parsedText.sourceIndexByOutputIndex,
+            baseFontSize,
+        )
 
         const { pdfDoc, page, options, pdfLib } = rest
         const fontMap = options.font || getDefaultFont()
@@ -447,16 +494,29 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         const normalizedSchemaBoldRanges = normalizeBoldRanges(schema.bold)
         const baseFontSize = schema.fontSize || 12
         const normalizedSchemaFontSizeRanges = normalizeFontSizeRanges(schema.fontSizeRanges)
+        const parsedRawText = parseVariablesWithMapping(rawText, valueData)
+        const projectedReadOnlyBoldRanges = projectBoldRangesBySourceMap(
+            normalizedSchemaBoldRanges,
+            parsedRawText.sourceIndexByOutputIndex,
+        )
+        const projectedReadOnlyFontSizeRanges = projectFontSizeRangesBySourceMap(
+            normalizedSchemaFontSizeRanges,
+            parsedRawText.sourceIndexByOutputIndex,
+            baseFontSize,
+        )
         let displayHtml = isEditableMode
             ? initialHtml
-            : (schema.content ? applyVariablesToHtml(schema.content, valueData) : parseVariables(rawText, valueData))
+            : (schema.content ? applyVariablesToHtml(schema.content, valueData) : parsedRawText.text)
 
-        if (normalizedSchemaBoldRanges.length > 0 || normalizedSchemaFontSizeRanges.length > 0) {
+        if (
+            (isEditableMode && (normalizedSchemaBoldRanges.length > 0 || normalizedSchemaFontSizeRanges.length > 0)) ||
+            (!isEditableMode && (projectedReadOnlyBoldRanges.length > 0 || projectedReadOnlyFontSizeRanges.length > 0))
+        ) {
             const plainText = stripHtmlTags(displayHtml)
             displayHtml = renderStyledRanges(
                 plainText,
-                normalizedSchemaBoldRanges,
-                normalizedSchemaFontSizeRanges,
+                isEditableMode ? normalizedSchemaBoldRanges : projectedReadOnlyBoldRanges,
+                isEditableMode ? normalizedSchemaFontSizeRanges : projectedReadOnlyFontSizeRanges,
                 baseFontSize,
             )
         }

@@ -212,3 +212,67 @@ export const renderStyledRanges = (
 
     return html
 }
+
+export const projectBoldRangesBySourceMap = (
+    sourceRanges: BoldRange[],
+    sourceIndexByOutputIndex: number[],
+): BoldRange[] => {
+    const projected: BoldRange[] = []
+    let segmentStart: number | null = null
+
+    for (let outputIndex = 0; outputIndex < sourceIndexByOutputIndex.length; outputIndex++) {
+        const sourceIndex = sourceIndexByOutputIndex[outputIndex]
+        const isBold = isIndexBold(sourceIndex, sourceRanges)
+
+        if (isBold && segmentStart === null) {
+            segmentStart = outputIndex
+        }
+
+        if (!isBold && segmentStart !== null) {
+            projected.push({ start: segmentStart, end: outputIndex - 1 })
+            segmentStart = null
+        }
+    }
+
+    if (segmentStart !== null) {
+        projected.push({ start: segmentStart, end: sourceIndexByOutputIndex.length - 1 })
+    }
+
+    return normalizeBoldRanges(projected)
+}
+
+export const projectFontSizeRangesBySourceMap = (
+    sourceRanges: FontSizeRange[],
+    sourceIndexByOutputIndex: number[],
+    baseFontSize: number,
+): FontSizeRange[] => {
+    const projected: FontSizeRange[] = []
+
+    let segmentStart = 0
+    let segmentSize = sourceIndexByOutputIndex.length > 0
+        ? getFontSizeAtIndex(sourceIndexByOutputIndex[0], sourceRanges, baseFontSize)
+        : baseFontSize
+
+    for (let outputIndex = 1; outputIndex < sourceIndexByOutputIndex.length; outputIndex++) {
+        const sourceIndex = sourceIndexByOutputIndex[outputIndex]
+        const size = getFontSizeAtIndex(sourceIndex, sourceRanges, baseFontSize)
+
+        if (size !== segmentSize) {
+            if (segmentSize !== baseFontSize) {
+                projected.push({ start: segmentStart, end: outputIndex - 1, size: segmentSize })
+            }
+            segmentStart = outputIndex
+            segmentSize = size
+        }
+    }
+
+    if (sourceIndexByOutputIndex.length > 0 && segmentSize !== baseFontSize) {
+        projected.push({
+            start: segmentStart,
+            end: sourceIndexByOutputIndex.length - 1,
+            size: segmentSize,
+        })
+    }
+
+    return normalizeFontSizeRanges(projected)
+}
