@@ -1,9 +1,28 @@
-import type { PDFRenderProps, Plugin, Schema } from "@pdfme/common"
+import type { PDFRenderProps, Plugin, Schema, Font } from "@pdfme/common"
+import { getDefaultFont, getFallbackFontName, mm2pt } from "@pdfme/common"
+import type { PDFFont } from "@pdfme/pdf-lib"
 import { createSvgStr } from "@pdfme/schemas/utils"
 import { text as textPlugin } from "@pdfme/schemas"
 import { Type } from "lucide"
 import type { UIRenderProps } from "@pdfme/common"
 import { TextWithVariablesPropPanel } from "./propPanel"
+import {
+    getFontSizeAtIndex,
+    isIndexInStyleRanges,
+    isIndexBold,
+    normalizeBoldRanges,
+    normalizeFontSizeRanges,
+    normalizeStyleRanges,
+    projectBoldRangesBySourceMap,
+    projectFontSizeRangesBySourceMap,
+    projectStyleRangesBySourceMap,
+    renderStyledRanges,
+    setFontSizeRange,
+    type BoldRange,
+    type FontSizeRange,
+    type StyleRange,
+    toggleStyleRanges,
+} from "./textStyleRanges"
 
 export type TextWithVariablesSchema = Schema & {
     fontName?: string
@@ -26,6 +45,11 @@ export type TextWithVariablesSchema = Schema & {
     variables?: string[]
     content?: string
     readOnly?: boolean
+    bold?: Array<{ start: number; end: number }>
+    fontSizeRanges?: Array<{ start: number; end: number; size: number }>
+    italicRanges?: Array<{ start: number; end: number }>
+    underlineRanges?: Array<{ start: number; end: number }>
+    strikeRanges?: Array<{ start: number; end: number }>
 }
 
 type FieldOption = { field: string; type: string }
@@ -42,6 +66,168 @@ type DropdownFieldEntry = {
 
 let cachedFieldGroups: FieldGroup[] | null = null
 let cachedFieldGroupsPromise: Promise<FieldGroup[]> | null = null
+
+const getFontVariantName = (
+    fontName: string | undefined,
+    font: Font,
+    bold: boolean,
+    italic: boolean,
+): string => {
+    const fallback = getFallbackFontName(font)
+    const current = fontName || fallback
+    const names = Object.keys(font)
+
+    const family = current
+        .replace(/-BoldItalic|-Bold|-Italic|-Regular/gi, '')
+        .trim()
+
+    const candidates = bold && italic
+        ? [
+            `${family}-BoldItalic`,
+            `${family} Bold Italic`,
+            `${family}-ItalicBold`,
+            `${family} Italic Bold`,
+            `${family}-Bold`,
+            `${family}-Italic`,
+        ]
+        : bold
+            ? [`${family}-Bold`, `${family} Bold`, `${family}-BoldItalic`]
+            : italic
+                ? [`${family}-Italic`, `${family} Italic`, `${family}-Oblique`, `${family} Oblique`]
+                : [current, `${family}-Regular`, `${family} Regular`]
+
+    for (const candidate of candidates) {
+        if (font[candidate]) return candidate
+    }
+
+    const fuzzy = names.find((name) => {
+        const lower = name.toLowerCase()
+        if (!lower.includes(family.toLowerCase())) return false
+        if (bold && !lower.includes('bold')) return false
+        if (italic && !(lower.includes('italic') || lower.includes('oblique'))) return false
+        return true
+    })
+
+    return fuzzy || current
+}
+
+const toUint8Array = async (fontData: unknown): Promise<Uint8Array<ArrayBuffer>> => {
+    if (fontData instanceof Uint8Array) {
+        return fontData as Uint8Array<ArrayBuffer>
+    }
+    if (fontData instanceof ArrayBuffer) {
+        return new Uint8Array(fontData) as Uint8Array<ArrayBuffer>
+    }
+    if (typeof fontData === 'string') {
+        if (fontData.startsWith('http')) {
+            const buffer = await fetch(fontData).then((res) => res.arrayBuffer())
+            return new Uint8Array(buffer) as Uint8Array<ArrayBuffer>
+        }
+        try {
+            const base64 = fontData.includes(',') ? fontData.split(',')[1] : fontData
+            const binary = atob(base64)
+            const bytes = new Uint8Array(binary.length)
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+            return bytes as Uint8Array<ArrayBuffer>
+        } catch {
+            return new Uint8Array() as Uint8Array<ArrayBuffer>
+        }
+    }
+    return new Uint8Array() as Uint8Array<ArrayBuffer>
+}
+
+const hexToPdfColor = (hex: string | undefined, pdfLib: PDFRenderProps<TextWithVariablesSchema>["pdfLib"]) => {
+    const value = (hex || '#000000').replace('#', '')
+    const normalized = value.length === 3
+        ? value.split('').map((c) => c + c).join('')
+        : value
+    const r = parseInt(normalized.slice(0, 2), 16)
+    const g = parseInt(normalized.slice(2, 4), 16)
+    const b = parseInt(normalized.slice(4, 6), 16)
+    return pdfLib.rgb((Number.isNaN(r) ? 0 : r) / 255, (Number.isNaN(g) ? 0 : g) / 255, (Number.isNaN(b) ? 0 : b) / 255)
+}
+
+const splitLinesForMixedText = (
+    text: string,
+    maxWidth: number,
+    baseFontSize: number,
+    charSpacing: number,
+    getFontForStyle: (isBold: boolean, isItalic: boolean) => PDFFont,
+    boldRanges: BoldRange[],
+    fontSizeRanges: FontSizeRange[],
+    italicRanges: StyleRange[],
+    underlineRanges: StyleRange[],
+    strikeRanges: StyleRange[],
+) => {
+    type CharEntry = {
+        char: string
+        index: number
+        bold: boolean
+        italic: boolean
+        underline: boolean
+        strike: boolean
+        fontSize: number
+        width: number
+    }
+    type Line = CharEntry[]
+
+    const lines: Line[] = []
+    let currentLine: Line = []
+    let currentLineWidth = 0
+
+    const chars = Array.from(text)
+
+    const pushCurrentLine = () => {
+        lines.push(currentLine)
+        currentLine = []
+        currentLineWidth = 0
+    }
+
+    for (let index = 0; index < chars.length; index++) {
+        const char = chars[index]
+
+        if (char === '\n' || char === '\r') {
+            pushCurrentLine()
+            continue
+        }
+
+        const isBold = isIndexBold(index, boldRanges)
+        const isItalic = isIndexInStyleRanges(index, italicRanges)
+        const isUnderline = isIndexInStyleRanges(index, underlineRanges)
+        const isStrike = isIndexInStyleRanges(index, strikeRanges)
+        const charFontSize = getFontSizeAtIndex(index, fontSizeRanges, baseFontSize)
+        const font = getFontForStyle(isBold, isItalic)
+        const charWidth = font.widthOfTextAtSize(char, charFontSize)
+        const additionalSpacing = currentLine.length > 0 ? charSpacing : 0
+        const nextWidth = currentLineWidth + charWidth + additionalSpacing
+
+        if (currentLine.length > 0 && nextWidth > maxWidth) {
+            pushCurrentLine()
+        }
+
+        const entry: CharEntry = {
+            char,
+            index,
+            bold: isBold,
+            italic: isItalic,
+            underline: isUnderline,
+            strike: isStrike,
+            fontSize: charFontSize,
+            width: charWidth,
+        }
+
+        currentLine.push(entry)
+        currentLineWidth += entry.width + (currentLine.length > 1 ? charSpacing : 0)
+    }
+
+    if (currentLine.length > 0 || lines.length === 0) {
+        lines.push(currentLine)
+    }
+
+    return lines
+};
+
+const stripHtmlTags = (html: string): string => html.replace(/<[^>]*>/g, "")
 
 const fetchAllCustomerListFields = async (): Promise<FieldGroup[]> => {
     if (cachedFieldGroups) return cachedFieldGroups
@@ -96,22 +282,75 @@ const fetchAllCustomerListFields = async (): Promise<FieldGroup[]> => {
 }
 
 // Parse text content and replace variables with actual values
-const parseVariables = (text: string, data?: Record<string, any>): string => {
-    if (typeof text !== "string") return text
-    
-    // Match {{fieldName}} patterns and replace with values
-    let result = text
-    if (data) {
-        Object.keys(data).forEach((fieldName) => {
-            const regex = new RegExp(`\\{\\{\\s*${fieldName.replace(/[/\-\\^$*+?.()|[\]{}]/g, '\\$&')}\\s*\\}\\}`, 'g')
-            result = result.replace(regex, String(data[fieldName]))
-        })
+const parseVariablesWithMapping = (text: string, data?: Record<string, any>): { text: string; sourceIndexByOutputIndex: number[] } => {
+    if (typeof text !== "string") {
+        return { text: '', sourceIndexByOutputIndex: [] }
     }
-    
-    // Remove any unreplaced variables (show field name without braces)
-    result = result.replace(/\{\{([^{}]+)\}\}/g, (match, fieldName) => fieldName.trim())
-    
-    return result
+
+    const regex = /\{\{([^{}]+)\}\}/g
+    let outputText = ''
+    const sourceIndexByOutputIndex: number[] = []
+    let sourceCursor = 0
+
+    let match: RegExpExecArray | null = null
+    while ((match = regex.exec(text)) !== null) {
+        const matchStart = match.index
+        const matchFull = match[0]
+        const matchEnd = matchStart + matchFull.length
+
+        if (sourceCursor < matchStart) {
+            const plainChunk = text.slice(sourceCursor, matchStart)
+            outputText += plainChunk
+            for (let offset = 0; offset < plainChunk.length; offset++) {
+                sourceIndexByOutputIndex.push(sourceCursor + offset)
+            }
+        }
+
+        const rawFieldName = match[1]
+        const trimmedFieldName = rawFieldName.trim()
+        const replacement = data && Object.prototype.hasOwnProperty.call(data, trimmedFieldName)
+            ? String(data[trimmedFieldName])
+            : trimmedFieldName
+
+        const leftTrim = rawFieldName.length - rawFieldName.trimStart().length
+        const sourceAnchorStart = Math.min(matchEnd - 1, matchStart + 2 + leftTrim)
+
+        outputText += replacement
+        for (let offset = 0; offset < replacement.length; offset++) {
+            sourceIndexByOutputIndex.push(sourceAnchorStart + offset)
+        }
+
+        sourceCursor = matchEnd
+    }
+
+    if (sourceCursor < text.length) {
+        const tailChunk = text.slice(sourceCursor)
+        outputText += tailChunk
+        for (let offset = 0; offset < tailChunk.length; offset++) {
+            sourceIndexByOutputIndex.push(sourceCursor + offset)
+        }
+    }
+
+    return { text: outputText, sourceIndexByOutputIndex }
+}
+
+const parseVariables = (text: string, data?: Record<string, any>): string => {
+    return parseVariablesWithMapping(text, data).text
+}
+
+// Replace variables inside HTML while keeping markup intact
+const applyVariablesToHtml = (html: string, data?: Record<string, any>): string => {
+    const wrapper = document.createElement("div")
+    wrapper.innerHTML = html
+
+    const walker = document.createTreeWalker(wrapper, NodeFilter.SHOW_TEXT)
+    let node: Node | null = walker.nextNode()
+    while (node) {
+        node.textContent = parseVariables(node.textContent || "", data)
+        node = walker.nextNode()
+    }
+
+    return wrapper.innerHTML
 }
 
 // Extract all variable names from text (e.g., ["firstName", "lastName"])
@@ -125,11 +364,6 @@ export const extractVariables = (text: string): string[] => {
 const makeElementPlainTextContentEditable = (element: HTMLElement) => {
     const isFirefox = () => navigator.userAgent.toLowerCase().indexOf('firefox') > -1
     
-    if (!isFirefox()) {
-        element.contentEditable = 'plaintext-only'
-        return
-    }
-
     element.contentEditable = 'true'
     element.addEventListener('keydown', (e: KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -155,8 +389,10 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
     pdf: async (arg: PDFRenderProps<TextWithVariablesSchema>) => {
         const { schema, value, ...rest } = arg
 
-        // Get the text content with variables replaced
-        const rawText = schema.text || ""
+        const rawContent = (schema.content && schema.content.trim().length > 0)
+            ? schema.content
+            : (schema.text || "")
+        const rawText = stripHtmlTags(rawContent)
         // Parse value - it could be a string (JSON) or already an object
         let valueData: Record<string, any> | undefined
         if (typeof value === 'string' && value) {
@@ -168,23 +404,167 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         } else if (typeof value === 'object' && value !== null) {
             valueData = value as Record<string, any>
         }
-        const processedText = parseVariables(rawText, valueData)
+        const parsedText = parseVariablesWithMapping(rawText, valueData)
+        const processedText = parsedText.text
+        const sourceBoldRanges = normalizeBoldRanges(schema.bold)
+        const baseFontSize = schema.fontSize || 12
+        const sourceFontSizeRanges = normalizeFontSizeRanges(schema.fontSizeRanges)
+        const sourceItalicRanges = normalizeStyleRanges(schema.italicRanges)
+        const sourceUnderlineRanges = normalizeStyleRanges(schema.underlineRanges)
+        const sourceStrikeRanges = normalizeStyleRanges(schema.strikeRanges)
+        const boldRanges = projectBoldRangesBySourceMap(sourceBoldRanges, parsedText.sourceIndexByOutputIndex)
+        const fontSizeRanges = projectFontSizeRangesBySourceMap(
+            sourceFontSizeRanges,
+            parsedText.sourceIndexByOutputIndex,
+            baseFontSize,
+        )
+        const italicRanges = projectStyleRangesBySourceMap(sourceItalicRanges, parsedText.sourceIndexByOutputIndex)
+        const underlineRanges = projectStyleRangesBySourceMap(sourceUnderlineRanges, parsedText.sourceIndexByOutputIndex)
+        const strikeRanges = projectStyleRangesBySourceMap(sourceStrikeRanges, parsedText.sourceIndexByOutputIndex)
 
-        await textPlugin.pdf({
-            value: processedText,
-            schema: schema as unknown as Parameters<typeof textPlugin.pdf>[0]['schema'],
-            ...rest,
+        const { pdfDoc, page, options, pdfLib } = rest
+        const fontMap = options.font || getDefaultFont()
+        const baseFontName = schema.fontName || getFallbackFontName(fontMap)
+        const boldFontName = getFontVariantName(baseFontName, fontMap, true, false)
+        const italicFontName = getFontVariantName(baseFontName, fontMap, false, true)
+        const boldItalicFontName = getFontVariantName(baseFontName, fontMap, true, true)
+
+        const baseFontData = await toUint8Array(fontMap[baseFontName]?.data)
+        const boldFontData = await toUint8Array((fontMap[boldFontName] || fontMap[baseFontName])?.data)
+        const italicFontData = await toUint8Array((fontMap[italicFontName] || fontMap[baseFontName])?.data)
+        const boldItalicFontData = await toUint8Array((fontMap[boldItalicFontName] || fontMap[boldFontName] || fontMap[baseFontName])?.data)
+
+        if (
+            boldRanges.length === 0 &&
+            fontSizeRanges.length === 0 &&
+            italicRanges.length === 0 &&
+            underlineRanges.length === 0 &&
+            strikeRanges.length === 0
+        ) {
+            await textPlugin.pdf({
+                value: processedText,
+                schema: schema as unknown as Parameters<typeof textPlugin.pdf>[0]['schema'],
+                ...rest,
+            })
+            return
+        }
+
+        const normalFont = await pdfDoc.embedFont(baseFontData, { subset: true })
+        const boldFont = await pdfDoc.embedFont(boldFontData, { subset: true })
+        const italicFont = await pdfDoc.embedFont(italicFontData, { subset: true })
+        const boldItalicFont = await pdfDoc.embedFont(boldItalicFontData, { subset: true })
+
+        const getFontForStyle = (isBold: boolean, isItalic: boolean) => {
+            if (isBold && isItalic) return boldItalicFont
+            if (isBold) return boldFont
+            if (isItalic) return italicFont
+            return normalFont
+        }
+
+        const lineHeight = schema.lineHeight || 1
+        const charSpacing = schema.characterSpacing || 0
+        const color = hexToPdfColor(schema.fontColor, pdfLib)
+
+        const x = mm2pt(schema.position.x)
+        const yTop = mm2pt(schema.position.y)
+        const width = mm2pt(schema.width)
+        const height = mm2pt(schema.height)
+        const pageHeight = page.getHeight()
+
+        const lines = splitLinesForMixedText(
+            processedText,
+            width,
+            baseFontSize,
+            charSpacing,
+            getFontForStyle,
+            boldRanges,
+            fontSizeRanges,
+            italicRanges,
+            underlineRanges,
+            strikeRanges,
+        )
+
+        const lineMetrics = lines.map((line) => {
+            const maxFontSize = line.reduce((max, entry) => Math.max(max, entry.fontSize), baseFontSize)
+            return {
+                maxFontSize,
+                lineHeightPt: maxFontSize * lineHeight,
+            }
         })
+        const contentHeight = lineMetrics.reduce((sum, metric) => sum + metric.lineHeightPt, 0)
+        const verticalOffset = Math.max(0, height - contentHeight)
+
+        let contentTop = pageHeight - yTop
+        if (schema.verticalAlignment === 'middle') {
+            contentTop = pageHeight - yTop - verticalOffset / 2
+        } else if (schema.verticalAlignment === 'bottom') {
+            contentTop = pageHeight - yTop - verticalOffset
+        }
+
+        let consumedHeight = 0
+        lines.forEach((line, rowIndex) => {
+            const metric = lineMetrics[rowIndex]
+            const lineY = contentTop - consumedHeight - metric.maxFontSize
+            if (line.length === 0) {
+                consumedHeight += metric.lineHeightPt
+                return
+            }
+            const totalLineWidth = line.reduce((acc, c) => acc + c.width + charSpacing, 0) - charSpacing;
+
+            let cursorX = x;
+            if (schema.alignment === 'center') cursorX += (width - totalLineWidth) / 2;
+            else if (schema.alignment === 'right') cursorX += width - totalLineWidth;
+
+            line.forEach((entry) => {
+                const font = getFontForStyle(entry.bold, entry.italic)
+                const lineThickness = Math.max(0.5, entry.fontSize * 0.05)
+                if (entry.char.trim() !== "") {
+                    page.drawText(entry.char, {
+                        x: cursorX,
+                        y: lineY,
+                        size: entry.fontSize,
+                        font,
+                        color,
+                        opacity: schema.opacity ?? 1,
+                    });
+                }
+
+                const startX = cursorX
+                const endX = cursorX + entry.width
+                if (entry.underline) {
+                    page.drawLine({
+                        start: { x: startX, y: lineY - entry.fontSize * 0.12 },
+                        end: { x: endX, y: lineY - entry.fontSize * 0.12 },
+                        thickness: lineThickness,
+                        color,
+                        opacity: schema.opacity ?? 1,
+                    })
+                }
+                if (entry.strike) {
+                    page.drawLine({
+                        start: { x: startX, y: lineY + entry.fontSize * 0.3 },
+                        end: { x: endX, y: lineY + entry.fontSize * 0.3 },
+                        thickness: lineThickness,
+                        color,
+                        opacity: schema.opacity ?? 1,
+                    })
+                }
+
+                cursorX += entry.width + charSpacing;
+            });
+
+            consumedHeight += metric.lineHeightPt
+        });
     },
 
     ui: async (arg: UIRenderProps<TextWithVariablesSchema>) => {
         const { rootElement, schema, onChange, mode, value, tabIndex, placeholder, stopEditing, theme } = arg
 
-        // Get text from schema.text
         const rawText = schema.text || ""
+        const initialHtml = (schema.content && schema.content.trim().length > 0) ? schema.content : rawText
+        const initialPlainText = stripHtmlTags(initialHtml)
         
-        // Extract variables from text and update schema if needed
-        const variables = extractVariables(rawText)
+        const variables = extractVariables(initialPlainText)
         const currentVariables = Array.isArray(schema.variables) ? schema.variables : []
         if (mode === 'designer' && JSON.stringify(variables) !== JSON.stringify(currentVariables)) {
             if (onChange) {
@@ -192,9 +572,6 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             }
         }
 
-        // Form mode - do not render inputs; keep variables as-is
-
-        // Parse value - it could be a string (JSON) or already an object
         let valueData: Record<string, any> | undefined
         if (typeof value === 'string' && value) {
             try {
@@ -206,14 +583,69 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             valueData = value as Record<string, any>
         }
 
-        // In designer mode, show raw text with {{variables}}; otherwise render with data
         const isEditableMode = mode === 'designer'
-        const displayText = isEditableMode ? rawText : parseVariables(rawText, valueData)
+        const normalizedSchemaBoldRanges = normalizeBoldRanges(schema.bold)
+        const baseFontSize = schema.fontSize || 12
+        const normalizedSchemaFontSizeRanges = normalizeFontSizeRanges(schema.fontSizeRanges)
+        const normalizedSchemaItalicRanges = normalizeStyleRanges(schema.italicRanges)
+        const normalizedSchemaUnderlineRanges = normalizeStyleRanges(schema.underlineRanges)
+        const normalizedSchemaStrikeRanges = normalizeStyleRanges(schema.strikeRanges)
+        const parsedRawText = parseVariablesWithMapping(rawText, valueData)
+        const projectedReadOnlyBoldRanges = projectBoldRangesBySourceMap(
+            normalizedSchemaBoldRanges,
+            parsedRawText.sourceIndexByOutputIndex,
+        )
+        const projectedReadOnlyFontSizeRanges = projectFontSizeRangesBySourceMap(
+            normalizedSchemaFontSizeRanges,
+            parsedRawText.sourceIndexByOutputIndex,
+            baseFontSize,
+        )
+        const projectedReadOnlyItalicRanges = projectStyleRangesBySourceMap(
+            normalizedSchemaItalicRanges,
+            parsedRawText.sourceIndexByOutputIndex,
+        )
+        const projectedReadOnlyUnderlineRanges = projectStyleRangesBySourceMap(
+            normalizedSchemaUnderlineRanges,
+            parsedRawText.sourceIndexByOutputIndex,
+        )
+        const projectedReadOnlyStrikeRanges = projectStyleRangesBySourceMap(
+            normalizedSchemaStrikeRanges,
+            parsedRawText.sourceIndexByOutputIndex,
+        )
+        let displayHtml = isEditableMode
+            ? initialHtml
+            : (schema.content ? applyVariablesToHtml(schema.content, valueData) : parsedRawText.text)
 
-        // Clear root element
+        if (
+            (isEditableMode && (
+                normalizedSchemaBoldRanges.length > 0 ||
+                normalizedSchemaFontSizeRanges.length > 0 ||
+                normalizedSchemaItalicRanges.length > 0 ||
+                normalizedSchemaUnderlineRanges.length > 0 ||
+                normalizedSchemaStrikeRanges.length > 0
+            )) ||
+            (!isEditableMode && (
+                projectedReadOnlyBoldRanges.length > 0 ||
+                projectedReadOnlyFontSizeRanges.length > 0 ||
+                projectedReadOnlyItalicRanges.length > 0 ||
+                projectedReadOnlyUnderlineRanges.length > 0 ||
+                projectedReadOnlyStrikeRanges.length > 0
+            ))
+        ) {
+            const plainText = stripHtmlTags(displayHtml)
+            displayHtml = renderStyledRanges(
+                plainText,
+                isEditableMode ? normalizedSchemaBoldRanges : projectedReadOnlyBoldRanges,
+                isEditableMode ? normalizedSchemaFontSizeRanges : projectedReadOnlyFontSizeRanges,
+                baseFontSize,
+                isEditableMode ? normalizedSchemaItalicRanges : projectedReadOnlyItalicRanges,
+                isEditableMode ? normalizedSchemaUnderlineRanges : projectedReadOnlyUnderlineRanges,
+                isEditableMode ? normalizedSchemaStrikeRanges : projectedReadOnlyStrikeRanges,
+            )
+        }
+
         rootElement.innerHTML = ''
 
-        // Create container
         const container = document.createElement("div")
         container.style.width = "100%"
         container.style.height = "100%"
@@ -234,7 +666,6 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         container.style.opacity = typeof schema.opacity === "number" ? String(schema.opacity) : "1"
         rootElement.appendChild(container)
 
-        // Create text element
         const textBlock = document.createElement("div")
         textBlock.id = `text-${schema.id}`
         textBlock.style.width = "100%"
@@ -268,23 +699,60 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         container.appendChild(textBlock)
 
         if (!isEditableMode) {
-            // Read-only mode - just display the text
-            textBlock.textContent = displayText
+            textBlock.innerHTML = displayHtml
             return
         }
 
-        // Editable mode - make contenteditable
         makeElementPlainTextContentEditable(textBlock)
         textBlock.tabIndex = tabIndex || 0
-        textBlock.innerText = rawText
+        textBlock.innerHTML = displayHtml
 
-        // Helper to get clean text
         const getText = (element: HTMLDivElement) => {
             let text = element.innerText
             if (text.endsWith('\n')) {
                 text = text.slice(0, -1)
             }
             return text
+        }
+
+        let activeBoldRanges = normalizedSchemaBoldRanges.map((range) => ({ ...range }))
+        let activeFontSizeRanges = normalizedSchemaFontSizeRanges.map((range) => ({ ...range }))
+        let activeItalicRanges = normalizedSchemaItalicRanges.map((range) => ({ ...range }))
+        let activeUnderlineRanges = normalizedSchemaUnderlineRanges.map((range) => ({ ...range }))
+        let activeStrikeRanges = normalizedSchemaStrikeRanges.map((range) => ({ ...range }))
+
+        type FormatRangeMap = {
+            bold: Array<{ start: number; end: number }>
+            fontSizeRanges: Array<{ start: number; end: number; size: number }>
+            italicRanges: Array<{ start: number; end: number }>
+            underlineRanges: Array<{ start: number; end: number }>
+            strikeRanges: Array<{ start: number; end: number }>
+        }
+
+        type FormatRangeKey = keyof FormatRangeMap
+
+        const getFormatRanges = (): FormatRangeMap => ({
+            bold: activeBoldRanges,
+            fontSizeRanges: activeFontSizeRanges,
+            italicRanges: activeItalicRanges,
+            underlineRanges: activeUnderlineRanges,
+            strikeRanges: activeStrikeRanges,
+        })
+
+        const setFormatRange = <K extends FormatRangeKey>(key: K, value: FormatRangeMap[K]) => {
+            if (key === 'bold') activeBoldRanges = value as FormatRangeMap['bold']
+            else if (key === 'fontSizeRanges') activeFontSizeRanges = value as FormatRangeMap['fontSizeRanges']
+            else if (key === 'italicRanges') activeItalicRanges = value as FormatRangeMap['italicRanges']
+            else if (key === 'underlineRanges') activeUnderlineRanges = value as FormatRangeMap['underlineRanges']
+            else activeStrikeRanges = value as FormatRangeMap['strikeRanges']
+        }
+
+        const createFormatRangeUpdates = () => {
+            const ranges = getFormatRanges()
+            return (Object.keys(ranges) as FormatRangeKey[]).map((key) => ({
+                key,
+                value: ranges[key].map((entry) => ({ ...entry })),
+            }))
         }
 
         const getCaretOffset = (element: HTMLDivElement) => {
@@ -294,7 +762,6 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             const range = selection.getRangeAt(0).cloneRange()
             range.collapse(true)
 
-            // Unique marker unlikely to exist in user text
             const markerText = "__CARET_MARKER__"
             const markerNode = document.createTextNode(markerText)
 
@@ -341,21 +808,67 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             selection.addRange(range)
         }
 
-        // Handle blur event - save text and update variables
-        textBlock.addEventListener('blur', (e: Event) => {
-            const newText = getText(e.target as HTMLDivElement)
-            const newVariables = extractVariables(newText)
-            
+        const setSelectionOffsets = (element: HTMLDivElement, startOffset: number, endOffsetExclusive: number) => {
+            const selection = window.getSelection()
+            if (!selection) return
+
+            const safeStart = Math.max(0, startOffset)
+            const safeEnd = Math.max(safeStart, endOffsetExclusive)
+
+            const startPos = findTextPosition(element, safeStart)
+            const endPos = findTextPosition(element, safeEnd)
+
+            const range = document.createRange()
+            range.setStart(startPos.node, startPos.offset)
+            range.setEnd(endPos.node, endPos.offset)
+
+            selection.removeAllRanges()
+            selection.addRange(range)
+        }
+
+        const findTextPosition = (
+            element: HTMLDivElement,
+            targetOffset: number,
+        ): { node: Node; offset: number } => {
+            let current = 0
+            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+            let node: Node | null = null
+
+            while ((node = walker.nextNode())) {
+                const length = node.textContent?.length || 0
+                if (current + length >= targetOffset) {
+                    return { node, offset: Math.max(0, targetOffset - current) }
+                }
+                current += length
+            }
+
+            return { node: element, offset: element.childNodes.length }
+        }
+
+        let lastText = getText(textBlock)
+        let hideToolbar = () => {}
+
+        const commitContentChange = () => {
+            const plainText = getText(textBlock)
+            const newVariables = extractVariables(plainText)
+
             if (onChange) {
-                // Update both text and variables
                 onChange([
-                    { key: 'text', value: newText },
-                    { key: 'variables', value: newVariables }
+                    { key: 'content', value: textBlock.innerHTML },
+                    { key: 'text', value: plainText },
+                    { key: 'variables', value: newVariables },
+                    ...createFormatRangeUpdates(),
                 ])
             }
+
+            lastText = plainText
+        }
+
+        textBlock.addEventListener('blur', () => {
+            commitContentChange()
+            hideToolbar()
         })
 
-        // Focus in designer mode
         if (mode === 'designer') {
             setTimeout(() => {
                 textBlock.focus()
@@ -370,24 +883,494 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             })
         }
 
-        // Variable dropdown functionality
         if (mode === 'designer') {
             let dropdown: HTMLDivElement | null = null
             let fieldGroups: FieldGroup[] = []
             let selectedIndex = -1
             let dropdownItems: HTMLDivElement[] = []
             let selectableFieldEntries: DropdownFieldEntry[] = []
+            let dropdownKeyListenerAttached = false
 
-            // Fetch all available fields across customer lists
             const fetchFields = async () => {
                 try {
                     fieldGroups = await fetchAllCustomerListFields()
-                } catch (err) {
-                    console.error("Failed to fetch customer list fields:", err)
+                } catch {
                 }
             }
 
             fetchFields()
+
+            const toolbar = document.createElement("div")
+            toolbar.style.position = "fixed"
+            toolbar.style.display = "none"
+            toolbar.style.backgroundColor = "#fff"
+            toolbar.style.border = "1px solid #d9d9d9"
+            toolbar.style.borderRadius = "8px"
+            toolbar.style.boxShadow = "0 6px 16px rgba(0,0,0,0.12)"
+            toolbar.style.padding = "6px 8px"
+            toolbar.style.gap = "6px"
+            toolbar.style.zIndex = "10001"
+            toolbar.style.alignItems = "center"
+            toolbar.style.whiteSpace = "nowrap"
+            toolbar.style.fontSize = "12px"
+            toolbar.style.lineHeight = "1"
+            toolbar.style.userSelect = "none"
+            toolbar.addEventListener('mousedown', (event) => {
+                event.preventDefault()
+                textBlock.focus()
+            })
+
+            const createIconButton = (label: string) => {
+                const btn = document.createElement('button')
+                btn.type = 'button'
+                btn.textContent = label
+                btn.style.border = '1px solid #d9d9d9'
+                btn.style.background = '#fafafa'
+                btn.style.borderRadius = '6px'
+                btn.style.padding = '4px 8px'
+                btn.style.cursor = 'pointer'
+                btn.style.fontSize = '12px'
+                btn.style.lineHeight = '1'
+                btn.style.minWidth = '32px'
+                btn.onmouseenter = () => btn.style.background = '#f0f0f0'
+                btn.onmouseleave = () => btn.style.background = '#fafafa'
+                return btn
+            }
+
+            const createSvgIconButton = (svgMarkup: string, ariaLabel: string) => {
+                const btn = createIconButton('')
+                btn.innerHTML = svgMarkup
+                btn.setAttribute('aria-label', ariaLabel)
+                btn.style.display = 'inline-flex'
+                btn.style.alignItems = 'center'
+                btn.style.justifyContent = 'center'
+
+                const svg = btn.querySelector('svg')
+                if (svg) {
+                    svg.setAttribute('width', '12')
+                    svg.setAttribute('height', '12')
+                    svg.style.width = '12px'
+                    svg.style.height = '12px'
+                    svg.style.display = 'block'
+                }
+
+                return btn
+            }
+
+            const fontSizeDisplay = document.createElement('span')
+            fontSizeDisplay.style.padding = '0 4px'
+            fontSizeDisplay.style.minWidth = '36px'
+            fontSizeDisplay.style.display = 'inline-block'
+            fontSizeDisplay.style.textAlign = 'center'
+
+            const getSelectionFontSize = (): number | null => {
+                const selection = window.getSelection()
+                if (!selection || selection.rangeCount === 0) return baseFontSize
+
+                const range = selection.getRangeAt(0)
+                if (range.collapsed) {
+                    const caretPos = getCaretOffset(textBlock)
+                    return getFontSizeAtIndex(caretPos, activeFontSizeRanges, baseFontSize)
+                }
+
+                const textRange = getTextRangeFromSelection()
+                if (!textRange) return baseFontSize
+
+                const firstSize = getFontSizeAtIndex(textRange.start, activeFontSizeRanges, baseFontSize)
+                for (let index = textRange.start + 1; index <= textRange.end; index++) {
+                    const currentSize = getFontSizeAtIndex(index, activeFontSizeRanges, baseFontSize)
+                    if (currentSize !== firstSize) {
+                        return null
+                    }
+                }
+
+                return firstSize
+            }
+
+            const updateFontSizeDisplay = () => {
+                const selectedSize = getSelectionFontSize()
+                fontSizeDisplay.textContent = selectedSize === null ? '- px' : `${selectedSize} px`
+            }
+
+            const changeFontSize = (delta: number) => {
+                const selection = window.getSelection()
+                if (!selection || selection.rangeCount === 0) return
+                const range = selection.getRangeAt(0)
+                if (range.collapsed) return
+
+                const textRange = getTextRangeFromSelection()
+                if (!textRange) return
+
+                const currentRanges = activeFontSizeRanges.map((entry) => ({ ...entry }))
+                const segments: Array<{ start: number; end: number; size: number }> = []
+
+                let segmentStart = textRange.start
+                let segmentSize = getFontSizeAtIndex(segmentStart, currentRanges, baseFontSize)
+
+                for (let index = textRange.start + 1; index <= textRange.end; index++) {
+                    const indexSize = getFontSizeAtIndex(index, currentRanges, baseFontSize)
+                    if (indexSize !== segmentSize) {
+                        segments.push({ start: segmentStart, end: index - 1, size: segmentSize })
+                        segmentStart = index
+                        segmentSize = indexSize
+                    }
+                }
+                segments.push({ start: segmentStart, end: textRange.end, size: segmentSize })
+
+                let nextRanges = currentRanges
+                for (const segment of segments) {
+                    nextRanges = setFontSizeRange(
+                        segment.start,
+                        segment.end,
+                        segment.size + delta,
+                        nextRanges,
+                        baseFontSize,
+                    )
+                }
+
+                activeFontSizeRanges = nextRanges
+
+                renderContentWithStyles(activeBoldRanges, activeFontSizeRanges)
+
+                if (onChange) {
+                    onChange({ key: 'fontSizeRanges', value: getFormatRanges().fontSizeRanges.map((entry) => ({ ...entry })) })
+                }
+
+                setTimeout(() => {
+                    setSelectionOffsets(textBlock, textRange.start, textRange.end + 1)
+                }, 0)
+
+                updateFontSizeDisplay()
+                updateToolbarPosition()
+            }
+
+            const getTextRangeFromSelection = (): { start: number; end: number } | null => {
+                const selection = window.getSelection()
+                if (!selection || selection.rangeCount === 0) return null
+                
+                const range = selection.getRangeAt(0)
+                if (range.collapsed) return null
+
+                const fullText = textBlock.innerText || textBlock.textContent || ''
+                
+                let startPos = 0
+                const startContainer = range.startContainer
+                const walker = document.createTreeWalker(
+                    textBlock,
+                    NodeFilter.SHOW_TEXT,
+                    null
+                )
+                
+                let node = walker.nextNode()
+                while (node && node !== startContainer) {
+                    startPos += node.textContent?.length || 0
+                    node = walker.nextNode()
+                }
+                startPos += range.startOffset
+
+                let endPos = 0
+                const endContainer = range.endContainer
+                const endWalker = document.createTreeWalker(
+                    textBlock,
+                    NodeFilter.SHOW_TEXT,
+                    null
+                )
+                
+                let endNode = endWalker.nextNode()
+                while (endNode && endNode !== endContainer) {
+                    endPos += endNode.textContent?.length || 0
+                    endNode = endWalker.nextNode()
+                }
+                endPos += range.endOffset
+
+                const normalizedStart = Math.min(startPos, endPos)
+                const normalizedEnd = Math.max(startPos, endPos) - 1
+                if (normalizedEnd < normalizedStart) return null
+
+                return { start: normalizedStart, end: normalizedEnd }
+            }
+
+            const renderContentWithStyles = (
+                boldRanges?: Array<{ start: number; end: number }>,
+                fontRanges?: Array<{ start: number; end: number; size: number }>,
+                italicRanges?: Array<{ start: number; end: number }>,
+                underlineRanges?: Array<{ start: number; end: number }>,
+                strikeRanges?: Array<{ start: number; end: number }>,
+            ) => {
+                const plainText = getText(textBlock)
+                const resolvedBoldRanges = boldRanges || activeBoldRanges
+                const resolvedFontRanges = fontRanges || activeFontSizeRanges
+                const resolvedItalicRanges = italicRanges || activeItalicRanges
+                const resolvedUnderlineRanges = underlineRanges || activeUnderlineRanges
+                const resolvedStrikeRanges = strikeRanges || activeStrikeRanges
+
+                const renderedHtml = renderStyledRanges(
+                    plainText,
+                    resolvedBoldRanges,
+                    resolvedFontRanges,
+                    baseFontSize,
+                    resolvedItalicRanges,
+                    resolvedUnderlineRanges,
+                    resolvedStrikeRanges,
+                )
+                textBlock.innerHTML = renderedHtml
+            }
+
+            const toggleBold = () => {
+                const selection = window.getSelection()
+                if (!selection || selection.rangeCount === 0) return
+                const range = selection.getRangeAt(0)
+                if (range.collapsed) return
+
+                const textRange = getTextRangeFromSelection()
+                if (!textRange) return
+
+                activeBoldRanges = toggleStyleRanges(textRange.start, textRange.end, activeBoldRanges)
+
+                renderContentWithStyles(activeBoldRanges, activeFontSizeRanges)
+
+                if (onChange) {
+                    onChange({ key: 'bold', value: getFormatRanges().bold.map((entry) => ({ ...entry })) })
+                }
+
+                setTimeout(() => {
+                    setSelectionOffsets(textBlock, textRange.start, textRange.end + 1)
+                }, 0)
+
+                updateToolbarPosition()
+            }
+
+            const toggleStyle = (style: 'italic' | 'underline' | 'strike') => {
+                const selection = window.getSelection()
+                if (!selection || selection.rangeCount === 0) return
+                const range = selection.getRangeAt(0)
+                if (range.collapsed) return
+
+                const textRange = getTextRangeFromSelection()
+                if (!textRange) return
+
+                if (style === 'italic') {
+                    activeItalicRanges = toggleStyleRanges(textRange.start, textRange.end, activeItalicRanges)
+                    if (onChange) onChange({ key: 'italicRanges', value: getFormatRanges().italicRanges.map((entry) => ({ ...entry })) })
+                } else if (style === 'underline') {
+                    activeUnderlineRanges = toggleStyleRanges(textRange.start, textRange.end, activeUnderlineRanges)
+                    if (onChange) onChange({ key: 'underlineRanges', value: getFormatRanges().underlineRanges.map((entry) => ({ ...entry })) })
+                } else {
+                    activeStrikeRanges = toggleStyleRanges(textRange.start, textRange.end, activeStrikeRanges)
+                    if (onChange) onChange({ key: 'strikeRanges', value: getFormatRanges().strikeRanges.map((entry) => ({ ...entry })) })
+                }
+
+                renderContentWithStyles(
+                    activeBoldRanges,
+                    activeFontSizeRanges,
+                    activeItalicRanges,
+                    activeUnderlineRanges,
+                    activeStrikeRanges,
+                )
+
+                setTimeout(() => {
+                    setSelectionOffsets(textBlock, textRange.start, textRange.end + 1)
+                }, 0)
+
+                updateToolbarPosition()
+            }
+
+            const clearStyleRangeSelection = (
+                ranges: Array<{ start: number; end: number }>,
+                selectionStart: number,
+                selectionEnd: number,
+            ) => {
+                const result: Array<{ start: number; end: number }> = []
+
+                for (const range of ranges) {
+                    if (range.end < selectionStart || range.start > selectionEnd) {
+                        result.push({ ...range })
+                        continue
+                    }
+
+                    if (range.start < selectionStart) {
+                        result.push({ start: range.start, end: selectionStart - 1 })
+                    }
+                    if (range.end > selectionEnd) {
+                        result.push({ start: selectionEnd + 1, end: range.end })
+                    }
+                }
+
+                return result
+            }
+
+            const clearSelectionFormatting = () => {
+                const selection = window.getSelection()
+                if (!selection || selection.rangeCount === 0) return
+                const range = selection.getRangeAt(0)
+                if (range.collapsed) return
+
+                const textRange = getTextRangeFromSelection()
+                if (!textRange) return
+
+                setFormatRange('bold', clearStyleRangeSelection(getFormatRanges().bold, textRange.start, textRange.end))
+                setFormatRange('italicRanges', clearStyleRangeSelection(getFormatRanges().italicRanges, textRange.start, textRange.end))
+                setFormatRange('underlineRanges', clearStyleRangeSelection(getFormatRanges().underlineRanges, textRange.start, textRange.end))
+                setFormatRange('strikeRanges', clearStyleRangeSelection(getFormatRanges().strikeRanges, textRange.start, textRange.end))
+                setFormatRange(
+                    'fontSizeRanges',
+                    setFontSizeRange(
+                        textRange.start,
+                        textRange.end,
+                        baseFontSize,
+                        getFormatRanges().fontSizeRanges,
+                        baseFontSize,
+                    ),
+                )
+
+                renderContentWithStyles(
+                    getFormatRanges().bold,
+                    getFormatRanges().fontSizeRanges,
+                    getFormatRanges().italicRanges,
+                    getFormatRanges().underlineRanges,
+                    getFormatRanges().strikeRanges,
+                )
+
+                if (onChange) {
+                    onChange(createFormatRangeUpdates())
+                }
+
+                setTimeout(() => {
+                    setSelectionOffsets(textBlock, textRange.start, textRange.end + 1)
+                }, 0)
+
+                updateFontSizeDisplay()
+                updateToolbarPosition()
+            }
+
+            hideToolbar = () => {
+                toolbar.style.display = 'none'
+            }
+
+            const updateToolbarPosition = () => {
+                const selection = window.getSelection()
+                if (!selection || selection.rangeCount === 0) return
+                const range = selection.getRangeAt(0)
+                const rect = range.getBoundingClientRect()
+                if (!rect || (rect.width === 0 && rect.height === 0)) return
+
+                const offset = 8
+                toolbar.style.left = `${Math.round(rect.left)}px`
+                toolbar.style.top = `${Math.round(rect.top - toolbar.offsetHeight - offset)}px`
+            }
+
+            const showToolbar = () => {
+                if (!document.body.contains(toolbar)) {
+                    document.body.appendChild(toolbar)
+                }
+                toolbar.style.display = 'flex'
+                updateToolbarPosition()
+            }
+
+            const handleSelectionChange = () => {
+                const selection = window.getSelection()
+                if (!selection || selection.rangeCount === 0) {
+                    hideToolbar()
+                    return
+                }
+
+                const range = selection.getRangeAt(0)
+                if (!textBlock.contains(range.commonAncestorContainer) || range.collapsed) {
+                    hideToolbar()
+                    return
+                }
+
+                updateFontSizeDisplay()
+                showToolbar()
+            }
+
+            const boldButton = createIconButton('B')
+            boldButton.style.fontWeight = '700'
+            boldButton.onmousedown = (e) => {
+                e.preventDefault()
+                textBlock.focus()
+            }
+            boldButton.onclick = (e) => {
+                e.preventDefault()
+                textBlock.focus()
+
+                setTimeout(() => {
+                    toggleBold()
+                }, 10)
+            }
+
+            const italicButton = createIconButton('I')
+            italicButton.style.fontStyle = 'italic'
+            italicButton.onmousedown = (e) => {
+                e.preventDefault()
+                textBlock.focus()
+            }
+            italicButton.onclick = (e) => {
+                e.preventDefault()
+                toggleStyle('italic')
+            }
+
+            const underlineButton = createIconButton('U')
+            underlineButton.style.textDecoration = 'underline'
+            underlineButton.onmousedown = (e) => {
+                e.preventDefault()
+                textBlock.focus()
+            }
+            underlineButton.onclick = (e) => {
+                e.preventDefault()
+                toggleStyle('underline')
+            }
+
+            const strikeButton = createIconButton('S')
+            strikeButton.style.textDecoration = 'line-through'
+            strikeButton.onmousedown = (e) => {
+                e.preventDefault()
+                textBlock.focus()
+            }
+            strikeButton.onclick = (e) => {
+                e.preventDefault()
+                toggleStyle('strike')
+            }
+
+            const decreaseSizeButton = createIconButton('-')
+            decreaseSizeButton.onmousedown = (e) => {
+                e.preventDefault()
+                textBlock.focus()
+            }
+            decreaseSizeButton.onclick = () => changeFontSize(-1)
+
+            const increaseSizeButton = createIconButton('+')
+            increaseSizeButton.onmousedown = (e) => {
+                e.preventDefault()
+                textBlock.focus()
+            }
+            increaseSizeButton.onclick = () => changeFontSize(1)
+
+            const clearFormatButton = createSvgIconButton(
+                '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-remove-formatting-icon lucide-remove-formatting"><path d="M4 7V4h16v3"/><path d="M5 20h6"/><path d="M13 4 8 20"/><path d="m15 15 5 5"/><path d="m20 15-5 5"/></svg>',
+                'Clear formatting',
+            )
+            clearFormatButton.onmousedown = (e) => {
+                e.preventDefault()
+                textBlock.focus()
+            }
+            clearFormatButton.onclick = (e) => {
+                e.preventDefault()
+                clearSelectionFormatting()
+            }
+
+            toolbar.appendChild(boldButton)
+            toolbar.appendChild(italicButton)
+            toolbar.appendChild(underlineButton)
+            toolbar.appendChild(strikeButton)
+            toolbar.appendChild(decreaseSizeButton)
+            toolbar.appendChild(fontSizeDisplay)
+            toolbar.appendChild(increaseSizeButton)
+            toolbar.appendChild(clearFormatButton)
+
+            document.addEventListener('selectionchange', handleSelectionChange)
+            textBlock.addEventListener('mouseup', handleSelectionChange)
+            textBlock.addEventListener('keyup', handleSelectionChange)
 
             const updateSelectedItem = (index: number) => {
                 // Clear previous selection
@@ -556,6 +1539,11 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 }
 
                 document.body.appendChild(dropdown)
+
+                if (!dropdownKeyListenerAttached) {
+                    document.addEventListener('keydown', handleDropdownKeydown, true)
+                    dropdownKeyListenerAttached = true
+                }
             }
 
             const hideDropdown = () => {
@@ -566,89 +1554,67 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                     selectableFieldEntries = []
                     selectedIndex = -1
                 }
+
+                if (dropdownKeyListenerAttached) {
+                    document.removeEventListener('keydown', handleDropdownKeydown, true)
+                    dropdownKeyListenerAttached = false
+                }
+            }
+
+            const handleDropdownKeydown = (e: KeyboardEvent) => {
+                if (!dropdown || dropdownItems.length === 0) return
+                if (e.key !== 'Enter' && e.key !== 'Tab') return
+
+                e.preventDefault()
+                e.stopPropagation()
+
+                const index = selectedIndex >= 0 ? selectedIndex : 0
+                updateSelectedItem(index)
+
+                const selectedField = selectableFieldEntries[index]?.field
+                if (selectedField) {
+                    insertVariable(selectedField)
+                }
             }
 
             const insertVariable = (fieldName: string) => {
                 const selection = window.getSelection()
                 if (!selection || !selection.rangeCount) return
 
-                const textContent = getText(textBlock)
-                const cursorPos = getCaretOffset(textBlock)
+                // Remove a preceding "{{" if the caret is right after it to avoid duplicating braces
+                const initialRange = selection.getRangeAt(0)
+                if (initialRange.collapsed) {
+                    const caretOffset = getCaretOffset(textBlock)
+                    if (caretOffset >= 2 && textBlock.innerText.slice(caretOffset - 2, caretOffset) === "{{") {
+                        const startPos = findTextPosition(textBlock, caretOffset - 2)
+                        const endPos = findTextPosition(textBlock, caretOffset)
+                        const removeRange = document.createRange()
+                        removeRange.setStart(startPos.node, startPos.offset)
+                        removeRange.setEnd(endPos.node, endPos.offset)
+                        removeRange.deleteContents()
 
-                // find the current line start so replacements stay on the active line
-                const lineStartPos =
-                    Math.max(
-                        textContent.lastIndexOf("\n", cursorPos - 1),
-                        textContent.lastIndexOf("\r", cursorPos - 1),
-                    ) + 1
-
-                console.log("start pos:", lineStartPos, "Cursor pos", cursorPos)
-                const lineText = textContent.slice(lineStartPos, cursorPos + 1)
-                const lastOpenInLine = lineText.lastIndexOf("{{")
-                console.log("Line text:", JSON.stringify(lineText), "Last {{ in line at:", lastOpenInLine)
-
-                const hasUnclosedOpenInLine =
-                    lastOpenInLine !== -1 &&
-                    lineText.indexOf("}}", lastOpenInLine + 2) === -1
-
-                const openPos = hasUnclosedOpenInLine
-                    ? lineStartPos + lastOpenInLine
-                    : -1
-
-                const immediateOpenPos =
-                    cursorPos >= 2 &&
-                    textContent.slice(cursorPos - 2, cursorPos) === "{{"
-                        ? cursorPos - 2
-                        : -1
-
-                const forwardOpenPos =
-                    textContent.slice(cursorPos, cursorPos + 2) === "{{"
-                        ? cursorPos
-                        : -1
-
-                const effectiveOpenPos =
-                    openPos !== -1
-                        ? openPos
-                        : immediateOpenPos !== -1
-                            ? immediateOpenPos
-                            : forwardOpenPos
-
-                let newText: string
-                let newCursorPos: number
-
-                if (effectiveOpenPos !== -1) {
-                    // We're inside an unclosed {{
-                    const beforeVar = textContent.substring(0, effectiveOpenPos + 2) // Include the {{
-                    let afterVar = textContent.substring(cursorPos)
-                    
-                    // Clean up: remove repeated opening braces left around the cursor
-                    afterVar = afterVar.replace(/^(?:\{\{)+/, '')
-                    
-                    newText = beforeVar + `${fieldName}}}` + afterVar
-                    newCursorPos = effectiveOpenPos + 2 + `${fieldName}}}`.length
-                } else {
-                    // Not inside {{, insert the full {{fieldName}}
-                    const beforeVar = textContent.substring(0, cursorPos)
-                    const afterVar = textContent.substring(cursorPos)
-                    newText = beforeVar + `{{${fieldName}}}` + afterVar
-                    newCursorPos = cursorPos + `{{${fieldName}}}`.length
+                        selection.removeAllRanges()
+                        selection.addRange(removeRange)
+                    }
                 }
-                
-                textBlock.innerText = newText
-                
-                if (onChange) {
-                    onChange({ key: 'text', value: newText })
-                }
-                
+
+                const variableNode = document.createTextNode(`{{${fieldName}}}`)
+
+                const range = selection.getRangeAt(0)
+                range.deleteContents()
+                range.insertNode(variableNode)
+
+                // Move caret to the end of the inserted variable
+                range.setStartAfter(variableNode)
+                range.collapse(true)
+                selection.removeAllRanges()
+                selection.addRange(range)
+
+                commitContentChange()
                 hideDropdown()
                 textBlock.focus()
-                
-                // Set cursor after the inserted variable
-                setCaretOffset(textBlock, newCursorPos)
             }
 
-            let lastText = rawText
-            
             // Get only the text on the current line (from last newline to cursor)
             // Supports all line ending formats: \n, \r\n, \r
             const getCurrentLineText = (text: string, cursorPos: number): string => {
@@ -685,6 +1651,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 }
                 
                 lastText = currentText
+                handleSelectionChange()
             })
 
             textBlock.addEventListener('blur', () => {
@@ -710,13 +1677,9 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                         
                         case 'Enter':
                         case 'Tab':
-                            if (selectedIndex >= 0 && selectedIndex < dropdownItems.length) {
-                                e.preventDefault()
-                                const selectedField = selectableFieldEntries[selectedIndex]?.field
-                                if (selectedField) {
-                                    insertVariable(selectedField)
-                                }
-                            }
+                            // Handled globally when dropdown open
+                            e.preventDefault()
+                            e.stopPropagation()
                             break
                         
                         case 'Escape':
