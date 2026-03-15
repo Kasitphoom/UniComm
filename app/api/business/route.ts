@@ -128,6 +128,21 @@ export async function POST(request: NextRequest) {
     }
 }
 
+/**
+ * @swagger
+ * /api/business:
+ *   get:
+ *     summary: Get businesses for authenticated user
+ *     tags:
+ *       - Business
+ *     responses:
+ *       200:
+ *         description: Businesses fetched successfully
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch businesses
+ */
 export const GET = async (request: NextRequest) => {
     // Try to authenticate via Authorization: Bearer <jwt> first, falling back to session cookie
     const token = await getToken({ req: request as any })

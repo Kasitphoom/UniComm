@@ -3,6 +3,47 @@ import { requireAuth } from "@/lib/api-auth";
 import { getBusinessPrisma } from "@/lib/prisma-business";
 import { sanitizeQuery } from "@/utils/sanitizer";
 
+/**
+ * @swagger
+ * /api/business/users:
+ *   get:
+ *     summary: List users in the active business
+ *     tags:
+ *       - Business
+ *     parameters:
+ *       - in: query
+ *         name: query
+ *         schema:
+ *           type: string
+ *         required: false
+ *         description: Search by email or display name
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         required: false
+ *         description: Page number (default 1)
+ *       - in: query
+ *         name: perPage
+ *         schema:
+ *           type: integer
+ *         required: false
+ *         description: Items per page (default 10, max 50)
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *         required: false
+ *         description: Sort order for displayName
+ *     responses:
+ *       200:
+ *         description: Users fetched successfully
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch business users
+ */
 export async function GET(req: NextRequest) {
     try {
         const auth = await requireAuth(req);
