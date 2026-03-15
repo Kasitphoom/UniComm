@@ -4,6 +4,53 @@ import { getBusinessPrisma } from "@/lib/prisma-business";
 import { userHasPermissionAPI } from "@/utils/permissions";
 import { NextRequest, NextResponse } from "next/server";
 
+/**
+ * @swagger
+ * /api/customer-list/{id}:
+ *   patch:
+ *     summary: Update a customer list
+ *     tags:
+ *       - Customer List
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Contact list ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               remarks:
+ *                 type: string
+ *               primaryKey:
+ *                 type: string
+ *               upsertMode:
+ *                 type: boolean
+ *               fields:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *     responses:
+ *       200:
+ *         description: Contact list updated successfully
+ *       400:
+ *         description: Invalid request payload
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Insufficient permissions
+ *       404:
+ *         description: Business database or contact list not found
+ *       500:
+ *         description: Failed to update contact list
+ */
 export const PATCH = async ( request: NextRequest, context: { params: Promise<{ id: string }> } ) => {
     try {
         const auth = await requireAuth(request);
@@ -135,6 +182,32 @@ export const PATCH = async ( request: NextRequest, context: { params: Promise<{ 
     }
 }
 
+/**
+ * @swagger
+ * /api/customer-list/{id}:
+ *   delete:
+ *     summary: Delete a customer list
+ *     tags:
+ *       - Customer List
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Contact list ID
+ *     responses:
+ *       200:
+ *         description: Contact list deleted successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Insufficient permissions
+ *       404:
+ *         description: Business database not found
+ *       500:
+ *         description: Failed to delete contact list
+ */
 export const DELETE = async ( request: NextRequest, context: { params: Promise<{ id: string }> } ) => {
     try {
         const auth = await requireAuth(request);
@@ -167,6 +240,48 @@ export const DELETE = async ( request: NextRequest, context: { params: Promise<{
     }
 }
 
+/**
+ * @swagger
+ * /api/customer-list/{id}:
+ *   get:
+ *     summary: Get a customer list with paginated customers
+ *     tags:
+ *       - Customer List
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Contact list ID
+ *       - in: query
+ *         name: page
+ *         required: false
+ *         schema:
+ *           type: integer
+ *         description: Page number (default 1)
+ *       - in: query
+ *         name: pageSize
+ *         required: false
+ *         schema:
+ *           type: integer
+ *         description: Page size (default 20, max 200)
+ *       - in: query
+ *         name: q
+ *         required: false
+ *         schema:
+ *           type: string
+ *         description: Case-insensitive search across customer data
+ *     responses:
+ *       200:
+ *         description: Contact list fetched successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Business database or contact list not found
+ *       500:
+ *         description: Failed to fetch contact list
+ */
 export const GET = async ( request: NextRequest, context: { params: Promise<{ id: string }> } ) => {
     try {
         const auth = await requireAuth(request);
