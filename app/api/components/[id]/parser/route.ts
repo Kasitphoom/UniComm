@@ -5,6 +5,30 @@ import { getStorageService } from "@/utils/upload/modules"
 import { Schema } from "@pdfme/common"
 import { transformXmlToTemplate } from "@/utils/template/xml-pdf-transformer"
 
+/**
+ * @swagger
+ * /api/components/{id}/parser:
+ *   get:
+ *     summary: Parse component block XML into template JSON
+ *     tags:
+ *       - Components
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Component block ID
+ *     responses:
+ *       200:
+ *         description: Component parsed successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Component block not found
+ *       500:
+ *         description: Failed to parse component block
+ */
 // For components, parser returns the JSON content for latest version
 export async function GET(
     request: Request, context: { params: Promise<{ id: string }> }

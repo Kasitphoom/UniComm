@@ -7,6 +7,30 @@ import { transformTemplateToXml, transformXmlToTemplate } from "@/utils/template
 import { getStorageService } from "@/utils/upload/modules"
 import { hasRolePermission, RolePermissions } from "@/lib/role-permissions"
 
+/**
+ * @swagger
+ * /api/components/{id}:
+ *   get:
+ *     summary: Get component block details
+ *     tags:
+ *       - Components
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Component block ID
+ *     responses:
+ *       200:
+ *         description: Component block fetched successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Component block not found
+ *       500:
+ *         description: Failed to fetch component block
+ */
 // GET /api/components/:id
 export async function GET(
     _req: Request,
@@ -36,6 +60,32 @@ export async function GET(
     }
 }
 
+/**
+ * @swagger
+ * /api/components/{id}:
+ *   delete:
+ *     summary: Delete a component block
+ *     tags:
+ *       - Components
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Component block ID
+ *     responses:
+ *       200:
+ *         description: Component block deleted successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Insufficient permission to delete component block
+ *       404:
+ *         description: Component block not found
+ *       500:
+ *         description: Failed to delete component block
+ */
 // DELETE /api/components/:id
 export const DELETE = async (
     req: Request,
@@ -104,6 +154,37 @@ export const DELETE = async (
     }
 }
 
+/**
+ * @swagger
+ * /api/components/{id}:
+ *   patch:
+ *     summary: Update component block content and create version
+ *     tags:
+ *       - Components
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Component block ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             description: PDF template payload used to generate component XML
+ *     responses:
+ *       200:
+ *         description: Component block updated successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Component block not found
+ *       500:
+ *         description: Failed to update component block
+ */
 // PATCH /api/components/:id (update metadata fields only)
 export async function PATCH(
     req: Request,
