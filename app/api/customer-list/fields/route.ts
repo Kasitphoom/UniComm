@@ -15,6 +15,23 @@ type ContactListFieldGroup = {
     fields: ContactListField[]
 }
 
+/**
+ * @swagger
+ * /api/customer-list/fields:
+ *   get:
+ *     summary: Get normalized customer-list fields and grouped field metadata
+ *     tags:
+ *       - Customer List
+ *     responses:
+ *       200:
+ *         description: Field metadata fetched successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Insufficient permissions
+ *       500:
+ *         description: Failed to fetch customer list fields
+ */
 export const GET = async (request: NextRequest) => {
     try {
         const auth = await requireAuth(request)

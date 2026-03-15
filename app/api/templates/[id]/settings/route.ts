@@ -7,6 +7,58 @@ import { getStorageService } from "@/utils/upload/modules";
 import { hashTemplate } from "@/lib/draftStore";
 import { NextRequest, NextResponse } from "next/server";
 
+/**
+ * @swagger
+ * /api/templates/{id}/settings:
+ *   patch:
+ *     summary: Update template metadata and page settings
+ *     tags:
+ *       - Templates
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Template ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - title
+ *               - orientation
+ *               - widthCm
+ *               - heightCm
+ *             properties:
+ *               title:
+ *                 type: string
+ *               paperSize:
+ *                 type: string
+ *                 enum: [custom, a4, letter, legal]
+ *               orientation:
+ *                 type: string
+ *                 enum: [portrait, landscape]
+ *               widthCm:
+ *                 type: number
+ *               heightCm:
+ *                 type: number
+ *     responses:
+ *       200:
+ *         description: Template settings updated successfully
+ *       400:
+ *         description: Missing or invalid payload values
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Not authorized to update this template
+ *       404:
+ *         description: Template not found
+ *       500:
+ *         description: Failed to update template
+ */
 export const PATCH = async (request: NextRequest, context: { params: Promise<{ id: string }> }) => {
     try {
         const auth = await requireAuth(request)

@@ -5,6 +5,34 @@ import { getBusinessPrisma } from "@/lib/prisma-business"
 import { userHasPermissionAPI } from "@/utils/permissions"
 import { refreshTemplateDependencies } from "@/utils/template/refreshTemplateDependencies"
 
+/**
+ * @swagger
+ * /api/templates/{id}/refresh:
+ *   post:
+ *     summary: Refresh template dependency metadata
+ *     tags:
+ *       - Templates
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Template ID
+ *     responses:
+ *       200:
+ *         description: Template dependencies refreshed successfully
+ *       400:
+ *         description: Missing template ID or no active business selected
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Insufficient permissions
+ *       404:
+ *         description: Template not found
+ *       500:
+ *         description: Failed to refresh template dependencies
+ */
 export const POST = async (
     request: NextRequest,
     context: { params: Promise<{ id: string }> },

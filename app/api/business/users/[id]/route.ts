@@ -13,6 +13,43 @@ const PERMISSIONS = {
     DELETE_USERS: RolePermissions.ADMIN_AND_OWNER, // Only admin/owner can delete users
 } as const
 
+/**
+ * @swagger
+ * /api/business/users/{id}:
+ *   patch:
+ *     summary: Update a business user profile or role
+ *     tags:
+ *       - Business
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Business user ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               displayName:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: User updated successfully
+ *       400:
+ *         description: Invalid payload or business rule violation
+ *       401:
+ *         description: Unauthorized or insufficient permission
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Failed to update user
+ */
 export const PATCH = async (
     req: NextRequest,
     context: { params: Promise<{ id: string }> }
@@ -147,6 +184,32 @@ export const PATCH = async (
     }
 }
 
+/**
+ * @swagger
+ * /api/business/users/{id}:
+ *   delete:
+ *     summary: Remove a user from a business
+ *     tags:
+ *       - Business
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Business user ID
+ *     responses:
+ *       200:
+ *         description: User deleted successfully
+ *       400:
+ *         description: Invalid operation (e.g., deleting self or last owner)
+ *       401:
+ *         description: Unauthorized or insufficient permission
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Failed to delete user
+ */
 export const DELETE = async (
     req: NextRequest,
     context: { params: Promise<{ id: string }> }

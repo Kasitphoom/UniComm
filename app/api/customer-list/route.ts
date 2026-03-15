@@ -5,6 +5,23 @@ import { parse } from "csv-parse/sync";
 import { userHasPermissionAPI } from "@/utils/permissions";
 import { UserRole } from "@/app/generated/business/prisma";
 
+/**
+ * @swagger
+ * /api/customer-list:
+ *   get:
+ *     summary: List customer lists
+ *     tags:
+ *       - Customer List
+ *     responses:
+ *       200:
+ *         description: Customer lists fetched successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Business database not found
+ *       500:
+ *         description: Failed to fetch customers
+ */
 export const GET = async ( request: NextRequest ) => {
     try {
 
@@ -32,6 +49,65 @@ export const GET = async ( request: NextRequest ) => {
     }
 }
 
+/**
+ * @swagger
+ * /api/customer-list:
+ *   post:
+ *     summary: Create a customer list
+ *     tags:
+ *       - Customer List
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               source:
+ *                 type: string
+ *                 enum: [MANUAL, SALESFORCE]
+ *               remarks:
+ *                 type: string
+ *               upsertMode:
+ *                 type: boolean
+ *               fields:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - file
+ *             properties:
+ *               name:
+ *                 type: string
+ *               remarks:
+ *                 type: string
+ *               upsertMode:
+ *                 type: boolean
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       201:
+ *         description: Customer list created successfully
+ *       400:
+ *         description: Invalid payload or CSV format
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Insufficient permissions
+ *       404:
+ *         description: Business database not found
+ *       409:
+ *         description: Customer list name already exists
+ *       500:
+ *         description: Failed to create contact list
+ */
 export const POST = async ( request: NextRequest ) => {
     try {
         const auth = await requireAuth(request);
