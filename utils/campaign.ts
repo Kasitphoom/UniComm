@@ -9,7 +9,9 @@ import { getInputFromTemplate } from "@pdfme/common"
 import type { Schema, Template as PdfTemplate } from "@pdfme/common"
 import type { TextWithVariablesSchema } from "@/lib/template/plugins/textWithVariables"
 import { plugins } from "@/components/Editor/plugins"
+import { getPdfmeServerFont } from "@/lib/pdfme/server-fonts"
 import JSZip from "jszip"
+import { refreshTemplateDependencies } from "@/utils/template/refreshTemplateDependencies"
 
 const MAX_PARALLEL_BUSINESSES = 10
 const ZIP_EXPIRATION_MS = 14 * 24 * 60 * 60 * 1000 // 2 weeks
@@ -134,6 +136,24 @@ const buildContactFieldMap = (fields: ContactListField[]) => {
         map.set(normalizeFieldName(field), field)
     })
     return map
+}
+
+const extractRequiredFieldName = (value: unknown): string | null => {
+    if (typeof value === "string") return value
+    if (isPlainObject(value)) {
+        if (typeof value.field === "string") return value.field
+        if (typeof value.name === "string") return value.name
+    }
+    return null
+}
+
+const getRequiredFieldNames = (values: unknown): string[] => {
+    if (!Array.isArray(values)) return []
+
+    return values
+        .map(extractRequiredFieldName)
+        .filter((field): field is string => Boolean(field))
+        .map((field) => normalizeFieldName(field))
 }
 
 const stringifyValue = (value: unknown): string => {
@@ -326,11 +346,46 @@ const createCampaignFile = async (
     const contactFields = toContactFields(contactList.fields)
     const contactFieldMap = buildContactFieldMap(contactFields)
 
-    const templates = campaign.templates
+    const sourceTemplates = campaign.templates
         .map((ct) => ct.template)
-        .filter((template): template is NonNullable<typeof template> => Boolean(template?.filePath))
+        .filter((template): template is NonNullable<typeof template> => Boolean(template?.id))
+
+    const templates = (
+        await Promise.all(
+            sourceTemplates.map(async (template) => {
+                console.log(`Refreshing dependencies for template ${template.id} (${template.title})`)
+                const refreshedTemplate = await refreshTemplateDependencies({
+                    prisma: businessPrisma,
+                    templateId: template.id,
+                    businessId,
+                })
+
+                return {
+                    ...template,
+                    filePath: refreshedTemplate?.filePath ?? template.filePath,
+                    requiredFields: refreshedTemplate?.requiredFields ?? template.requiredFields,
+                }
+            }),
+        )
+    ).filter((template) => Boolean(template.filePath))
 
     if (templates.length === 0) return null
+
+    const availableContactFields = new Set(
+        contactFields.map((field) => normalizeFieldName(field.field)),
+    )
+
+    for (const template of templates) {
+        const requiredFields = getRequiredFieldNames(template.requiredFields)
+        const missingFields = requiredFields.filter((field) => !availableContactFields.has(field))
+
+        if (missingFields.length) {
+            const templateLabel = template.title || template.id
+            throw new Error(
+                `Customer list is missing required fields referenced by template \"${templateLabel}\": ${missingFields.join(", ")}`,
+            )
+        }
+    }
 
     const hasPendingApprovals = templates.some((template) => {
         const approvers = template.approvers ?? []
@@ -378,6 +433,7 @@ const createCampaignFile = async (
     })()
 
     const pdfArtifacts: PdfArtifact[] = []
+    const font = await getPdfmeServerFont()
 
     for (const template of templates) {
         const fileContent = await storageService.getFileContent(template.filePath!)
@@ -390,6 +446,9 @@ const createCampaignFile = async (
                 template: parsedContent,
                 inputs,
                 plugins,
+                options: {
+                    font,
+                },
             })
 
             const fileName = `campaign-${campaign.name}-customer-${customer.id ?? "unknown"}.pdf`

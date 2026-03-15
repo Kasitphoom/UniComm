@@ -12,6 +12,17 @@ export const clientFetchTemplate = async (id: string) => {
     return template
 }
 
+export const clientRefreshTemplateDependencies = async (id: string) => {
+    const response = await fetch(`/api/templates/${id}/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+    })
+    if (!response.ok) {
+        throw new Error(`Failed to refresh template dependencies: ${response.statusText}`)
+    }
+    return (await response.json()) as Pick<TemplateWithUser, 'id' | 'title' | 'filePath' | 'requiredFields'>
+}
+
 export const clientFetchParsedTemplate = async (id: string) => {
     
     const responseParsed = await fetch(`/api/templates/${id}/parser`, {

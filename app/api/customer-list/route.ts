@@ -51,11 +51,9 @@ export const POST = async ( request: NextRequest ) => {
             return NextResponse.json({ error: "Business database not found." }, { status: 404 });
         }
 
-        // Check if request has file upload (multipart/form-data) or JSON
         const contentType = request.headers.get("content-type") || "";
         
         if (contentType.includes("multipart/form-data")) {
-            // Handle CSV file upload
             const formData = await request.formData();
             const file = formData.get("file") as File | null;
             const name = formData.get("name") as string | null;
@@ -70,15 +68,12 @@ export const POST = async ( request: NextRequest ) => {
                 return NextResponse.json({ error: "CSV file is required." }, { status: 400 });
             }
 
-            // Validate file type
             if (!file.name.endsWith(".csv")) {
                 return NextResponse.json({ error: "Only CSV files are allowed." }, { status: 400 });
             }
 
-            // Read file content
             const fileContent = await file.text();
             
-            // Parse CSV
             let records: any[];
             try {
                 records = parse(fileContent, {
@@ -94,13 +89,11 @@ export const POST = async ( request: NextRequest ) => {
                 return NextResponse.json({ error: "CSV file is empty." }, { status: 400 });
             }
 
-            // Extract field names from CSV headers and infer types from first row
             const firstRecord = records[0];
             const fields: { field: string; type: string }[] = Object.keys(firstRecord).map(key => {
                 const value = firstRecord[key];
-                let type = "string"; // Default to string
+                let type = "string";
 
-                // Infer type from value
                 if (value !== null && value !== undefined && value !== "") {
                     if (!isNaN(Number(value))) {
                         type = "number";
@@ -116,9 +109,7 @@ export const POST = async ( request: NextRequest ) => {
                 return { field: key, type };
             });
 
-            // Use transaction to ensure both contact list and customers are created atomically
             const result = await prisma.$transaction(async (tx) => {
-                // Create the contact list with CSV_UPLOAD source
                 const contactList = await tx.contactList.create({
                     data: {
                         name: name.trim(),
@@ -130,13 +121,11 @@ export const POST = async ( request: NextRequest ) => {
                     },
                 });
 
-                // Create customers from CSV records
                 const customers = records.map(record => ({
                     listId: contactList.id,
-                    data: record, // Each row's data as JSON object
+                    data: record,
                 }));
 
-                // Bulk insert customers
                 await tx.customer.createMany({
                     data: customers,
                 });
@@ -154,22 +143,18 @@ export const POST = async ( request: NextRequest ) => {
             }, { status: 201 });
 
         } else {
-            // Handle manual creation (JSON body)
             const body = await request.json();
             const { name, source, remarks, upsertMode, fields } = body;
 
-            // Validate required fields
             if (!name || typeof name !== "string" || name.trim().length === 0) {
                 return NextResponse.json({ error: "Name is required." }, { status: 400 });
             }
 
-            // Validate source if provided
             const validSources = ["MANUAL", "SALESFORCE"];
             if (source && !validSources.includes(source)) {
                 return NextResponse.json({ error: "Invalid source. Must be MANUAL or SALESFORCE." }, { status: 400 });
             }
 
-            // Convert fields to the expected format if provided
             let convertedFields: { field: string; type: string }[] = [];
             if (fields && Array.isArray(fields)) {
                 convertedFields = fields.map((field: any) => ({
@@ -178,12 +163,19 @@ export const POST = async ( request: NextRequest ) => {
                 }));
             }
 
-            // Create empty contact list for manual creation
+            if ((source || "MANUAL") === "MANUAL" && convertedFields.length === 0) {
+                return NextResponse.json(
+                    { error: "At least one field is required for manual lists." },
+                    { status: 400 },
+                );
+            }
+
             const contactList = await prisma.contactList.create({
                 data: {
                     name: name.trim(),
                     source: source || "MANUAL",
                     remarks: remarks || null,
+                    primaryKey: convertedFields[0]?.field || "",
                     fields: convertedFields,
                     upsertMode,
                 },
@@ -193,7 +185,6 @@ export const POST = async ( request: NextRequest ) => {
         }
 
     } catch (error: any) {
-        // Handle duplicate name error
         if (error.code === "P2002") {
             return NextResponse.json({ error: "A contact list with this name already exists." }, { status: 409 });
         }

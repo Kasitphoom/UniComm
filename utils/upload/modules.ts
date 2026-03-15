@@ -50,7 +50,7 @@ class VercelStorageService extends StorageService {
     }
 
     async getFileContent(filePath: string): Promise<string> {
-        const response = await fetch(filePath, { cache: 'no-store', credentials: "include" })
+        const response = await fetch(filePath, { cache: 'no-store', credentials: 'omit' })
         if (!response.ok) {
             const errorBody = await response.text()
             console.error(errorBody)

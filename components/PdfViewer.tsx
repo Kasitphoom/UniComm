@@ -4,6 +4,7 @@ import { Viewer } from '@pdfme/ui';
 import { Template, getInputFromTemplate } from '@pdfme/common';
 import { plugins } from './Editor/plugins';
 import type { PreviewProps } from '@pdfme/common';
+import { getPdfmeClientFont } from '@/lib/pdfme/fonts';
 
 // Extract actual content from a schema entry for mock input generation
 const getContentFromSchema = (schema: any): string => {
@@ -74,20 +75,31 @@ const PdfViewer: React.FC<PdfViewerProps> = ({
             return mockInput;
         });
 
-        const viewer = new Viewer({
-            domContainer: viewerRef.current,
-            template,
-            inputs: mockInputs,
-            plugins,
-            options: {
-                ...options,
-                zoomLevel: options.zoomLevel ? options.zoomLevel : 1.8,
-            }
-        });
+        let cancelled = false
 
-        viewerInstanceRef.current = viewer;
+        const initViewer = async () => {
+            const font = await getPdfmeClientFont()
+            if (!viewerRef.current || cancelled) return
+
+            const viewer = new Viewer({
+                domContainer: viewerRef.current,
+                template,
+                inputs: mockInputs,
+                plugins,
+                options: {
+                    ...options,
+                    zoomLevel: options.zoomLevel ? options.zoomLevel : 1.8,
+                    font,
+                }
+            });
+
+            viewerInstanceRef.current = viewer;
+        }
+
+        void initViewer()
 
         return () => {
+            cancelled = true
             if (viewerInstanceRef.current) {
                 viewerInstanceRef.current.destroy();
                 viewerInstanceRef.current = null;

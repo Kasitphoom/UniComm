@@ -1,8 +1,9 @@
 import { PropPanel, PropPanelWidgetProps } from "@pdfme/common";
 import { text as textPlugin } from "@pdfme/schemas";
 import { TextWithVariablesSchema } from "./TextWithVariables";
+import { withFontStylePropPanel } from "../text/fontStylePropPanel";
 
-export const TextWithVariablesPropPanel: PropPanel<TextWithVariablesSchema> = {
+const inheritedTextPanel: PropPanel<TextWithVariablesSchema> = {
     schema: (propPanelProps: Omit<PropPanelWidgetProps, "rootElement">) => {
         const parentPropPanel = textPlugin.propPanel;
         const parentSchema =
@@ -22,5 +23,8 @@ export const TextWithVariablesPropPanel: PropPanel<TextWithVariablesSchema> = {
         variables: [],
         readOnly: false,
     } as TextWithVariablesSchema,
-};
+}
+
+export const TextWithVariablesPropPanel: PropPanel<TextWithVariablesSchema> =
+    withFontStylePropPanel(inheritedTextPanel)
 

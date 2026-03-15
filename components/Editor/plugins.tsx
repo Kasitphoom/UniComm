@@ -1,6 +1,4 @@
 import {
-    text,
-    multiVariableText,
     image,
     svg,
     table,
@@ -16,7 +14,6 @@ import ComponentBlocks from "@/lib/template/plugins/componentBlocks/ComponentBlo
 import { TextWithVariables } from "@/lib/template/plugins/textWithVariables"
 
 export const plugins = {
-    text,
     TextWithVariables,
     image,
     svg,
