@@ -170,27 +170,21 @@ const splitLinesForMixedText = (
         width: number
     }
     type Line = CharEntry[]
+    type WrappedLine = { entries: Line; breakType: 'auto' | 'hard' | 'end' }
 
-    const lines: Line[] = []
+    const lines: WrappedLine[] = []
     let currentLine: Line = []
     let currentLineWidth = 0
 
     const chars = Array.from(text)
 
-    const pushCurrentLine = () => {
-        lines.push(currentLine)
+    const pushCurrentLine = (breakType: 'auto' | 'hard' | 'end') => {
+        lines.push({ entries: currentLine, breakType })
         currentLine = []
         currentLineWidth = 0
     }
 
-    for (let index = 0; index < chars.length; index++) {
-        const char = chars[index]
-
-        if (char === '\n' || char === '\r') {
-            pushCurrentLine()
-            continue
-        }
-
+    const getEntry = (index: number, char: string): CharEntry => {
         const isBold = isIndexBold(index, boldRanges)
         const isItalic = isIndexInStyleRanges(index, italicRanges)
         const isUnderline = isIndexInStyleRanges(index, underlineRanges)
@@ -198,14 +192,8 @@ const splitLinesForMixedText = (
         const charFontSize = getFontSizeAtIndex(index, fontSizeRanges, baseFontSize)
         const font = getFontForStyle(isBold, isItalic)
         const charWidth = font.widthOfTextAtSize(char, charFontSize)
-        const additionalSpacing = currentLine.length > 0 ? charSpacing : 0
-        const nextWidth = currentLineWidth + charWidth + additionalSpacing
 
-        if (currentLine.length > 0 && nextWidth > maxWidth) {
-            pushCurrentLine()
-        }
-
-        const entry: CharEntry = {
+        return {
             char,
             index,
             bold: isBold,
@@ -215,13 +203,119 @@ const splitLinesForMixedText = (
             fontSize: charFontSize,
             width: charWidth,
         }
-
-        currentLine.push(entry)
-        currentLineWidth += entry.width + (currentLine.length > 1 ? charSpacing : 0)
     }
 
-    if (currentLine.length > 0 || lines.length === 0) {
-        lines.push(currentLine)
+    const getTokenRenderWidth = (lineLength: number, token: CharEntry[]) => {
+        if (token.length === 0) return 0
+        const tokenWidth = token.reduce((sum, entry) => sum + entry.width, 0)
+        const spacingCount = lineLength === 0 ? Math.max(0, token.length - 1) : token.length
+        return tokenWidth + spacingCount * charSpacing
+    }
+
+    const appendTokenToLine = (token: CharEntry[]) => {
+        if (token.length === 0) return
+        const startsWithWhitespace = /^\s+$/.test(token[0].char)
+        if (currentLine.length === 0 && startsWithWhitespace) return
+
+        const tokenWidthWithSpacing = getTokenRenderWidth(currentLine.length, token)
+
+        if (currentLine.length > 0 && currentLineWidth + tokenWidthWithSpacing > maxWidth) {
+            pushCurrentLine('auto')
+            if (startsWithWhitespace) return
+        }
+
+        if (token.length > 1 && currentLine.length === 0 && getTokenRenderWidth(0, token) > maxWidth) {
+            for (const entry of token) {
+                const singleWidthWithSpacing = getTokenRenderWidth(currentLine.length, [entry])
+                if (currentLine.length > 0 && currentLineWidth + singleWidthWithSpacing > maxWidth) {
+                    pushCurrentLine('auto')
+                }
+
+                currentLine.push(entry)
+                currentLineWidth += getTokenRenderWidth(currentLine.length - 1, [entry])
+            }
+            return
+        }
+
+        for (const entry of token) {
+            currentLine.push(entry)
+            currentLineWidth += getTokenRenderWidth(currentLine.length - 1, [entry])
+        }
+    }
+
+    const wrapParagraphEntries = (paragraphEntries: CharEntry[], endBreakType: 'hard' | 'end') => {
+        if (paragraphEntries.length === 0) {
+            if (endBreakType === 'hard') {
+                pushCurrentLine('hard')
+            }
+            return
+        }
+
+        let token: CharEntry[] = []
+        let tokenIsWhitespace = false
+
+        const flushToken = () => {
+            appendTokenToLine(token)
+            token = []
+        }
+
+        for (const entry of paragraphEntries) {
+            const isWhitespace = /^\s$/.test(entry.char)
+
+            if (token.length === 0) {
+                token = [entry]
+                tokenIsWhitespace = isWhitespace
+                continue
+            }
+
+            if (isWhitespace === tokenIsWhitespace) {
+                token.push(entry)
+                continue
+            }
+
+            flushToken()
+            token = [entry]
+            tokenIsWhitespace = isWhitespace
+        }
+
+        flushToken()
+        pushCurrentLine(endBreakType)
+    }
+
+    let paragraphEntries: CharEntry[] = []
+
+    for (let index = 0; index < chars.length; index++) {
+        const char = chars[index]
+
+        if (char === '\r' && chars[index + 1] === '\n') {
+            wrapParagraphEntries(paragraphEntries, 'hard')
+            paragraphEntries = []
+            index += 1
+            continue
+        }
+
+        if (char === '\n' || char === '\r') {
+            wrapParagraphEntries(paragraphEntries, 'hard')
+            paragraphEntries = []
+            continue
+        }
+
+        paragraphEntries.push(getEntry(index, char))
+    }
+
+    if (paragraphEntries.length > 0) {
+        wrapParagraphEntries(paragraphEntries, 'end')
+    } else if (lines.length === 0) {
+        lines.push({ entries: [], breakType: 'end' })
+    }
+
+    if (
+        lines.length > 1 &&
+        lines[lines.length - 1].entries.length === 0 &&
+        chars.length > 0 &&
+        !/\r|\n/.test(chars[chars.length - 1])
+    ) {
+        lines.pop()
     }
 
     return lines
@@ -313,11 +407,11 @@ const parseVariablesWithMapping = (text: string, data?: Record<string, any>): { 
             : trimmedFieldName
 
         const leftTrim = rawFieldName.length - rawFieldName.trimStart().length
-        const sourceAnchorStart = Math.min(matchEnd - 1, matchStart + 2 + leftTrim)
+        const sourceAnchorIndex = Math.min(matchEnd - 1, matchStart + 2 + leftTrim)
 
         outputText += replacement
         for (let offset = 0; offset < replacement.length; offset++) {
-            sourceIndexByOutputIndex.push(sourceAnchorStart + offset)
+            sourceIndexByOutputIndex.push(sourceAnchorIndex)
         }
 
         sourceCursor = matchEnd
@@ -336,6 +430,70 @@ const parseVariablesWithMapping = (text: string, data?: Record<string, any>): { 
 
 const parseVariables = (text: string, data?: Record<string, any>): string => {
     return parseVariablesWithMapping(text, data).text
+}
+
+const getVariableTokenRanges = (text: string): Array<{ start: number; end: number }> => {
+    const tokenRegex = /\{\{[^{}]+\}\}/g
+    const tokens: Array<{ start: number; end: number }> = []
+    let match: RegExpExecArray | null = null
+    while ((match = tokenRegex.exec(text)) !== null) {
+        const start = match.index
+        const end = start + match[0].length - 1
+        tokens.push({ start, end })
+    }
+    return tokens
+}
+
+const rangesOverlap = (
+    aStart: number,
+    aEnd: number,
+    bStart: number,
+    bEnd: number,
+) => aStart <= bEnd && aEnd >= bStart
+
+const expandStyleRangesToVariableTokens = (
+    text: string,
+    styleRanges: StyleRange[],
+): StyleRange[] => {
+    const tokens = getVariableTokenRanges(text)
+    const expanded = [...styleRanges.map((range) => ({ ...range }))]
+
+    for (const token of tokens) {
+        const hasOverlap = styleRanges.some((range) =>
+            rangesOverlap(range.start, range.end, token.start, token.end),
+        )
+        if (hasOverlap) {
+            expanded.push({ start: token.start, end: token.end })
+        }
+    }
+
+    return normalizeStyleRanges(expanded)
+}
+
+const expandFontSizeRangesToVariableTokens = (
+    text: string,
+    fontSizeRanges: FontSizeRange[],
+    baseFontSize: number,
+): FontSizeRange[] => {
+    const tokens = getVariableTokenRanges(text)
+    let result = normalizeFontSizeRanges(fontSizeRanges)
+
+    for (const token of tokens) {
+        const overlapRange = result.find((range) =>
+            rangesOverlap(range.start, range.end, token.start, token.end),
+        )
+        if (!overlapRange) continue
+
+        const tokenSize = getFontSizeAtIndex(
+            Math.max(token.start, overlapRange.start),
+            result,
+            baseFontSize,
+        )
+
+        result = setFontSizeRange(token.start, token.end, tokenSize, result, baseFontSize)
+    }
+
+    return result
 }
 
 // Replace variables inside HTML while keeping markup intact
@@ -484,8 +642,8 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             strikeRanges,
         )
 
-        const lineMetrics = lines.map((line) => {
-            const maxFontSize = line.reduce((max, entry) => Math.max(max, entry.fontSize), baseFontSize)
+        const lineMetrics = lines.map((wrappedLine) => {
+            const maxFontSize = wrappedLine.entries.reduce((max, entry) => Math.max(max, entry.fontSize), baseFontSize)
             return {
                 maxFontSize,
                 lineHeightPt: maxFontSize * lineHeight,
@@ -502,7 +660,8 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         }
 
         let consumedHeight = 0
-        lines.forEach((line, rowIndex) => {
+        lines.forEach((wrappedLine, rowIndex) => {
+            const line = wrappedLine.entries
             const metric = lineMetrics[rowIndex]
             const lineY = contentTop - consumedHeight - metric.maxFontSize
             if (line.length === 0) {
@@ -510,12 +669,20 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 return
             }
             const totalLineWidth = line.reduce((acc, c) => acc + c.width + charSpacing, 0) - charSpacing;
+            const whitespaceIndexes = line
+                .map((entry, index) => ({ entry, index }))
+                .filter(({ entry }) => /^\s$/.test(entry.char))
+                .map(({ index }) => index)
 
             let cursorX = x;
             if (schema.alignment === 'center') cursorX += (width - totalLineWidth) / 2;
             else if (schema.alignment === 'right') cursorX += width - totalLineWidth;
+            const isJustify = schema.alignment === 'justify' && wrappedLine.breakType === 'auto'
+            const justifyExtraSpace = isJustify && whitespaceIndexes.length > 0
+                ? Math.max(0, width - totalLineWidth) / whitespaceIndexes.length
+                : 0
 
-            line.forEach((entry) => {
+            line.forEach((entry, entryIndex) => {
                 const font = getFontForStyle(entry.bold, entry.italic)
                 const lineThickness = Math.max(0.5, entry.fontSize * 0.05)
                 if (entry.char.trim() !== "") {
@@ -550,7 +717,8 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                     })
                 }
 
-                cursorX += entry.width + charSpacing;
+                const extraJustify = whitespaceIndexes.includes(entryIndex) ? justifyExtraSpace : 0
+                cursorX += entry.width + charSpacing + extraJustify;
             });
 
             consumedHeight += metric.lineHeightPt
@@ -590,7 +758,10 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         const normalizedSchemaItalicRanges = normalizeStyleRanges(schema.italicRanges)
         const normalizedSchemaUnderlineRanges = normalizeStyleRanges(schema.underlineRanges)
         const normalizedSchemaStrikeRanges = normalizeStyleRanges(schema.strikeRanges)
-        const parsedRawText = parseVariablesWithMapping(rawText, valueData)
+        const sourceTextForUiMapping = (schema.content && schema.content.trim().length > 0)
+            ? stripHtmlTags(schema.content)
+            : rawText
+        const parsedRawText = parseVariablesWithMapping(sourceTextForUiMapping, valueData)
         const projectedReadOnlyBoldRanges = projectBoldRangesBySourceMap(
             normalizedSchemaBoldRanges,
             parsedRawText.sourceIndexByOutputIndex,
@@ -612,35 +783,43 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
             normalizedSchemaStrikeRanges,
             parsedRawText.sourceIndexByOutputIndex,
         )
-        let displayHtml = isEditableMode
-            ? initialHtml
-            : (schema.content ? applyVariablesToHtml(schema.content, valueData) : parsedRawText.text)
+        let displayHtml = isEditableMode ? sourceTextForUiMapping : parsedRawText.text
 
-        if (
-            (isEditableMode && (
-                normalizedSchemaBoldRanges.length > 0 ||
-                normalizedSchemaFontSizeRanges.length > 0 ||
-                normalizedSchemaItalicRanges.length > 0 ||
-                normalizedSchemaUnderlineRanges.length > 0 ||
-                normalizedSchemaStrikeRanges.length > 0
-            )) ||
-            (!isEditableMode && (
-                projectedReadOnlyBoldRanges.length > 0 ||
-                projectedReadOnlyFontSizeRanges.length > 0 ||
-                projectedReadOnlyItalicRanges.length > 0 ||
-                projectedReadOnlyUnderlineRanges.length > 0 ||
-                projectedReadOnlyStrikeRanges.length > 0
-            ))
-        ) {
-            const plainText = stripHtmlTags(displayHtml)
-            displayHtml = renderStyledRanges(
-                plainText,
-                isEditableMode ? normalizedSchemaBoldRanges : projectedReadOnlyBoldRanges,
-                isEditableMode ? normalizedSchemaFontSizeRanges : projectedReadOnlyFontSizeRanges,
+        if (isEditableMode) {
+            const editorBoldRanges = expandStyleRangesToVariableTokens(sourceTextForUiMapping, normalizedSchemaBoldRanges)
+            const editorFontSizeRanges = expandFontSizeRangesToVariableTokens(
+                sourceTextForUiMapping,
+                normalizedSchemaFontSizeRanges,
                 baseFontSize,
-                isEditableMode ? normalizedSchemaItalicRanges : projectedReadOnlyItalicRanges,
-                isEditableMode ? normalizedSchemaUnderlineRanges : projectedReadOnlyUnderlineRanges,
-                isEditableMode ? normalizedSchemaStrikeRanges : projectedReadOnlyStrikeRanges,
+            )
+            const editorItalicRanges = expandStyleRangesToVariableTokens(sourceTextForUiMapping, normalizedSchemaItalicRanges)
+            const editorUnderlineRanges = expandStyleRangesToVariableTokens(sourceTextForUiMapping, normalizedSchemaUnderlineRanges)
+            const editorStrikeRanges = expandStyleRangesToVariableTokens(sourceTextForUiMapping, normalizedSchemaStrikeRanges)
+
+            displayHtml = renderStyledRanges(
+                sourceTextForUiMapping,
+                editorBoldRanges,
+                editorFontSizeRanges,
+                baseFontSize,
+                editorItalicRanges,
+                editorUnderlineRanges,
+                editorStrikeRanges,
+            )
+        } else if (
+            projectedReadOnlyBoldRanges.length > 0 ||
+            projectedReadOnlyFontSizeRanges.length > 0 ||
+            projectedReadOnlyItalicRanges.length > 0 ||
+            projectedReadOnlyUnderlineRanges.length > 0 ||
+            projectedReadOnlyStrikeRanges.length > 0
+        ) {
+            displayHtml = renderStyledRanges(
+                parsedRawText.text,
+                projectedReadOnlyBoldRanges,
+                projectedReadOnlyFontSizeRanges,
+                baseFontSize,
+                projectedReadOnlyItalicRanges,
+                projectedReadOnlyUnderlineRanges,
+                projectedReadOnlyStrikeRanges,
             )
         }
 
@@ -720,6 +899,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
         let activeItalicRanges = normalizedSchemaItalicRanges.map((range) => ({ ...range }))
         let activeUnderlineRanges = normalizedSchemaUnderlineRanges.map((range) => ({ ...range }))
         let activeStrikeRanges = normalizedSchemaStrikeRanges.map((range) => ({ ...range }))
+        let editableSourceText = sourceTextForUiMapping
 
         type FormatRangeMap = {
             bold: Array<{ start: number; end: number }>
@@ -998,7 +1178,9 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 const range = selection.getRangeAt(0)
                 if (range.collapsed) return
 
-                const textRange = getTextRangeFromSelection()
+                const displayRange = getTextRangeFromSelection()
+                if (!displayRange) return
+                const textRange = mapDisplayRangeToSourceRange(displayRange)
                 if (!textRange) return
 
                 const currentRanges = activeFontSizeRanges.map((entry) => ({ ...entry }))
@@ -1037,7 +1219,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 }
 
                 setTimeout(() => {
-                    setSelectionOffsets(textBlock, textRange.start, textRange.end + 1)
+                    setSelectionOffsets(textBlock, displayRange.start, displayRange.end + 1)
                 }, 0)
 
                 updateFontSizeDisplay()
@@ -1090,6 +1272,13 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 return { start: normalizedStart, end: normalizedEnd }
             }
 
+            const mapDisplayRangeToSourceRange = (displayRange: { start: number; end: number }) => {
+                return {
+                    start: Math.min(displayRange.start, displayRange.end),
+                    end: Math.max(displayRange.start, displayRange.end),
+                }
+            }
+
             const renderContentWithStyles = (
                 boldRanges?: Array<{ start: number; end: number }>,
                 fontRanges?: Array<{ start: number; end: number; size: number }>,
@@ -1097,21 +1286,27 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 underlineRanges?: Array<{ start: number; end: number }>,
                 strikeRanges?: Array<{ start: number; end: number }>,
             ) => {
-                const plainText = getText(textBlock)
+                const plainText = editableSourceText
                 const resolvedBoldRanges = boldRanges || activeBoldRanges
                 const resolvedFontRanges = fontRanges || activeFontSizeRanges
                 const resolvedItalicRanges = italicRanges || activeItalicRanges
                 const resolvedUnderlineRanges = underlineRanges || activeUnderlineRanges
                 const resolvedStrikeRanges = strikeRanges || activeStrikeRanges
 
+                const editorBoldRanges = expandStyleRangesToVariableTokens(plainText, resolvedBoldRanges)
+                const editorFontRanges = expandFontSizeRangesToVariableTokens(plainText, resolvedFontRanges, baseFontSize)
+                const editorItalicRanges = expandStyleRangesToVariableTokens(plainText, resolvedItalicRanges)
+                const editorUnderlineRanges = expandStyleRangesToVariableTokens(plainText, resolvedUnderlineRanges)
+                const editorStrikeRanges = expandStyleRangesToVariableTokens(plainText, resolvedStrikeRanges)
+
                 const renderedHtml = renderStyledRanges(
                     plainText,
-                    resolvedBoldRanges,
-                    resolvedFontRanges,
+                    editorBoldRanges,
+                    editorFontRanges,
                     baseFontSize,
-                    resolvedItalicRanges,
-                    resolvedUnderlineRanges,
-                    resolvedStrikeRanges,
+                    editorItalicRanges,
+                    editorUnderlineRanges,
+                    editorStrikeRanges,
                 )
                 textBlock.innerHTML = renderedHtml
             }
@@ -1122,10 +1317,21 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 const range = selection.getRangeAt(0)
                 if (range.collapsed) return
 
-                const textRange = getTextRangeFromSelection()
+                const displayRange = getTextRangeFromSelection()
+                if (!displayRange) return
+                const textRange = mapDisplayRangeToSourceRange(displayRange)
                 if (!textRange) return
 
-                activeBoldRanges = toggleStyleRanges(textRange.start, textRange.end, activeBoldRanges)
+                const effectiveBoldRanges = expandStyleRangesToVariableTokens(editableSourceText, activeBoldRanges)
+                const shouldRemove = isSelectionFullyCoveredByRanges(
+                    displayRange.start,
+                    displayRange.end,
+                    effectiveBoldRanges,
+                )
+
+                activeBoldRanges = shouldRemove
+                    ? clearStyleRangeSelection(activeBoldRanges, textRange.start, textRange.end)
+                    : toggleStyleRanges(textRange.start, textRange.end, activeBoldRanges)
 
                 renderContentWithStyles(activeBoldRanges, activeFontSizeRanges)
 
@@ -1134,7 +1340,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 }
 
                 setTimeout(() => {
-                    setSelectionOffsets(textBlock, textRange.start, textRange.end + 1)
+                    setSelectionOffsets(textBlock, displayRange.start, displayRange.end + 1)
                 }, 0)
 
                 updateToolbarPosition()
@@ -1146,17 +1352,43 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 const range = selection.getRangeAt(0)
                 if (range.collapsed) return
 
-                const textRange = getTextRangeFromSelection()
+                const displayRange = getTextRangeFromSelection()
+                if (!displayRange) return
+                const textRange = mapDisplayRangeToSourceRange(displayRange)
                 if (!textRange) return
 
                 if (style === 'italic') {
-                    activeItalicRanges = toggleStyleRanges(textRange.start, textRange.end, activeItalicRanges)
+                    const effectiveItalicRanges = expandStyleRangesToVariableTokens(editableSourceText, activeItalicRanges)
+                    const shouldRemove = isSelectionFullyCoveredByRanges(
+                        displayRange.start,
+                        displayRange.end,
+                        effectiveItalicRanges,
+                    )
+                    activeItalicRanges = shouldRemove
+                        ? clearStyleRangeSelection(activeItalicRanges, textRange.start, textRange.end)
+                        : toggleStyleRanges(textRange.start, textRange.end, activeItalicRanges)
                     if (onChange) onChange({ key: 'italicRanges', value: getFormatRanges().italicRanges.map((entry) => ({ ...entry })) })
                 } else if (style === 'underline') {
-                    activeUnderlineRanges = toggleStyleRanges(textRange.start, textRange.end, activeUnderlineRanges)
+                    const effectiveUnderlineRanges = expandStyleRangesToVariableTokens(editableSourceText, activeUnderlineRanges)
+                    const shouldRemove = isSelectionFullyCoveredByRanges(
+                        displayRange.start,
+                        displayRange.end,
+                        effectiveUnderlineRanges,
+                    )
+                    activeUnderlineRanges = shouldRemove
+                        ? clearStyleRangeSelection(activeUnderlineRanges, textRange.start, textRange.end)
+                        : toggleStyleRanges(textRange.start, textRange.end, activeUnderlineRanges)
                     if (onChange) onChange({ key: 'underlineRanges', value: getFormatRanges().underlineRanges.map((entry) => ({ ...entry })) })
                 } else {
-                    activeStrikeRanges = toggleStyleRanges(textRange.start, textRange.end, activeStrikeRanges)
+                    const effectiveStrikeRanges = expandStyleRangesToVariableTokens(editableSourceText, activeStrikeRanges)
+                    const shouldRemove = isSelectionFullyCoveredByRanges(
+                        displayRange.start,
+                        displayRange.end,
+                        effectiveStrikeRanges,
+                    )
+                    activeStrikeRanges = shouldRemove
+                        ? clearStyleRangeSelection(activeStrikeRanges, textRange.start, textRange.end)
+                        : toggleStyleRanges(textRange.start, textRange.end, activeStrikeRanges)
                     if (onChange) onChange({ key: 'strikeRanges', value: getFormatRanges().strikeRanges.map((entry) => ({ ...entry })) })
                 }
 
@@ -1169,7 +1401,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 )
 
                 setTimeout(() => {
-                    setSelectionOffsets(textBlock, textRange.start, textRange.end + 1)
+                    setSelectionOffsets(textBlock, displayRange.start, displayRange.end + 1)
                 }, 0)
 
                 updateToolbarPosition()
@@ -1199,13 +1431,35 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 return result
             }
 
+            const isSelectionFullyCoveredByRanges = (
+                selectionStart: number,
+                selectionEnd: number,
+                ranges: Array<{ start: number; end: number }>,
+            ) => {
+                let currentPosition = selectionStart
+                const sortedRanges = [...ranges].sort((a, b) => a.start - b.start)
+
+                for (const range of sortedRanges) {
+                    if (range.start <= currentPosition && range.end >= currentPosition) {
+                        currentPosition = range.end + 1
+                        if (currentPosition > selectionEnd) {
+                            return true
+                        }
+                    }
+                }
+
+                return false
+            }
+
             const clearSelectionFormatting = () => {
                 const selection = window.getSelection()
                 if (!selection || selection.rangeCount === 0) return
                 const range = selection.getRangeAt(0)
                 if (range.collapsed) return
 
-                const textRange = getTextRangeFromSelection()
+                const displayRange = getTextRangeFromSelection()
+                if (!displayRange) return
+                const textRange = mapDisplayRangeToSourceRange(displayRange)
                 if (!textRange) return
 
                 setFormatRange('bold', clearStyleRangeSelection(getFormatRanges().bold, textRange.start, textRange.end))
@@ -1236,7 +1490,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 }
 
                 setTimeout(() => {
-                    setSelectionOffsets(textBlock, textRange.start, textRange.end + 1)
+                    setSelectionOffsets(textBlock, displayRange.start, displayRange.end + 1)
                 }, 0)
 
                 updateFontSizeDisplay()
@@ -1359,13 +1613,26 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
                 clearSelectionFormatting()
             }
 
+            const divider = document.createElement('div')
+            divider.style.width = '1px'
+            divider.style.height = '16px'
+            divider.style.backgroundColor = '#d9d9d9'
+            divider.style.alignSelf = 'center'
+            divider.style.margin = '0 2px'
+
             toolbar.appendChild(boldButton)
             toolbar.appendChild(italicButton)
             toolbar.appendChild(underlineButton)
             toolbar.appendChild(strikeButton)
+
+            toolbar.appendChild(divider)
+
             toolbar.appendChild(decreaseSizeButton)
             toolbar.appendChild(fontSizeDisplay)
             toolbar.appendChild(increaseSizeButton)
+
+            toolbar.appendChild(divider.cloneNode(true))
+
             toolbar.appendChild(clearFormatButton)
 
             document.addEventListener('selectionchange', handleSelectionChange)
@@ -1632,6 +1899,7 @@ const TextWithVariables: Plugin<TextWithVariablesSchema> = {
 
             textBlock.addEventListener('input', () => {
                 const currentText = textBlock.textContent || ''
+                editableSourceText = currentText
                 const selection = window.getSelection()
                 if (!selection || !selection.rangeCount) return
                 
