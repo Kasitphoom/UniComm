@@ -19,6 +19,42 @@ const generateRandomPassword = (length: number = 16): string => {
     return password;
 };
 
+/**
+ * @swagger
+ * /api/business/invite:
+ *   post:
+ *     summary: Invite a user to a business workspace
+ *     tags:
+ *       - Business
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - displayName
+ *               - role
+ *             properties:
+ *               email:
+ *                 type: string
+ *               displayName:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Invitation sent successfully
+ *       400:
+ *         description: Missing required fields or invalid role
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Insufficient permission to invite users
+ *       500:
+ *         description: Failed to send invitation
+ */
 export const POST = async (request: NextRequest) => {
     try {
         const auth = await requireAuth(request);

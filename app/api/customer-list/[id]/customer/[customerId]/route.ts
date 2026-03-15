@@ -4,6 +4,51 @@ import { getBusinessPrisma } from "@/lib/prisma-business";
 import { userHasPermissionAPI } from "@/utils/permissions";
 import { NextRequest, NextResponse } from "next/server";
 
+/**
+ * @swagger
+ * /api/customer-list/{id}/customer/{customerId}:
+ *   patch:
+ *     summary: Update a single customer record
+ *     tags:
+ *       - Customer List
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Contact list ID
+ *       - in: path
+ *         name: customerId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Customer ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - data
+ *             properties:
+ *               data:
+ *                 type: object
+ *     responses:
+ *       200:
+ *         description: Customer updated successfully
+ *       400:
+ *         description: Missing data or invalid fields
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Insufficient permissions
+ *       404:
+ *         description: Business database or contact list not found
+ *       500:
+ *         description: Failed to update customer
+ */
 export const PATCH = async ( request: NextRequest, context: { params: Promise<{ id: string, customerId: string }> } ) => {
     try {
         const auth = await requireAuth(request);

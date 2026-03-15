@@ -3,6 +3,51 @@ import { requireAuth } from "@/lib/api-auth"
 import { getBusinessPrisma } from "@/lib/prisma-business"
 import { NextRequest, NextResponse } from "next/server"
 
+/**
+ * @swagger
+ * /api/templates/{id}/approval/{approvalId}:
+ *   patch:
+ *     summary: Update approval status for current approver
+ *     tags:
+ *       - Templates
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Template ID
+ *       - in: path
+ *         name: approvalId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Approval record ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - status
+ *             properties:
+ *               status:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Approval status updated successfully
+ *       400:
+ *         description: Invalid status
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Not authorized to update this approval
+ *       404:
+ *         description: Approval not found
+ *       500:
+ *         description: Failed to update approval status
+ */
 export const PATCH = async (
     req: NextRequest,
     context: { params: Promise<{ id: string; approvalId: string }> },

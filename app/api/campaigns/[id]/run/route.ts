@@ -26,6 +26,34 @@ type RouteParams = {
     params: Promise<{ id: string }>
 }
 
+/**
+ * @swagger
+ * /api/campaigns/{id}/run:
+ *   post:
+ *     summary: Manually run a campaign job
+ *     tags:
+ *       - Campaigns
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Campaign ID
+ *     responses:
+ *       200:
+ *         description: Campaign job executed successfully
+ *       400:
+ *         description: Missing campaign ID or no active business selected
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Insufficient permissions
+ *       404:
+ *         description: Campaign not found
+ *       500:
+ *         description: Campaign execution failed
+ */
 export const POST = async (req: NextRequest, { params }: RouteParams) => {
     try {
         const auth = await requireAuth(req)
