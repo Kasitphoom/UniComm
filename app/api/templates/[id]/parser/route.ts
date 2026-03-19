@@ -6,6 +6,30 @@ import { getStorageService } from "@/utils/upload/modules"
 import { getServerSession } from "next-auth"
 import { NextResponse } from "next/server"
 
+/**
+ * @swagger
+ * /api/templates/{id}/parser:
+ *   get:
+ *     summary: Parse template XML into JSON template payload
+ *     tags:
+ *       - Templates
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Template ID
+ *     responses:
+ *       200:
+ *         description: Template parsed successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Template not found
+ *       500:
+ *         description: Failed to fetch template
+ */
 export const GET = async (request: Request, context: { params: Promise<{ id: string }> }) => {
     try {
         const { id } = await context.params

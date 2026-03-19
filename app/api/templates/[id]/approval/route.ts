@@ -4,6 +4,45 @@ import { getBusinessPrisma } from "@/lib/prisma-business"
 import { userHasPermissionAPI } from "@/utils/permissions"
 import { NextRequest, NextResponse } from "next/server"
 
+/**
+ * @swagger
+ * /api/templates/{id}/approval:
+ *   patch:
+ *     summary: Replace template approver list
+ *     tags:
+ *       - Templates
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Template ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - approvers
+ *             properties:
+ *               approvers:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: Approvers updated successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Not authorized to update this template
+ *       404:
+ *         description: Template not found
+ *       500:
+ *         description: Failed to update approval status
+ */
 export const PATCH = async (
     req: NextRequest,
     context: { params: Promise<{ id: string }> },

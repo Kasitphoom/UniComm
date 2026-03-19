@@ -5,6 +5,55 @@ import { parse } from "csv-parse/sync"
 import { userHasPermissionAPI } from "@/utils/permissions"
 import { UserRole } from "@/app/generated/business/prisma"
 
+/**
+ * @swagger
+ * /api/customer-list/{id}/customer:
+ *   post:
+ *     summary: Add customers to a list
+ *     tags:
+ *       - Customer List
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Contact list ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             oneOf:
+ *               - type: object
+ *               - type: array
+ *                 items:
+ *                   type: object
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - file
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       201:
+ *         description: Customers created or upserted successfully
+ *       400:
+ *         description: Invalid payload or missing primary key values
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Insufficient permissions
+ *       404:
+ *         description: Business database or contact list not found
+ *       415:
+ *         description: Unsupported content type
+ *       500:
+ *         description: Failed to create customers
+ */
 export const POST = async (
     request: NextRequest,
     context: { params: Promise<{ id: string }> },
@@ -181,6 +230,47 @@ export const POST = async (
     }
 }
 
+/**
+ * @swagger
+ * /api/customer-list/{id}/customer:
+ *   delete:
+ *     summary: Delete multiple customers from a list
+ *     tags:
+ *       - Customer List
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Contact list ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: Customers deleted successfully
+ *       400:
+ *         description: No customer IDs provided
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Insufficient permissions
+ *       404:
+ *         description: Business database not found
+ *       500:
+ *         description: Failed to delete customers
+ */
 export const DELETE = async (
     request: NextRequest,
     context: { params: Promise<{ id: string }> },

@@ -4,6 +4,36 @@ import { DEFAULT_BUSINESS_COOKIE } from "@/types/business"
 import { getServerSession } from "next-auth"
 import { NextRequest, NextResponse } from "next/server"
 
+/**
+ * @swagger
+ * /api/business/active:
+ *   post:
+ *     summary: Set active business for current user
+ *     tags:
+ *       - Business
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - businessId
+ *             properties:
+ *               businessId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Active business set successfully
+ *       400:
+ *         description: businessId is missing
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: User is not a member of the business
+ *       500:
+ *         description: Failed to set active business
+ */
 export async function POST(request: NextRequest) {
     try {
         const session = await getServerSession(authOptions)

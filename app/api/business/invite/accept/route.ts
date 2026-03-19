@@ -6,6 +6,40 @@ import { getBusinessPrisma } from "@/lib/prisma-business";
 import { UserRole } from "@/app/generated/business/prisma";
 import { DEFAULT_BUSINESS_COOKIE } from "@/types/business";
 
+/**
+ * @swagger
+ * /api/business/invite/accept:
+ *   post:
+ *     summary: Accept a business invitation
+ *     tags:
+ *       - Business
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - referenceId
+ *             properties:
+ *               referenceId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Invitation accepted successfully
+ *       400:
+ *         description: Invalid request or invitation payload
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Signed-in user does not match invited email
+ *       404:
+ *         description: Invitation not found
+ *       410:
+ *         description: Invitation expired
+ *       500:
+ *         description: Failed to accept invitation
+ */
 export const POST = async (req: NextRequest) => {
     try {
         const auth = await requireAuth(req, { requireBusiness: false });

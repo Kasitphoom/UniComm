@@ -68,7 +68,13 @@ const createCustomerListSchema = yup.object().shape({
                 type: yup.string().oneOf(["string", "number", "date", "boolean"]).required("Type is required"),
             })
         )
-        .default([]),
+        .when("source", {
+            is: "MANUAL",
+            then: (schema) => schema.min(1, "At least one attribute is required"),
+            otherwise: (schema) => schema,
+        })
+        .default([])
+        .required(),
 });
 
 type CreateCustomerListFormData = yup.InferType<typeof createCustomerListSchema>;
@@ -516,7 +522,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                                 </div>
                         </Tab>
 
-                        <Tab key="fields" title={<div className="flex items-center gap-2"><Columns size={16}/><span>Attributes</span></div>}>
+                        <Tab key="fields" title={<div className={`${watch('fields').length === 0 && "text-danger"} flex items-center gap-2`}><Columns size={16}/><span>Attributes</span><span className="text-danger">*</span></div>}>
                                 <div className="flex flex-col gap-4 pt-4">
                                     {isEditing && (
                                         <p className="text-xs text-default-300">Updating field names may take a while depending on the list size. This action may take up to 1 minute.</p>

@@ -4,6 +4,7 @@ import { requireAuth } from "@/lib/api-auth"
 import { getBusinessPrisma } from "@/lib/prisma-business"
 import { sanitizeQuery } from "@/utils/sanitizer"
 import { userHasPermissionAPI } from "@/utils/permissions"
+import { refreshTemplateDependencies } from "@/utils/template/refreshTemplateDependencies"
 
 const MAX_PER_PAGE = 50
 const DEFAULT_PER_PAGE = 10
@@ -141,6 +142,73 @@ const toFieldNameSet = (values: unknown): Set<string> => {
     )
 }
 
+/**
+ * @swagger
+ * /api/campaigns:
+ *   get:
+ *     summary: List campaigns for the active business
+ *     tags:
+ *       - Campaigns
+ *     parameters:
+ *       - in: query
+ *         name: query
+ *         schema:
+ *           type: string
+ *         required: false
+ *         description: Search campaign name or linked template title
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         required: false
+ *         description: Page number (default 1)
+ *       - in: query
+ *         name: perPage
+ *         schema:
+ *           type: integer
+ *         required: false
+ *         description: Items per page (default 10, max 50)
+ *       - in: query
+ *         name: fileStatus
+ *         schema:
+ *           type: string
+ *         required: false
+ *         description: Filter by file status (supports repeated or comma-separated values)
+ *       - in: query
+ *         name: scheduleStatus
+ *         schema:
+ *           type: string
+ *         required: false
+ *         description: Filter by schedule status (supports repeated or comma-separated values)
+ *       - in: query
+ *         name: range
+ *         schema:
+ *           type: string
+ *           enum: [ALL, TODAY, LAST_7_DAYS, THIS_MONTH, CUSTOM]
+ *         required: false
+ *         description: Date range filter applied to scheduledAt
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *         required: false
+ *         description: Required when range is CUSTOM
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *         required: false
+ *         description: Required when range is CUSTOM
+ *     responses:
+ *       200:
+ *         description: Campaign list fetched successfully
+ *       400:
+ *         description: No active business selected
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch campaigns
+ */
 export async function GET(req: Request) {
     try {
         const auth = await requireAuth(req)
@@ -277,6 +345,52 @@ export async function GET(req: Request) {
     }
 }
 
+/**
+ * @swagger
+ * /api/campaigns:
+ *   post:
+ *     summary: Create a new campaign
+ *     tags:
+ *       - Campaigns
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - scheduledAt
+ *               - templateIds
+ *               - customerListId
+ *             properties:
+ *               name:
+ *                 type: string
+ *               scheduledAt:
+ *                 type: string
+ *                 format: date-time
+ *               templateIds:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               customerListId:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Campaign created successfully
+ *       400:
+ *         description: Invalid payload or business validation failed
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Insufficient permissions
+ *       404:
+ *         description: Customer list or template not found
+ *       409:
+ *         description: Campaign name already exists
+ *       500:
+ *         description: Failed to create campaign
+ */
 export async function POST(req: NextRequest) {
     try {
         const auth = await requireAuth(req)
@@ -391,13 +505,10 @@ export async function POST(req: NextRequest) {
             )
         }
 
-        const templateRecord = await prisma.templates.findUnique({
-            where: { id: selectedTemplateId },
-            select: {
-                id: true,
-                title: true,
-                requiredFields: true,
-            },
+        const templateRecord = await refreshTemplateDependencies({
+            prisma,
+            templateId: selectedTemplateId,
+            businessId: auth.businessId,
         })
 
         if (!templateRecord) {
@@ -409,7 +520,7 @@ export async function POST(req: NextRequest) {
 
         const normalizedCustomerFields = toFieldNameSet(contactList.fields)
         const missingFields = Array.isArray(templateRecord.requiredFields)
-            ? templateRecord.requiredFields.filter((field) =>
+            ? templateRecord.requiredFields.filter((field: unknown) =>
                   typeof field === "string" && !normalizedCustomerFields.has(normalizeFieldName(field)),
               )
             : []

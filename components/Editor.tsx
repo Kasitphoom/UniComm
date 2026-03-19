@@ -11,6 +11,7 @@ import { saveTemplateDraft, loadTemplateDraft, hashTemplate } from '@/lib/draftS
 import { TemplateWithUser } from '@/types/template'
 import { componentBlockAdapter, EditorAdapter, templateAdapter } from '@/lib/editor/adapter'
 import dynamic from 'next/dynamic'
+import { getPdfmeClientFont } from '@/lib/pdfme/fonts'
 
 const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { ssr: false })
 
@@ -114,16 +115,31 @@ const Editor: React.FC<EditorProps> = ({ id, resource = 'template', draftKeyPref
         if (!templateData || status !== 'succeeded') return
 
         if (!designerRef.current && containerRef.current) {
-            designerRef.current = new Designer({
-                domContainer: containerRef.current,
-                template: templateData,
-                options: {
-                    zoomLevel: 1,
-                    theme: { token: { colorPrimary: '#7828c8' } },
-                },
-                plugins: plugins,
-            })
-            designerRef.current.onChangeTemplate(handleDesignerChange)
+            let cancelled = false
+
+            const initDesigner = async () => {
+                const font = await getPdfmeClientFont()
+                if (cancelled || !containerRef.current) return
+
+                designerRef.current = new Designer({
+                    domContainer: containerRef.current,
+                    template: templateData,
+                    options: {
+                        zoomLevel: 1,
+                        theme: { token: { colorPrimary: '#7828c8' } },
+                        font,
+                    },
+                    plugins: plugins,
+                })
+                designerRef.current.onChangeTemplate(handleDesignerChange)
+            }
+
+            void initDesigner()
+
+            return () => {
+                cancelled = true
+            }
+
             return
         }
 

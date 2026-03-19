@@ -6,6 +6,46 @@ import { sanitizeQuery } from "@/utils/sanitizer"
 import path from "node:path"
 import { readFile } from "node:fs/promises"
 
+/**
+ * @swagger
+ * /api/components:
+ *   get:
+ *     summary: List component blocks
+ *     tags:
+ *       - Components
+ *     parameters:
+ *       - in: query
+ *         name: query
+ *         schema:
+ *           type: string
+ *         required: false
+ *         description: Search by component block name
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         required: false
+ *         description: Page number (default 1)
+ *       - in: query
+ *         name: perPage
+ *         schema:
+ *           type: integer
+ *         required: false
+ *         description: Items per page (default 8, max 50)
+ *       - in: query
+ *         name: userOnly
+ *         schema:
+ *           type: boolean
+ *         required: false
+ *         description: When true, returns only components owned by current user
+ *     responses:
+ *       200:
+ *         description: Component blocks fetched successfully
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch component blocks
+ */
 // GET /api/components
 // Supports: query, page, perPage, userOnly
 export async function GET(req: Request) {
@@ -66,6 +106,46 @@ export async function GET(req: Request) {
     }
 }
 
+/**
+ * @swagger
+ * /api/components:
+ *   post:
+ *     summary: Create a component block from XML template base
+ *     tags:
+ *       - Components
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *               - orientation
+ *               - widthCm
+ *               - heightCm
+ *             properties:
+ *               name:
+ *                 type: string
+ *               orientation:
+ *                 type: string
+ *                 enum: [portrait, landscape]
+ *               widthCm:
+ *                 type: number
+ *               heightCm:
+ *                 type: number
+ *     responses:
+ *       201:
+ *         description: Component block created successfully
+ *       400:
+ *         description: Invalid payload or duplicate template name
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Business user not found
+ *       500:
+ *         description: Failed to create component block
+ */
 // POST /api/components
 // Body: { name, description, content }
 export async function POST(req: Request) {

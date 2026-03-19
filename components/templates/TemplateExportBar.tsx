@@ -15,6 +15,7 @@ import { clientFetchParsedTemplate, clientFetchTemplate } from '@/utils/template
 import dynamic from 'next/dynamic'
 import { useUser } from '../providers/UserProvider'
 import { ApprovalStatus } from '@/types/approver'
+import { getPdfmeClientFont } from '@/lib/pdfme/fonts'
 
 const PdfViewer = dynamic(() => import('@/components/PdfViewer'), { 
     ssr: false,
@@ -32,6 +33,8 @@ const getContentFromSchema = (schema: any): string => {
 
 // Shared PDF preview generator that produces a Uint8Array for a template
 export const generatePdfPreview = async (template: Template) => {
+    const font = await getPdfmeClientFont()
+
     const mockInputs = getInputFromTemplate(template).map((obj, pageIndex) => {
         const mockInput: Record<string, string> = {}
         const pageSchemas = template.schemas[pageIndex] || []
@@ -47,6 +50,9 @@ export const generatePdfPreview = async (template: Template) => {
         template,
         inputs: mockInputs,
         plugins,
+        options: {
+            font,
+        },
     })
 
     return pdfBytes
@@ -63,7 +69,6 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
     const [selectedMode, setSelectedMode] = useState<string | number>('browser')
     const [isMobile, setIsMobile] = useState(false)
     const [template, setTemplate] = useState<TemplateWithUser | null>(null)
-    const [isAlertVisible, setIsAlertVisible] = useState(false)
     const [isSaving, setIsSaving] = useState(false)
     const parsedTemplate = useAppSelector(state => state.templates.parsedTemplate)
 
@@ -82,7 +87,6 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
         const result = await clientFetchTemplate(id)
         console.log('Fetched template for export bar:', result)
         setTemplate(result)
-        setIsAlertVisible(!result.contactListId)
     }
 
     useEffect(() => {
@@ -319,12 +323,6 @@ const TemplateExportBar = ({ id, isOwner }: { id: string, isOwner: boolean }) =>
                     isInvisible: template && !template.contactListId ? false : true,
                     content: '!',
                     color: 'danger',
-                }}
-                alertConfig={{
-                    title: "No Contact List Selected",
-                    description: "To use dynamic variables, you need to link a contact list to this template first.",
-                    isVisible: isAlertVisible,
-                    onClose: () => setIsAlertVisible(false),
                 }}
             />
 
