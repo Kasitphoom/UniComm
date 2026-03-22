@@ -77,7 +77,7 @@ export default function AcceptInviteClient({ referenceId, inviteEmail, businessN
 
     useEffect(() => {
         accept();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [attempt]);
 
     return (
