@@ -2,10 +2,7 @@ name: Static Analysis Pipeline
 
 on:
   push:
-    branches-ignore:
-      - main
-      - staging
-      - release/*
+  pull_request:
 
 jobs:
   static-analysis:
