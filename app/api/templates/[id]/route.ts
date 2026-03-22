@@ -12,6 +12,30 @@ import { hasRolePermission, RolePermissions } from "@/lib/role-permissions"
 import { UserRole } from "@/app/generated/business/prisma"
 import { userHasPermissionAPI } from "@/utils/permissions"
 
+/**
+ * @swagger
+ * /api/templates/{id}:
+ *   get:
+ *     summary: Get template details
+ *     tags:
+ *       - Templates
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Template ID
+ *     responses:
+ *       200:
+ *         description: Template fetched successfully
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Template not found
+ *       500:
+ *         description: Failed to fetch template
+ */
 export async function GET(
     _req: NextRequest,
     context: { params: Promise<{ id: string }> },
@@ -51,6 +75,39 @@ export async function GET(
     }
 }
 
+/**
+ * @swagger
+ * /api/templates/{id}:
+ *   patch:
+ *     summary: Update template content and create a new version
+ *     tags:
+ *       - Templates
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Template ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             description: PDF template payload
+ *     responses:
+ *       200:
+ *         description: Template updated successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Not authorized to update this template
+ *       404:
+ *         description: Template not found
+ *       500:
+ *         description: Failed to update template
+ */
 export async function PATCH(
     req: NextRequest,
     context: { params: Promise<{ id: string }> },
@@ -194,6 +251,32 @@ export async function PATCH(
     }
 }
 
+/**
+ * @swagger
+ * /api/templates/{id}:
+ *   delete:
+ *     summary: Delete a template and its versions
+ *     tags:
+ *       - Templates
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Template ID
+ *     responses:
+ *       200:
+ *         description: Template deleted successfully
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Not authorized to delete this template
+ *       404:
+ *         description: Template not found
+ *       500:
+ *         description: Failed to delete template
+ */
 export const DELETE = async (
     req: Request,
     context: { params: Promise<{ id: string }> },

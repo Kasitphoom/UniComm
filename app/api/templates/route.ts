@@ -8,6 +8,46 @@ import { requireAuth } from "@/lib/api-auth"
 import { userHasPermissionAPI } from "@/utils/permissions"
 import { Prisma, UserRole } from "@/app/generated/business/prisma"
 
+/**
+ * @swagger
+ * /api/templates:
+ *   get:
+ *     summary: List templates
+ *     tags:
+ *       - Templates
+ *     parameters:
+ *       - in: query
+ *         name: query
+ *         schema:
+ *           type: string
+ *         required: false
+ *         description: Search by template title
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         required: false
+ *         description: Page number (default 1)
+ *       - in: query
+ *         name: perPage
+ *         schema:
+ *           type: integer
+ *         required: false
+ *         description: Items per page (default 8, max 50)
+ *       - in: query
+ *         name: userOnly
+ *         schema:
+ *           type: boolean
+ *         required: false
+ *         description: Return templates owned by or requiring approval from current user
+ *     responses:
+ *       200:
+ *         description: Templates fetched successfully
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch templates
+ */
 export async function GET(req: Request) {
     try {
         const auth = await requireAuth(req)
@@ -96,6 +136,50 @@ export async function GET(req: Request) {
     }
 }
 
+/**
+ * @swagger
+ * /api/templates:
+ *   post:
+ *     summary: Create a template
+ *     tags:
+ *       - Templates
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - templateName
+ *               - orientation
+ *               - widthCm
+ *               - heightCm
+ *             properties:
+ *               templateName:
+ *                 type: string
+ *               orientation:
+ *                 type: string
+ *                 enum: [portrait, landscape]
+ *               widthCm:
+ *                 type: number
+ *               heightCm:
+ *                 type: number
+ *               customerListId:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: Template created successfully
+ *       400:
+ *         description: Invalid payload or duplicate template name
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Not enough permission
+ *       404:
+ *         description: Business user not found
+ *       500:
+ *         description: Failed to create template
+ */
 export async function POST(req: NextRequest) {
     try {
         const auth = await requireAuth(req)
