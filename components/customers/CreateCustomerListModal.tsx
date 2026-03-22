@@ -19,7 +19,7 @@ import {
     Tabs,
     Tab,
 } from "@heroui/react";
-import { useForm, Controller, useFieldArray } from "react-hook-form";
+import { useForm, Controller, useFieldArray, useWatch } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 import { Upload, FileText, CheckCircle2, Info, Plus, Settings2, Trash2, Columns } from "lucide-react";
@@ -35,7 +35,7 @@ import { ContactListDTO } from "@/features/customers/types";
 import { Customer, UserRole } from "@/app/generated/business/prisma";
 import { fetchListCustomers } from "@/features/customers/listCustomersSlice";
 import CustomRadio from "./CustomRadio";
-import { userHasPermissionClient } from "@/utils/permissions";
+import { useUserHasPermissionClient } from "@/utils/permissions";
 
 // Create validation schema
 const createCustomerListSchema = yup.object().shape({
@@ -101,7 +101,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
     const [csvFile, setCsvFile] = useState<File | null>(null);
     const [isDragActive, setIsDragActive] = useState(false);
 
-    const userHasPermission = userHasPermissionClient([ UserRole.OWNER, UserRole.ADMIN ]);
+    const userHasPermission = useUserHasPermissionClient([ UserRole.OWNER, UserRole.ADMIN ]);
     const isEditing = !!listToEdit;
     const status = isEditing ? updateStatus : createStatus;
     const error = isEditing ? updateError : createError;
@@ -139,7 +139,6 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
         control,
         handleSubmit,
         reset,
-        watch,
         formState: { errors, isValid },
     } = useForm<CreateCustomerListFormData>({
         mode: "onChange",
@@ -159,7 +158,14 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
         name: "fields",
     });
 
-    const sourceValue = watch("source");
+    const sourceValue = useWatch({ control, name: "source" });
+
+    function handleClose() {
+        reset();
+        setCsvFile(null);
+        dispatch(isEditing ? resetUpdateStatus() : resetCreateStatus());
+        onClose();
+    }
 
     // Reset status when modal closes
     useEffect(() => {
@@ -180,14 +186,13 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
     // Handle successful creation
     useEffect(() => {
         if (status === "succeeded") {
-            reset();
-            setCsvFile(null);
-            onClose();
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            handleClose();
             if (onSuccess) {
                 onSuccess();
             }
         }
-    }, [status, reset, onClose, onSuccess]);
+    }, [status, onSuccess]);
 
     const handleFileChange = (file: File | null) => {
         if (!file) {
@@ -293,13 +298,6 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
             // Error is handled by Redux state
             console.error("Failed to create/update customer list:", error);
         }
-    };
-
-    const handleClose = () => {
-        reset();
-        setCsvFile(null);
-        dispatch(isEditing ? resetUpdateStatus() : resetCreateStatus());
-        onClose();
     };
 
     const isLoading = status === "loading";
@@ -522,7 +520,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                                 </div>
                         </Tab>
 
-                        <Tab key="fields" title={<div className={`${watch('fields').length === 0 && "text-danger"} flex items-center gap-2`}><Columns size={16}/><span>Attributes</span><span className="text-danger">*</span></div>}>
+                        <Tab key="fields" title={<div className={`${useWatch({control, name: 'source'}).length === 0 && "text-danger"} flex items-center gap-2`}><Columns size={16}/><span>Attributes</span><span className="text-danger">*</span></div>}>
                                 <div className="flex flex-col gap-4 pt-4">
                                     {isEditing && (
                                         <p className="text-xs text-default-300">Updating field names may take a while depending on the list size. This action may take up to 1 minute.</p>
@@ -572,7 +570,7 @@ const CreateCustomerListModal: React.FC<CreateCustomerListModalProps> = ({
                                                 ))}
                                             </div>
                                             {fields.length === 0 && (
-                                                <p className="text-sm text-default-400 text-center py-4">No attributes defined yet. Click "Add Attribute" to get started.</p>
+                                                <p className="text-sm text-default-400 text-center py-4">No attributes defined yet. Click &quot;Add Attribute&quot; to get started.</p>
                                             )}
                                         </>
                                     )}
