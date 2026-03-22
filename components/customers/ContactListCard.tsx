@@ -9,7 +9,7 @@ import { useAppDispatch, useAppSelector } from "@/store/hooks";
 import { deleteCustomerList, resetDeleteStatus } from "@/features/customers/customerListsSlice";
 import CreateCustomerListModal from "./CreateCustomerListModal";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
-import { userHasPermissionClient } from "@/utils/permissions";
+import { useUserHasPermissionClient } from "@/utils/permissions";
 import { UserRole } from "@/app/generated/business/prisma";
 
 export enum CONTACT_SOURCE {
@@ -34,7 +34,7 @@ export const ContactListCard = ({ list, onView }: ContactListCardProps) => {
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const dispatch = useAppDispatch();
     const { status: deleteStatus } = useAppSelector((state) => state.customerLists.delete);
-    const userHasPermission = userHasPermissionClient([ UserRole.OWNER, UserRole.ADMIN ]);
+    const userHasPermission = useUserHasPermissionClient([ UserRole.OWNER, UserRole.ADMIN ]);
 
     const handleEditClick = () => {
         setIsEditModalOpen(true);

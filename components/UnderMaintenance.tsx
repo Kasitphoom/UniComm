@@ -52,7 +52,7 @@ const UnderMaintenance = () => {
 
                 {/* Subtext */}
                 <p className="mt-6 text-lg text-gray-600 max-w-lg mx-auto leading-relaxed">
-                    We're currently performing some scheduled updates to bring you a better experience.
+                    We&apos;re currently performing some scheduled updates to bring you a better experience.
                     <span className="block mt-2 font-medium text-secondary-600">
                         This page should be back online shortly!
                     </span>

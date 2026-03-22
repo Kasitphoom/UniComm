@@ -5,7 +5,7 @@ import SearchBar from '../SearchBar'
 import { Button, ButtonGroup, Dropdown, DropdownMenu, DropdownTrigger, DropdownItem } from '@heroui/react'
 import { ChevronDown, Layers, ListPlus } from 'lucide-react'
 import { useUser } from '@/components/providers/UserProvider'
-import { canCreateResource, userHasPermissionClient } from '@/utils/permissions'
+import { canCreateResource, useUserHasPermissionClient } from '@/utils/permissions'
 import CreateCustomerListModal from './CreateCustomerListModal'
 import { useAppDispatch } from '@/store/hooks'
 import { fetchCustomerLists } from '@/features/customers/customerListsSlice'
@@ -14,7 +14,7 @@ import { UserRole } from '@/app/generated/business/prisma'
 const CustomerListsControlBar = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const currentUser = useUser();
-    const userHasPermission = userHasPermissionClient([ UserRole.OWNER, UserRole.ADMIN ]);
+    const userHasPermission = useUserHasPermissionClient([ UserRole.OWNER, UserRole.ADMIN ]);
     const dispatch = useAppDispatch();
 
     const handleSuccess = () => {

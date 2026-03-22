@@ -54,6 +54,8 @@
     "@types/react-dom": "^19",
     "@types/swagger-ui-react": "^4.11.0",
     "copy-webpack-plugin": "^13.0.1",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.1",
     "prisma": "^6.17.1",
     "tailwindcss": "^4",
     "tsx": "^4.20.6",

@@ -96,7 +96,7 @@ export const POST = async (request: NextRequest) => {
 
         const businessPrisma = await getBusinessPrisma(auth.businessId!);
 
-        let inviter = await businessPrisma.businessUser.findUnique({
+        const inviter = await businessPrisma.businessUser.findUnique({
             where: { id: auth.userId! },
         });
 

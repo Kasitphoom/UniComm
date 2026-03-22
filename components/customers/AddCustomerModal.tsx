@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
     Modal,
     ModalContent,
@@ -75,28 +75,25 @@ const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
     const sourceValue = useWatch({ control, name: "source" });
     const isLoading = listStatus === "loading";
 
-    // Reset status when modal closes
-    useEffect(() => {
-        if (!isOpen) {
-            setManualError(null);
-            setHasCreated(false);
-        }
-    }, [isOpen]);
+    function handleClose() {
+        reset();
+        setCsvFile(null);
+        setManualError(null);
+        setHasCreated(false);
+        onClose();
+    }
 
     // Handle successful creation
     useEffect(() => {
         if (listStatus === "succeeded" && hasCreated) {
-            reset();
-            setCsvFile(null);
-            setManualError(null);
-            setHasCreated(false);
-            onClose();
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            handleClose();
             dispatch(fetchListCustomers({ id: listId }));
             if (onSuccess) {
                 onSuccess();
             }
         }
-    }, [listStatus, hasCreated, reset, onClose, onSuccess, listId, dispatch]);
+    }, [listStatus, hasCreated, onSuccess, listId, dispatch]);
 
     const handleFileChange = (file: File | null) => {
         if (!file) {
@@ -184,12 +181,10 @@ const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
         }
     };
 
-    const handleClose = () => {
-        reset();
-        setCsvFile(null);
-        setManualError(null);
-        onClose();
-    };
+    const submitForm = useCallback((event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        void handleSubmit(onSubmit)();
+    }, [handleSubmit, onSubmit]);
 
     return (
         <Modal
@@ -205,7 +200,7 @@ const AddCustomerModal: React.FC<AddCustomerModalProps> = ({
             }}
         >
             <ModalContent>
-                <form id="add-customer-form" onSubmit={handleSubmit(onSubmit)}>
+                <form id="add-customer-form" onSubmit={submitForm}>
                     <ModalHeader className="flex flex-col gap-1">
                         <h2 className="text-lg font-bold tracking-tight">Add Customers</h2>
                         <p className="text-small text-default-500 font-normal">
