@@ -398,7 +398,7 @@ export async function PATCH(req: NextRequest, { params }: PatchContext) {
             data.name = trimmedName
         }
         if (scheduledDate) {
-            data.scheduledAt = scheduledDate,
+            data.scheduledAt = scheduledDate
             data.scheduleStatus = scheduledDate > new Date() ? "PENDING" : existing.scheduleStatus
         }
         if (normalizedCustomerListId) {

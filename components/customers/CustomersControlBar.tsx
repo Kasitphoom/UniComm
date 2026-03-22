@@ -6,7 +6,7 @@ import { PlusIcon, Settings } from "lucide-react"
 import CreateCustomerListModal from "./CreateCustomerListModal"
 import AddCustomerModal from "./AddCustomerModal"
 import { useAppSelector } from "@/store/hooks"
-import { userHasPermissionClient } from "@/utils/permissions"
+import { useUserHasPermissionClient } from "@/utils/permissions"
 import { UserRole } from "@/app/generated/business/prisma"
 
 interface CustomersControlBarProps {
@@ -17,7 +17,7 @@ const CustomersControlBar: React.FC<CustomersControlBarProps> = ({ listId }) => 
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false)
     const [isAddCustomerModalOpen, setIsAddCustomerModalOpen] = useState(false)
     const listCustomers = useAppSelector((state) => state.listCustomers)
-    const userHasPermission = userHasPermissionClient([ UserRole.OWNER, UserRole.ADMIN ]);
+    const userHasPermission = useUserHasPermissionClient([ UserRole.OWNER, UserRole.ADMIN ]);
 
     return (
         <>

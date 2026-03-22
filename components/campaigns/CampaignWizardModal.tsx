@@ -10,7 +10,7 @@ import {
     Button,
 } from "@heroui/react"
 import { useInfiniteScroll } from "@heroui/use-infinite-scroll"
-import { useForm } from "react-hook-form"
+import { useForm, useWatch } from "react-hook-form"
 import { Send } from "lucide-react"
 import { getLocalTimeZone, now } from "@internationalized/date"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
@@ -114,7 +114,6 @@ const CampaignWizardModal: React.FC<CampaignWizardModalProps> = ({
     const {
         control,
         handleSubmit,
-        watch,
         setValue,
         reset,
     } = useForm<CampaignFormValues>({
@@ -122,10 +121,10 @@ const CampaignWizardModal: React.FC<CampaignWizardModalProps> = ({
         defaultValues,
     })
 
-    const campaignNameValue = watch("campaignName")
-    const selectedTemplateId = watch("templateId")
-    const selectedCustomerListId = watch("customerListId")
-    const scheduleDateValue = watch("scheduleDate")
+    const campaignNameValue = useWatch({ control, name: "campaignName" })
+    const selectedTemplateId = useWatch({ control, name: "templateId" })
+    const selectedCustomerListId = useWatch({ control, name: "customerListId" })
+    const scheduleDateValue = useWatch({ control, name: "scheduleDate" })
 
     const { items: templates, status: templateStatus, totalPages } = useAppSelector((state) => state.templates.list)
     const { items: customerLists, status: contactListStatus } = useAppSelector((state) => state.customerLists.list)
@@ -168,6 +167,18 @@ const CampaignWizardModal: React.FC<CampaignWizardModalProps> = ({
         onLoadMore: loadMore,
     })
 
+    const resetModalState = useCallback(() => {
+        setStep(1)
+        setPage(1)
+        setSearchQuery("")
+        setDebouncedSearchQuery("")
+        setIsCustomerListCompatible(null)
+    }, [])
+
+    const resetCustomerListCompatibility = useCallback(() => {
+        setIsCustomerListCompatible(null)
+    }, [])
+
     useEffect(() => {
         if (isOpen) {
             reset(defaultValues)
@@ -176,12 +187,9 @@ const CampaignWizardModal: React.FC<CampaignWizardModalProps> = ({
 
     useEffect(() => {
         if (isOpen) return
-        setStep(1)
-        setPage(1)
-        setSearchQuery("")
-        setDebouncedSearchQuery("")
-        setIsCustomerListCompatible(null)
-    }, [isOpen])
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        resetModalState()
+    }, [isOpen, resetModalState])
 
     useEffect(() => {
         if (previousTemplateIdRef.current === selectedTemplateId) return
@@ -191,8 +199,9 @@ const CampaignWizardModal: React.FC<CampaignWizardModalProps> = ({
         if (selectedCustomerListId) {
             setValue("customerListId", null, { shouldDirty: true })
         }
-        setIsCustomerListCompatible(null)
-    }, [selectedCustomerListId, selectedTemplateId, setValue])
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        resetCustomerListCompatibility()
+    }, [selectedCustomerListId, selectedTemplateId, setValue, resetCustomerListCompatibility])
 
     const onStepClick = (newStep: number) => {
         if (newStep < step) {

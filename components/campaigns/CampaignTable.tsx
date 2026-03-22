@@ -30,7 +30,7 @@ import CampaignWizardModal from "./CampaignWizardModal"
 import type { CampaignFormValues } from "./newCampaignSteps/types"
 import { getLocalTimeZone, parseAbsoluteToLocal, fromDate } from "@internationalized/date"
 import ConfirmDialog from "@/components/common/ConfirmDialog"
-import { userHasPermissionClient } from "@/utils/permissions"
+import { useUserHasPermissionClient } from "@/utils/permissions"
 
 export const CampaignTable = () => {
     const dispatch = useAppDispatch()
@@ -53,7 +53,7 @@ export const CampaignTable = () => {
     const isDeleteLoading = Boolean(
         campaignToDelete && deleteStatus === "loading" && deletingId === campaignToDelete.id,
     )
-    const canManageCampaigns = userHasPermissionClient([
+    const canManageCampaigns = useUserHasPermissionClient([
         UserRole.OWNER,
         UserRole.ADMIN,
         UserRole.MEMBER,

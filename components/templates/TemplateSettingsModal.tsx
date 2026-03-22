@@ -8,7 +8,7 @@ import { Button, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader } from
 import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { getParsedTemplateSchema, updateTemplateSettings } from '@/features/templates/templatesSlice'
 import { clientFetchParsedTemplate, clientFetchTemplate } from '@/utils/template/utils'
-import { userHasPermissionClient } from '@/utils/permissions'
+import { useUserHasPermissionClient } from '@/utils/permissions'
 import { useUser } from '../providers/UserProvider'
 import { TemplateWithUser } from '@/types/template'
 import DesignSetupFields, { ORIENTATIONS, Orientation, PAPER_SIZES, PaperSize } from '@/components/common/DesignSetupFields'
@@ -79,7 +79,7 @@ const TemplateSettingsModal = ({
     const [template, setTemplate] = useState<TemplateWithUser | null>()
     const [isLoading, setIsLoading] = useState(false)
     
-    const hasPermission = userHasPermissionClient([
+    const hasPermission = useUserHasPermissionClient([
         'OWNER',
         'ADMIN',
         'MEMBER',

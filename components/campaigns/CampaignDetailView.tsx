@@ -36,7 +36,7 @@ import { fromDate, getLocalTimeZone, now, parseAbsoluteToLocal } from "@internat
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
 import { updateCampaign, deleteCampaign, rerunCampaign } from "@/features/campaigns/campaignsSlice"
 import { UserRole } from "@/app/generated/business/prisma"
-import { userHasPermissionClient } from "@/utils/permissions"
+import { useUserHasPermissionClient } from "@/utils/permissions"
 import CampaignWizardModal from "./CampaignWizardModal"
 import ConfirmDialog from "../common/ConfirmDialog"
 import type { CampaignDetail } from "@/types/campaign"
@@ -154,7 +154,7 @@ const CampaignDetailView = ({ campaign }: Props) => {
     )
 
     // Permissions
-    const canManageCampaigns = userHasPermissionClient([UserRole.OWNER, UserRole.ADMIN, UserRole.MEMBER])
+    const canManageCampaigns = useUserHasPermissionClient([UserRole.OWNER, UserRole.ADMIN, UserRole.MEMBER])
 
     const editInitialValues = useMemo<CampaignFormValues>(() => {
         const timeZone = getLocalTimeZone()
