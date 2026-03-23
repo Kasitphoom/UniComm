@@ -1,0 +1,23 @@
+name: Deploy Pipeline
+
+on:
+  workflow_run:
+    workflows:
+      - Static Analysis Pipeline
+    types:
+      - completed
+
+jobs:
+  trigger-vercel-deploy-main:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel Deploy Hook
+        run: curl -X POST https://api.vercel.com/v1/integrations/deploy/prj_khm35phZsO8Sb8K8Z1c2lpKji9Ja/2jtIBdiDGO
+
+  trigger-vercel-deploy-staging:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'staging'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel Deploy Hook
+        run: curl -X POST https://api.vercel.com/v1/integrations/deploy/prj_khm35phZsO8Sb8K8Z1c2lpKji9Ja/8dzsBfhXTJ
