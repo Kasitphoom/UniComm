@@ -1,0 +1,22 @@
+name: Deploy Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+
+jobs:
+  trigger-vercel-deploy-main:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel Deploy Hook
+        run: curl -X POST https://api.vercel.com/v1/integrations/deploy/prj_khm35phZsO8Sb8K8Z1c2lpKji9Ja/2jtIBdiDGO
+
+  trigger-vercel-deploy-staging:
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel Deploy Hook
+        run: curl -X POST https://api.vercel.com/v1/integrations/deploy/prj_khm35phZsO8Sb8K8Z1c2lpKji9Ja/8dzsBfhXTJ
