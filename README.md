@@ -94,6 +94,7 @@ Required environment variables:
 - `QSTASH_CURRENT_SIGNING_KEY` — Upstash signing key for request verification
 - `QSTASH_NEXT_SIGNING_KEY` — Upstash next signing key for key rotation
 - `QSTASH_WORKER_URL` — Public base URL for worker callbacks (recommended, e.g. `https://your-app.vercel.app`)
+- `CAMPAIGN_JOB_CHUNK_SIZE` — Optional per-message customer chunk size for manual campaign runs (default: `100`)
 
 Worker endpoint:
 

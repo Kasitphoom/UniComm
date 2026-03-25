@@ -9,6 +9,10 @@ export type CampaignWorkerJobPayload =
           campaignId?: string
           businessIds?: string[]
           maxParallel?: number
+          chunkOffset?: number
+          chunkLimit?: number
+          isFinalChunk?: boolean
+          chunked?: boolean
       }
     | {
           jobType: "DELETE_EXPIRED_FILES"

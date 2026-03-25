@@ -55,6 +55,12 @@ type CampaignJobResult = {
     campaigns: CampaignRunResult[]
 }
 
+type CampaignExecutionChunk = {
+    offset: number
+    limit: number
+    isFinalChunk?: boolean
+}
+
 type ContactListField = {
     field: string
     type?: string
@@ -360,6 +366,7 @@ const createCampaignFile = async (
     businessId: string,
     campaign: CampaignWithTemplates,
     businessPrisma: BusinessPrismaClient,
+    chunk?: CampaignExecutionChunk,
 ): Promise<CampaignFileResult | null> => {
     const generationStartedAt = new Date()
 
@@ -368,7 +375,13 @@ const createCampaignFile = async (
         throw new Error("Campaign is missing a contact list")
     }
 
-    const customers = Array.isArray(contactList.customers) ? contactList.customers : []
+    const allCustomers = Array.isArray(contactList.customers) ? contactList.customers : []
+    const customers = chunk
+        ? allCustomers.slice(
+              Math.max(0, chunk.offset),
+              Math.max(0, chunk.offset) + Math.max(0, chunk.limit),
+          )
+        : allCustomers
     if (customers.length === 0) return null
 
     const contactFields = toContactFields(contactList.fields)
@@ -534,6 +547,7 @@ const runCampaignForBusiness = async (
     campaignId: string,
     businessId: string,
     triggerSource: CampaignRunTrigger,
+    chunk?: CampaignExecutionChunk,
 ): Promise<CampaignJobResult> => {
     try {
         const business = await prisma.business.findUnique({
@@ -590,14 +604,19 @@ const runCampaignForBusiness = async (
                 const runStartedAt = new Date()
 
                 try {
-                    const campaignFileResult = await createCampaignFile(businessId, campaign, businessPrisma)
+                    const campaignFileResult = await createCampaignFile(businessId, campaign, businessPrisma, chunk)
                     const hasGeneratedFile = Boolean(campaignFileResult?.file?.id)
                     const nextFileStatus = hasGeneratedFile ? FILE_STATUS.AVALIABLE : FILE_STATUS.EMPTY
-                    const nextScheduleStatus = SCHEDULE_STATUS.TRIGGERED
+                    const nextScheduleStatus = chunk && !chunk.isFinalChunk
+                        ? SCHEDULE_STATUS.PENDING
+                        : SCHEDULE_STATUS.TRIGGERED
                     const runFinishedAt = new Date()
+                    const chunkSuffix = chunk
+                        ? ` (chunk offset=${chunk.offset}, limit=${chunk.limit}${chunk.isFinalChunk ? ", final" : ""})`
+                        : ""
                     const successMessage = hasGeneratedFile
-                        ? `${logPrefix} Campaign run successfully`
-                        : `${logPrefix} Campaign run completed without generated files`
+                        ? `${logPrefix} Campaign run successfully${chunkSuffix}`
+                        : `${logPrefix} Campaign run completed without generated files${chunkSuffix}`
 
                     if (campaignFileResult) {
                         console.info(
@@ -736,6 +755,7 @@ type RunCampaignJobOptions = {
     businessIds?: string[]
     maxParallel?: number
     triggerSource?: CampaignRunTrigger
+    chunk?: CampaignExecutionChunk
 }
 
 export const runCampaignJob = async ({
@@ -743,6 +763,7 @@ export const runCampaignJob = async ({
     businessIds = [],
     maxParallel = MAX_PARALLEL_BUSINESSES,
     triggerSource = "SYSTEM",
+    chunk,
 }: RunCampaignJobOptions) => {
     const businessIdsToRun = businessIds.length > 0 ? businessIds : await getAllBusinessIds()
     if (businessIdsToRun.length === 0) return []
@@ -752,6 +773,6 @@ export const runCampaignJob = async ({
     return runWithConcurrency(
         businessIdsToRun,
         parallelLimit,
-        async (businessId) => runCampaignForBusiness(campaignId, businessId, triggerSource),
+        async (businessId) => runCampaignForBusiness(campaignId, businessId, triggerSource, chunk),
     )
 }
