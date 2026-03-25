@@ -16,7 +16,7 @@ const isRunCampaignJobPayload = (
     return payload.jobType === "RUN_CAMPAIGNS"
 }
 
-const DEFAULT_CHUNK_SIZE = 600
+const DEFAULT_CHUNK_SIZE = 500
 
 const getChunkSize = () => {
     const rawChunkSize = Number(process.env.CAMPAIGN_JOB_CHUNK_SIZE ?? DEFAULT_CHUNK_SIZE)
