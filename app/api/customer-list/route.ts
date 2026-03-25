@@ -185,37 +185,37 @@ export const POST = async ( request: NextRequest ) => {
                 return { field: key, type };
             });
 
-            const result = await prisma.$transaction(async (tx) => {
-                const contactList = await tx.contactList.create({
-                    data: {
-                        name: name.trim(),
-                        source: "CSV_UPLOAD",
-                        remarks: remarks || null,
-                        primaryKey: fields[0].field,
-                        fields: fields,
-                        upsertMode: upsertMode,
-                    },
-                });
+            const contactList = await prisma.contactList.create({
+                data: {
+                    name: name.trim(),
+                    source: "CSV_UPLOAD",
+                    remarks: remarks || null,
+                    primaryKey: fields[0].field,
+                    fields: fields,
+                    upsertMode: upsertMode,
+                },
+            });
 
-                const customers = records.map(record => ({
-                    listId: contactList.id,
-                    data: record,
-                }));
+            const customers = records.map(record => ({
+                listId: contactList.id,
+                data: record,
+            }));
 
-                await tx.customer.createMany({
+            try {
+                await prisma.customer.createMany({
                     data: customers,
                 });
-
-                return {
-                    contactList,
-                    customersCreated: customers.length,
-                };
-            }, { timeout: 30000 });
+            } catch (error) {
+                await prisma.contactList.delete({
+                    where: { id: contactList.id },
+                });
+                throw error;
+            }
 
             return NextResponse.json({ 
-                contactList: result.contactList,
+                contactList,
                 recordsCount: records.length,
-                customersCreated: result.customersCreated
+                customersCreated: customers.length
             }, { status: 201 });
 
         } else {
