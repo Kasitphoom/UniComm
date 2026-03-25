@@ -105,6 +105,11 @@ Queue flow:
 - `/api/cron/campaign` enqueues `RUN_CAMPAIGNS` + `DELETE_EXPIRED_FILES`
 - `/api/campaigns/{id}/run` enqueues `RUN_CAMPAIGNS` for one campaign
 - Worker verifies QStash signatures and returns non-2xx on failure so QStash retries
+- Chunked manual runs upload per-chunk ZIP files, then merge into one final campaign ZIP in `CampaignFile`
+
+Chunk cleanup API:
+
+- `DELETE /api/campaign-chunks/{jobId}` marks all chunk records for the job as deleted
 
 Notes:
 

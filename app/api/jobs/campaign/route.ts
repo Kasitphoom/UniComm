@@ -4,6 +4,7 @@ import { deleteCampaignFileJob } from "@/utils/files"
 import { enqueueCampaignWorkerJob, type CampaignWorkerJobPayload } from "@/lib/external-job-queue"
 import { verifySignatureAppRouter } from "@upstash/qstash/nextjs"
 import { getBusinessPrisma } from "@/lib/prisma-business"
+import { FILE_STATUS, SCHEDULE_STATUS } from "@/app/generated/business/prisma"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -15,7 +16,7 @@ const isRunCampaignJobPayload = (
     return payload.jobType === "RUN_CAMPAIGNS"
 }
 
-const DEFAULT_CHUNK_SIZE = 100
+const DEFAULT_CHUNK_SIZE = 600
 
 const getChunkSize = () => {
     const rawChunkSize = Number(process.env.CAMPAIGN_JOB_CHUNK_SIZE ?? DEFAULT_CHUNK_SIZE)
@@ -63,6 +64,22 @@ const enqueueChunkedCampaignJobs = async (
     const nowBucket = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")
     const chunkCount = Math.ceil(customerCount / chunkSize)
     const origin = new URL(request.url).origin
+    const orchestrationStartedAt = new Date()
+    const orchestrationRunLog = await (prisma as any).campaignRunLog.create({
+        data: {
+            campaignId,
+            campaignName: campaign?.name ?? "Unknown campaign",
+            triggerSource: payload.triggerSource,
+            status: SCHEDULE_STATUS.RUNNING,
+            success: true,
+            fileStatus: FILE_STATUS.PENDING,
+            generatedDocuments: 0,
+            startedAt: orchestrationStartedAt,
+            finishedAt: orchestrationStartedAt,
+            durationMs: 0,
+        },
+    })
+    const jobId = orchestrationRunLog.id as string
 
     const queued = await Promise.all(
         Array.from({ length: chunkCount }, (_, chunkIndex) => {
@@ -74,12 +91,15 @@ const enqueueChunkedCampaignJobs = async (
                 {
                     ...payload,
                     chunked: true,
+                    jobId,
+                    chunkOrder: chunkIndex,
+                    totalChunks: chunkCount,
                     chunkOffset,
                     chunkLimit: chunkSize,
                     isFinalChunk,
                 },
                 {
-                    deduplicationId: `chunk-run-${businessId}-${campaignId}-${chunkOffset}-${chunkSize}-${nowBucket}`,
+                    deduplicationId: `chunk-run-${businessId}-${campaignId}-${jobId}-${chunkOffset}-${chunkSize}-${nowBucket}`,
                 },
             )
         }),
@@ -92,6 +112,7 @@ const enqueueChunkedCampaignJobs = async (
         customerCount,
         chunkSize,
         chunkCount,
+        jobId,
         messageIds: queued.map((job) => job.messageId).filter(Boolean),
     }
 }
@@ -130,6 +151,9 @@ async function handler(request: Request) {
                 chunk:
                     payload.chunkOffset !== undefined && payload.chunkLimit !== undefined
                         ? {
+                              jobId: payload.jobId,
+                              chunkOrder: payload.chunkOrder,
+                              totalChunks: payload.totalChunks,
                               offset: payload.chunkOffset,
                               limit: payload.chunkLimit,
                               isFinalChunk: Boolean(payload.isFinalChunk),

@@ -56,6 +56,9 @@ type CampaignJobResult = {
 }
 
 type CampaignExecutionChunk = {
+    jobId?: string
+    chunkOrder?: number
+    totalChunks?: number
     offset: number
     limit: number
     isFinalChunk?: boolean
@@ -362,6 +365,140 @@ type CampaignFileResult = {
     pdfCount: number
 }
 
+const isChunkExecution = (
+    chunk?: CampaignExecutionChunk,
+): chunk is Required<Pick<CampaignExecutionChunk, "jobId" | "chunkOrder" | "totalChunks" | "offset" | "limit">> & CampaignExecutionChunk => {
+    return Boolean(
+        chunk &&
+            typeof chunk.jobId === "string" &&
+            chunk.jobId &&
+            typeof chunk.chunkOrder === "number" &&
+            typeof chunk.totalChunks === "number",
+    )
+}
+
+const finalizeChunkedCampaignFile = async (
+    businessId: string,
+    campaign: CampaignWithTemplates,
+    businessPrisma: BusinessPrismaClient,
+    storageService: NonNullable<ReturnType<typeof getStorageService>>,
+    chunk: Required<Pick<CampaignExecutionChunk, "jobId" | "chunkOrder" | "totalChunks" | "offset" | "limit">>,
+): Promise<CampaignFileResult | null> => {
+    const chunkFiles = await (businessPrisma as any).campaignChunkFile.findMany({
+        where: {
+            campaignId: campaign.id,
+            jobId: chunk.jobId,
+            isDeleted: false,
+        },
+        orderBy: {
+            chunkOrder: "asc",
+        },
+    })
+
+    if (!Array.isArray(chunkFiles) || chunkFiles.length < chunk.totalChunks) {
+        return null
+    }
+
+    const existingFinalFile = await businessPrisma.campaignFile.findFirst({
+        where: {
+            campaignId: campaign.id,
+            isDeleted: false,
+            fileName: {
+                contains: `job-${chunk.jobId}`,
+            },
+        },
+        orderBy: {
+            createdAt: "desc",
+        },
+    })
+
+    if (existingFinalFile) {
+        return {
+            file: existingFinalFile,
+            pdfCount: existingFinalFile.generatedDocuments,
+        }
+    }
+
+    const finalZip = new JSZip()
+    let totalPdfCount = 0
+
+    for (const chunkFile of chunkFiles) {
+        const chunkZipContent = await storageService.getFileContent(chunkFile.filePath)
+        const chunkZipBuffer = Buffer.isBuffer(chunkZipContent)
+            ? chunkZipContent
+            : Buffer.from(chunkZipContent)
+        const parsedChunkZip = await JSZip.loadAsync(chunkZipBuffer)
+
+        const entries = Object.values(parsedChunkZip.files)
+        for (const entry of entries) {
+            if (entry.dir) continue
+
+            const entryBuffer = await entry.async("nodebuffer")
+            const existing = finalZip.file(entry.name)
+            const outputName = existing ? `chunk-${chunkFile.chunkOrder}-${entry.name}` : entry.name
+            finalZip.file(outputName, entryBuffer)
+        }
+
+        totalPdfCount += Number(chunkFile.generatedDocuments ?? 0)
+    }
+
+    const finalZipBuffer = await finalZip.generateAsync({
+        type: "nodebuffer",
+        compression: "DEFLATE",
+        compressionOptions: { level: 9 },
+    })
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
+    const finalZipFileName = `${businessId}/campaign/campaign-${campaign.name}-job-${chunk.jobId}-${timestamp}.zip`
+    const finalZipUrl = await storageService.uploadFile(finalZipBuffer, finalZipFileName, {
+        contentType: "application/zip",
+    })
+
+    const generationFinishedAt = new Date()
+    const expiresAt = new Date(Date.now() + ZIP_EXPIRATION_MS)
+
+    const campaignFile = await businessPrisma.campaignFile.create({
+        data: {
+            campaignId: campaign.id,
+            fileName: finalZipFileName,
+            filePath: finalZipUrl,
+            generatedDocuments: totalPdfCount,
+            status: FILE_STATUS.AVALIABLE,
+            generationStartedAt: new Date(),
+            generationFinishedAt,
+            expiresAt,
+        } as any,
+    })
+
+    for (const chunkFile of chunkFiles) {
+        try {
+            await storageService.deleteFile(chunkFile.filePath)
+        } catch (error) {
+            console.warn(
+                `Failed to delete chunk file ${chunkFile.filePath} for campaign ${campaign.id} and job ${chunk.jobId}:`,
+                error,
+            )
+        }
+    }
+
+    await (businessPrisma as any).campaignChunkFile.updateMany({
+        where: {
+            campaignId: campaign.id,
+            jobId: chunk.jobId,
+            isDeleted: false,
+        },
+        data: {
+            isDeleted: true,
+            deletedAt: new Date(),
+        },
+    })
+
+    return {
+        file: campaignFile,
+        pdfCount: totalPdfCount,
+    }
+}
+
 const createCampaignFile = async (
     businessId: string,
     campaign: CampaignWithTemplates,
@@ -516,6 +653,49 @@ const createCampaignFile = async (
         compressionOptions: { level: 9 },
     })
 
+    if (isChunkExecution(chunk)) {
+        const chunkZipFileName = `${businessId}/campaign/chunks/${campaign.id}/${chunk.jobId}/chunk-${chunk.chunkOrder}.zip`
+        const chunkZipUrl = await storageService.uploadFile(zipBuffer, chunkZipFileName, {
+            contentType: "application/zip",
+        })
+
+        await (businessPrisma as any).campaignChunkFile.upsert({
+            where: {
+                campaignId_jobId_chunkOrder: {
+                    campaignId: campaign.id,
+                    jobId: chunk.jobId,
+                    chunkOrder: chunk.chunkOrder,
+                },
+            },
+            create: {
+                campaignId: campaign.id,
+                jobId: chunk.jobId,
+                chunkOrder: chunk.chunkOrder,
+                totalChunks: chunk.totalChunks,
+                fileName: chunkZipFileName,
+                filePath: chunkZipUrl,
+                generatedDocuments: pdfArtifacts.length,
+                isDeleted: false,
+            },
+            update: {
+                totalChunks: chunk.totalChunks,
+                fileName: chunkZipFileName,
+                filePath: chunkZipUrl,
+                generatedDocuments: pdfArtifacts.length,
+                isDeleted: false,
+                deletedAt: null,
+            },
+        })
+
+        return finalizeChunkedCampaignFile(
+            businessId,
+            campaign,
+            businessPrisma,
+            storageService,
+            chunk,
+        )
+    }
+
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
     const zipFileName = `${businessId}/campaign/campaign-${campaign.name}-${timestamp}.zip`
     const zipUrl = await storageService.uploadFile(zipBuffer, zipFileName, {
@@ -606,17 +786,26 @@ const runCampaignForBusiness = async (
                 try {
                     const campaignFileResult = await createCampaignFile(businessId, campaign, businessPrisma, chunk)
                     const hasGeneratedFile = Boolean(campaignFileResult?.file?.id)
-                    const nextFileStatus = hasGeneratedFile ? FILE_STATUS.AVALIABLE : FILE_STATUS.EMPTY
-                    const nextScheduleStatus = chunk && !chunk.isFinalChunk
-                        ? SCHEDULE_STATUS.PENDING
-                        : SCHEDULE_STATUS.TRIGGERED
+                    const isChunkRun = isChunkExecution(chunk)
+                    const nextFileStatus = hasGeneratedFile
+                        ? FILE_STATUS.AVALIABLE
+                        : isChunkRun
+                            ? FILE_STATUS.PENDING
+                            : FILE_STATUS.EMPTY
+                    const nextScheduleStatus = hasGeneratedFile
+                        ? SCHEDULE_STATUS.TRIGGERED
+                        : isChunkRun
+                            ? SCHEDULE_STATUS.PENDING
+                            : SCHEDULE_STATUS.TRIGGERED
                     const runFinishedAt = new Date()
                     const chunkSuffix = chunk
                         ? ` (chunk offset=${chunk.offset}, limit=${chunk.limit}${chunk.isFinalChunk ? ", final" : ""})`
                         : ""
                     const successMessage = hasGeneratedFile
                         ? `${logPrefix} Campaign run successfully${chunkSuffix}`
-                        : `${logPrefix} Campaign run completed without generated files${chunkSuffix}`
+                        : isChunkRun
+                            ? `${logPrefix} Campaign chunk uploaded${chunkSuffix}`
+                            : `${logPrefix} Campaign run completed without generated files${chunkSuffix}`
 
                     if (campaignFileResult) {
                         console.info(
