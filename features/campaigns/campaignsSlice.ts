@@ -234,11 +234,55 @@ export const rerunCampaign = createAsyncThunk(
             throw new Error(errorMessage)
         }
 
-        if (!("campaign" in data) || !(data as { campaign?: unknown }).campaign) {
-            throw new Error("Response did not include an updated campaign")
+        const accepted =
+            "accepted" in data &&
+            typeof (data as { accepted?: unknown }).accepted === "boolean"
+                ? Boolean((data as { accepted?: boolean }).accepted)
+                : false
+
+        if (!accepted) {
+            throw new Error("Run request was not accepted")
         }
 
-        return (data as { campaign: CampaignWithRelations }).campaign
+        return { id, accepted }
+    },
+)
+
+export const pollCampaignRunStatus = createAsyncThunk(
+    "campaigns/pollCampaignRunStatus",
+    async (id: string) => {
+        const response = await fetch(`/api/campaigns/${id}/run`, {
+            method: "GET",
+            credentials: "include",
+        })
+
+        let data: unknown = null
+        try {
+            data = await response.json()
+        } catch {
+            // Ignore JSON parsing errors, handled below
+        }
+
+        if (!response.ok || !data || typeof data !== "object") {
+            const errorMessage =
+                data &&
+                typeof (data as { error?: unknown }).error === "string"
+                    ? ((data as { error?: string }).error as string)
+                    : "Failed to fetch campaign run status"
+            throw new Error(errorMessage)
+        }
+
+        const isRunning =
+            "isRunning" in data && typeof (data as { isRunning?: unknown }).isRunning === "boolean"
+                ? Boolean((data as { isRunning?: boolean }).isRunning)
+                : false
+
+        const campaign =
+            "campaign" in data && (data as { campaign?: unknown }).campaign
+                ? ((data as { campaign: CampaignWithRelations }).campaign)
+                : null
+
+        return { id, isRunning, campaign }
     },
 )
 
@@ -273,6 +317,7 @@ const initialState: CampaignsState = {
         status: "idle",
         error: null,
         currentId: null,
+        runningIds: [],
     },
 }
 
@@ -387,9 +432,8 @@ const campaignsSlice = createSlice({
             })
             .addCase(rerunCampaign.fulfilled, (state, action) => {
                 state.rerun.status = "succeeded"
-                const index = state.list.items.findIndex((campaign) => campaign.id === action.payload.id)
-                if (index !== -1) {
-                    state.list.items[index] = action.payload
+                if (!state.rerun.runningIds.includes(action.payload.id)) {
+                    state.rerun.runningIds.push(action.payload.id)
                 }
                 state.rerun.currentId = null
             })
@@ -397,6 +441,25 @@ const campaignsSlice = createSlice({
                 state.rerun.status = "failed"
                 state.rerun.error = action.error.message || "Failed to run campaign"
                 state.rerun.currentId = null
+            })
+            .addCase(pollCampaignRunStatus.fulfilled, (state, action) => {
+                const { id, isRunning, campaign } = action.payload
+
+                if (campaign) {
+                    const index = state.list.items.findIndex((item) => item.id === campaign.id)
+                    if (index !== -1) {
+                        state.list.items[index] = campaign
+                    }
+                }
+
+                const isTracked = state.rerun.runningIds.includes(id)
+                if (isRunning && !isTracked) {
+                    state.rerun.runningIds.push(id)
+                }
+
+                if (!isRunning && isTracked) {
+                    state.rerun.runningIds = state.rerun.runningIds.filter((runningId) => runningId !== id)
+                }
             })
     },
 })

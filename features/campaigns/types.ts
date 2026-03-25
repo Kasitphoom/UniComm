@@ -37,6 +37,7 @@ export interface CampaignRerunState {
     status: RequestStatus
     error: string | null
     currentId: string | null
+    runningIds: string[]
 }
 
 export interface CampaignsState {
