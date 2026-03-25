@@ -423,10 +423,7 @@ const finalizeChunkedCampaignFile = async (
     let totalPdfCount = 0
 
     for (const chunkFile of chunkFiles) {
-        const chunkZipContent = await storageService.getFileContent(chunkFile.filePath)
-        const chunkZipBuffer = Buffer.isBuffer(chunkZipContent)
-            ? chunkZipContent
-            : Buffer.from(chunkZipContent)
+        const chunkZipBuffer = await storageService.getFileBuffer(chunkFile.filePath)
         const parsedChunkZip = await JSZip.loadAsync(chunkZipBuffer)
 
         const entries = Object.values(parsedChunkZip.files)

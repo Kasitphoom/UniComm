@@ -20,6 +20,11 @@ class StorageService {
         // Implementation for getting file content
         return Promise.resolve('<xml></xml>')
     }
+
+    async getFileBuffer(filePath: string): Promise<Buffer> {
+        // Implementation for getting binary file content
+        return Promise.resolve(Buffer.from(''))
+    }
 }
 
 class VercelStorageService extends StorageService {
@@ -58,6 +63,18 @@ class VercelStorageService extends StorageService {
         }
         const content = await response.text()
         return content
+    }
+
+    async getFileBuffer(filePath: string): Promise<Buffer> {
+        const response = await fetch(filePath, { cache: 'no-store', credentials: 'omit' })
+        if (!response.ok) {
+            const errorBody = await response.text()
+            console.error(errorBody)
+            throw new Error(`Failed to fetch file buffer from ${filePath}`)
+        }
+
+        const arrayBuffer = await response.arrayBuffer()
+        return Buffer.from(arrayBuffer)
     }
 
     async deleteFile (fileUrl: string): Promise<void> {
