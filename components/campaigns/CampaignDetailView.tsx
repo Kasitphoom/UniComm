@@ -549,6 +549,7 @@ const CampaignDetailView = ({ campaign }: Props) => {
                                     const logKey = log._id ?? log.id
                                     const isSuccess = log.status === "TRIGGERED"
                                     const isFailed = log.status === "FAILED"
+                                    const displayStatus = log.status === "TRIGGERED" ? "RUNNING" : log.status
                                     const statusColors = isSuccess
                                         ? "bg-success-50 text-success-600"
                                         : isFailed
@@ -575,7 +576,7 @@ const CampaignDetailView = ({ campaign }: Props) => {
                                                         <p className="text-sm text-default-900 truncate">{log.message || "Status updated"}</p>
                                                     </div>
                                                     <div className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${statusColors}`}>
-                                                        {log.status}
+                                                        {displayStatus}
                                                     </div>
                                                 </div>
                                             )}

@@ -1,7 +1,6 @@
 import { requireCronAuth } from "@/lib/api-auth";
-import { runCampaignJob } from "@/utils/campaign";
-import { deleteCampaignFileJob } from "@/utils/files";
-import { after, NextRequest, NextResponse } from "next/server";
+import { enqueueCampaignWorkerJob } from "@/lib/external-job-queue";
+import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,24 +31,46 @@ export const GET = async (request: NextRequest) => {
             return auth.response;
         }
 
-        after(async () => {
-            try {
-                const results = await runCampaignJob({ triggerSource: "CRON" });
-                await deleteCampaignFileJob();
+        const minuteBucket = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")
 
-                console.log(
-                    "Cron background campaign job completed",
-                    JSON.stringify({ processedBusinesses: results.length }),
-                );
-            } catch (error) {
-                console.error("Error executing background cron job for campaigns:", error);
-            }
-        });
+        const [runCampaignsQueueJob, cleanupFilesQueueJob] = await Promise.all([
+            enqueueCampaignWorkerJob(
+                request.nextUrl.origin,
+                {
+                    jobType: "RUN_CAMPAIGNS",
+                    triggerSource: "CRON",
+                },
+                {
+                    deduplicationId: `cron-run-campaigns-${minuteBucket}`,
+                },
+            ),
+            enqueueCampaignWorkerJob(
+                request.nextUrl.origin,
+                {
+                    jobType: "DELETE_EXPIRED_FILES",
+                },
+                {
+                    deduplicationId: `cron-delete-expired-files-${minuteBucket}`,
+                },
+            ),
+        ])
+
+        console.log(
+            "Cron jobs enqueued",
+            JSON.stringify({
+                runCampaignsMessageId: runCampaignsQueueJob.messageId,
+                cleanupFilesMessageId: cleanupFilesQueueJob.messageId,
+            }),
+        )
 
         return NextResponse.json(
             {
-                message: "Cron job accepted",
+                message: "Cron jobs enqueued",
                 acceptedAt: new Date().toISOString(),
+                jobs: {
+                    runCampaignsMessageId: runCampaignsQueueJob.messageId,
+                    cleanupFilesMessageId: cleanupFilesQueueJob.messageId,
+                },
             },
             { status: 200 },
         );
