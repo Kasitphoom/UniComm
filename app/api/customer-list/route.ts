@@ -210,7 +210,7 @@ export const POST = async ( request: NextRequest ) => {
                     contactList,
                     customersCreated: customers.length,
                 };
-            });
+            }, { timeout: 30000 });
 
             return NextResponse.json({ 
                 contactList: result.contactList,
