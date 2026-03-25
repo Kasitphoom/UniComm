@@ -83,7 +83,7 @@ const LoginForm = () => {
             const active = (session?.user as any)?.activeBusinessId
             if (!active && !isInviteFlow) onOpen()
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, [status, session, callbackUrl])
 
     return (

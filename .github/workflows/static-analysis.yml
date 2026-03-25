@@ -1,0 +1,49 @@
+name: Static Analysis Pipeline
+
+on:
+  push:
+
+jobs:
+  static-analysis:
+    runs-on: ubuntu-latest
+    env:
+      MAIN_DATABASE_URL: mongodb://localhost:27017/main
+      BUSINESS_DATABASE_URL: mongodb://localhost:27017/business
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma clients
+        run: npm run prisma-generate
+
+      - name: Run TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Run ESLint
+        run: npx eslint .
+
+  deploy-main:
+    needs: static-analysis
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel Deploy Hook (Main)
+        run: curl -X POST https://api.vercel.com/v1/integrations/deploy/prj_khm35phZsO8Sb8K8Z1c2lpKji9Ja/2jtIBdiDGO
+
+  deploy-staging:
+    needs: static-analysis
+    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Vercel Deploy Hook (Staging)
+        run: curl -X POST https://api.vercel.com/v1/integrations/deploy/prj_khm35phZsO8Sb8K8Z1c2lpKji9Ja/8dzsBfhXTJ

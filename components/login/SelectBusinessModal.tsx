@@ -164,7 +164,7 @@ const SelectBusinessModal = (props: SelectBusinessModalProps) => {
                                         </div>
                                         <h3 className="text-lg font-medium text-default-900 mb-1">No Workspaces Found</h3>
                                         <p className="text-sm text-default-500 max-w-65">
-                                            You haven't been added to any business workspaces yet.
+                                            You haven&apos;t been added to any business workspaces yet.
                                         </p>
                                     </div>
                                 )}

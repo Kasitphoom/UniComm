@@ -86,7 +86,7 @@ const ComponentBlocks: Plugin<ComponentBlocksSchema> = {
         const { position } = schema
         if (!position) return
 
-        let children = schema.componentSchemas || []
+        const children = schema.componentSchemas || []
 
         if (!children.length) {
             return

@@ -1,6 +1,6 @@
 import type { Prisma } from "@/app/generated/business/prisma"
 
-export type Campaign = Prisma.CampaignGetPayload<{}>
+export type Campaign = Prisma.CampaignGetPayload<Prisma.CampaignDefaultArgs>
 
 export type CampaignTemplateWithTemplate = Prisma.CampaignTemplateGetPayload<{
     include: {

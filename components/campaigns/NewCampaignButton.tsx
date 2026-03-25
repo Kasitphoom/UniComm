@@ -8,14 +8,14 @@ import { useAppDispatch, useAppSelector } from '@/store/hooks'
 import { createCampaign } from '@/features/campaigns/campaignsSlice'
 import CampaignWizardModal from './CampaignWizardModal'
 import type { CampaignFormValues } from './newCampaignSteps/types'
-import { userHasPermissionClient } from '@/utils/permissions'
+import { useUserHasPermissionClient } from '@/utils/permissions'
 import { UserRole } from '@/app/generated/business/prisma'
 
 const NewCampaignButton = () => {
     const dispatch = useAppDispatch()
     const { isOpen, onOpen, onOpenChange, onClose } = useDisclosure()
     const createStatus = useAppSelector((state) => state.campaigns.create.status)
-    const canManageCampaigns = userHasPermissionClient([
+    const canManageCampaigns = useUserHasPermissionClient([
         UserRole.OWNER,
         UserRole.ADMIN,
         UserRole.MEMBER,

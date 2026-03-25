@@ -21,6 +21,7 @@ export default async function InvitePage({ searchParams }: { searchParams: Promi
         return <ValidationUI title="Not Found" description="This invitation does not exist." iconName="search" />;
     }
 
+    // eslint-disable-next-line react-hooks/purity -- server-side expiration must compare against current time
     if (reference.expiresAt && new Date(reference.expiresAt).getTime() < Date.now()) {
         return <ValidationUI title="Expired" description="This link is no longer valid." iconName="clock" iconColor="text-warning" />;
     }

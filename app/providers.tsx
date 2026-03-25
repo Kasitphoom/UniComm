@@ -5,10 +5,14 @@ import { SessionProvider } from 'next-auth/react'
 import { Provider as ReduxProvider } from 'react-redux'
 import { store } from '@/store/store'
 import { UserProvider } from '@/components/providers/UserProvider'
+import { Analytics } from "@vercel/analytics/next"
+import { SpeedInsights } from "@vercel/speed-insights/next"
 
 export function Providers({ children }: { children: React.ReactNode }) {
     return (
         <HeroUIProvider>
+            <Analytics />
+            <SpeedInsights />
             <ToastProvider placement='top-right' toastProps={{
                 color: "secondary",
                 timeout: 2000,

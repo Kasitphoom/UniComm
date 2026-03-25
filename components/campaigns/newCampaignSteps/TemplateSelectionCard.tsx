@@ -20,7 +20,6 @@ const TemplateSelectionCard = ({ template, isSelected, onToggle }: TemplateSelec
 
     useEffect(() => {
         let isMounted = true
-        setParsedTemplate(null)
 
         clientFetchParsedTemplate(template.id)
             .then((tpl) => {

@@ -50,7 +50,7 @@ export const userHasPermissionAPI = async (req: NextRequest, allowRoles: UserRol
  * @param allowRoles - Array of roles that have permission
  * @returns true if user's role is in the allowed roles, false otherwise
  */
-export const userHasPermissionClient = (allowRoles: UserRole[]): boolean => {
+export const useUserHasPermissionClient = (allowRoles: UserRole[]): boolean => {
     const { role } = useUser()
     return hasPermission(role, allowRoles)
 }

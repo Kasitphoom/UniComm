@@ -54,8 +54,8 @@ const loadModule = async <T>(
     const resolvedBranch = moduleExists(version, branch, db) ? branch : "main"
     if (!moduleExists(version, resolvedBranch, db)) return [] as T[]
     const moduleUrl = resolveModuleUrl(version, resolvedBranch, db)
-    const module = await import(moduleUrl)
-    return (module.migrations || module.default || []) as T[]
+    const migrationModule = await import(moduleUrl)
+    return (migrationModule.migrations || migrationModule.default || []) as T[]
 }
 
 export const loadMainMigrationsForVersion = async (
