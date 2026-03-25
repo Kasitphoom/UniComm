@@ -1,9 +1,9 @@
-import { after, NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/api-auth"
-import { runCampaignJob } from "@/utils/campaign"
 import { userHasPermissionAPI } from "@/utils/permissions"
 import { getBusinessPrisma } from "@/lib/prisma-business"
 import { FILE_STATUS, Prisma, SCHEDULE_STATUS, UserRole } from "@/app/generated/business/prisma"
+import { enqueueCampaignWorkerJob } from "@/lib/external-job-queue"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -120,23 +120,26 @@ export const POST = async (req: NextRequest, { params }: RouteParams) => {
             },
         })
 
-        after(async () => {
-            try {
-                await runCampaignJob({
-                    campaignId,
-                    businessIds: [businessId],
-                    triggerSource: "MANUAL",
-                })
-            } catch (error) {
-                console.error("Error running campaign in background:", error)
-            }
-        })
+        const minuteBucket = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")
+        const queueJob = await enqueueCampaignWorkerJob(
+            req.nextUrl.origin,
+            {
+                jobType: "RUN_CAMPAIGNS",
+                triggerSource: "MANUAL",
+                campaignId,
+                businessIds: [businessId],
+            },
+            {
+                deduplicationId: `manual-run-${businessId}-${campaignId}-${minuteBucket}`,
+            },
+        )
 
         return NextResponse.json({
             accepted: true,
             campaignId,
             status: "RUNNING",
             message: "Campaign run accepted",
+            queueMessageId: queueJob.messageId,
         })
     } catch (error) {
         console.error("Error running campaign:", error)
