@@ -9,6 +9,9 @@ export type CampaignWorkerJobPayload =
           campaignId?: string
           businessIds?: string[]
           maxParallel?: number
+          jobId?: string
+          chunkOrder?: number
+          totalChunks?: number
           chunkOffset?: number
           chunkLimit?: number
           isFinalChunk?: boolean
