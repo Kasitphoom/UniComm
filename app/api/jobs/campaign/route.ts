@@ -15,8 +15,7 @@ const isRunCampaignJobPayload = (
 ): payload is Extract<CampaignWorkerJobPayload, { jobType: "RUN_CAMPAIGNS" }> => {
     return payload.jobType === "RUN_CAMPAIGNS"
 }
-
-const DEFAULT_CHUNK_SIZE = 500
+const DEFAULT_CHUNK_SIZE = 450
 
 const getChunkSize = () => {
     const rawChunkSize = Number(process.env.CAMPAIGN_JOB_CHUNK_SIZE ?? DEFAULT_CHUNK_SIZE)
