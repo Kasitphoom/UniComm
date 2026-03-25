@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useCallback, useState } from "react"
+import { useEffect, useMemo, useCallback, useState, useRef } from "react"
 import type { Key } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
@@ -21,7 +21,14 @@ import {
 } from "@heroui/react"
 import { Edit2, Trash2, Play, Calendar, Eye } from "lucide-react"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import { fetchCampaigns, type FetchCampaignsParams, updateCampaign, deleteCampaign, rerunCampaign } from "@/features/campaigns/campaignsSlice"
+import {
+    fetchCampaigns,
+    type FetchCampaignsParams,
+    updateCampaign,
+    deleteCampaign,
+    rerunCampaign,
+    pollCampaignRunStatus,
+} from "@/features/campaigns/campaignsSlice"
 import { UserRole } from "@/app/generated/business/prisma"
 import type { FILE_STATUS, SCHEDULE_STATUS } from "@/app/generated/business/prisma"
 import { StatusCell } from "./StatusCell"
@@ -45,7 +52,43 @@ export const CampaignTable = () => {
     } = useAppSelector((state) => state.campaigns.list)
     const { status: updateStatus } = useAppSelector((state) => state.campaigns.update)
     const { status: deleteStatus, deletingId } = useAppSelector((state) => state.campaigns.remove)
-    const { status: rerunStatus, currentId: rerunId } = useAppSelector((state) => state.campaigns.rerun)
+    const { status: rerunStatus, currentId: rerunId, runningIds } = useAppSelector((state) => state.campaigns.rerun)
+    const pollingIntervalsRef = useRef<Map<string, number>>(new Map())
+
+    const stopPolling = useCallback((campaignId: string) => {
+        const intervalId = pollingIntervalsRef.current.get(campaignId)
+        if (intervalId) {
+            window.clearInterval(intervalId)
+            pollingIntervalsRef.current.delete(campaignId)
+        }
+    }, [])
+
+    const pollOnce = useCallback(async (campaignId: string) => {
+        try {
+            const result = await dispatch(pollCampaignRunStatus(campaignId)).unwrap()
+            if (!result.isRunning) {
+                stopPolling(campaignId)
+                addToast({
+                    title: "Campaign run completed",
+                    description: "Status has been updated.",
+                    color: "success",
+                })
+            }
+        } catch {
+            // Keep polling on transient errors
+        }
+    }, [dispatch, stopPolling])
+
+    const startPolling = useCallback((campaignId: string) => {
+        if (pollingIntervalsRef.current.has(campaignId)) return
+
+        void pollOnce(campaignId)
+        const intervalId = window.setInterval(() => {
+            void pollOnce(campaignId)
+        }, 5000)
+
+        pollingIntervalsRef.current.set(campaignId, intervalId)
+    }, [pollOnce])
 
     const [isWizardOpen, setWizardOpen] = useState(false)
     const [editingCampaign, setEditingCampaign] = useState<CampaignWithRelations | null>(null)
@@ -80,15 +123,35 @@ export const CampaignTable = () => {
         dispatch(fetchCampaigns(campaignParams))
     }, [dispatch, campaignParams])
 
+    useEffect(() => {
+        runningIds.forEach((campaignId) => startPolling(campaignId))
+
+        for (const campaignId of pollingIntervalsRef.current.keys()) {
+            if (!runningIds.includes(campaignId)) {
+                stopPolling(campaignId)
+            }
+        }
+    }, [runningIds, startPolling, stopPolling])
+
+    useEffect(() => {
+        return () => {
+            for (const intervalId of pollingIntervalsRef.current.values()) {
+                window.clearInterval(intervalId)
+            }
+            pollingIntervalsRef.current.clear()
+        }
+    }, [])
+
     const handleAction = useCallback( async (_event: PressEvent, type: string, id: string) => {
         switch (type) {
             case "retrigger":
-                if (rerunStatus === "loading" && rerunId === id) return
+                if ((rerunStatus === "loading" && rerunId === id) || runningIds.includes(id)) return
                 try {
                     await dispatch(rerunCampaign(id)).unwrap()
+                    startPolling(id)
                     addToast({
                         title: "Campaign run triggered",
-                        description: "We will update the status once the files are ready.",
+                        description: "Campaign is running in the background.",
                         color: "success",
                     })
                 } catch (error) {
@@ -102,7 +165,7 @@ export const CampaignTable = () => {
             default:
                 break
         }
-    }, [dispatch, rerunId, rerunStatus])
+    }, [dispatch, rerunId, rerunStatus, runningIds, startPolling])
 
     const handleWizardClose = useCallback(() => {
         setWizardOpen(false)
@@ -152,13 +215,13 @@ export const CampaignTable = () => {
             return sort === "asc" ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA)
         })
 
-        if (rerunStatus === "idle" && !rerunId) {
+        if (rerunStatus === "idle" && !rerunId && runningIds.length === 0) {
             return sorted
         }
 
         // Clone the campaign objects so the HeroUI Table re-renders action cells when rerun state flips
         return sorted.map((campaign) => ({ ...campaign }))
-    }, [campaigns, sort, rerunId, rerunStatus])
+    }, [campaigns, sort, rerunId, rerunStatus, runningIds])
 
     const editInitialValues = useMemo<CampaignFormValues | undefined>(() => {
         if (!editingCampaign) return undefined
@@ -286,9 +349,9 @@ export const CampaignTable = () => {
                                 variant="light"
                                 color="secondary"
                                 onPress={(e) => handleAction(e, "retrigger", campaign.id)}
-                                isLoading={rerunStatus === "loading" && rerunId === campaign.id}
-                                isDisabled={rerunStatus === "loading" && rerunId === campaign.id}
-                                startContent={!(rerunStatus === "loading" && rerunId === campaign.id) && <Play size={16} fill="currentColor" />}
+                                isLoading={(rerunStatus === "loading" && rerunId === campaign.id) || runningIds.includes(campaign.id)}
+                                isDisabled={(rerunStatus === "loading" && rerunId === campaign.id) || runningIds.includes(campaign.id)}
+                                startContent={!((rerunStatus === "loading" && rerunId === campaign.id) || runningIds.includes(campaign.id)) && <Play size={16} fill="currentColor" />}
                             />
                         </Tooltip>
                         <Tooltip content={canManageCampaigns ? "Edit" : "No permission"} size="sm">
@@ -324,7 +387,7 @@ export const CampaignTable = () => {
             default:
                 return null
         }
-    }, [handleAction, handleEditAction, handleDeleteAction, canManageCampaigns, rerunId, rerunStatus])
+    }, [handleAction, handleEditAction, handleDeleteAction, canManageCampaigns, rerunId, rerunStatus, runningIds])
 
     if (status === "failed") {
         return (
@@ -423,8 +486,8 @@ export const CampaignTable = () => {
                         variant="light" 
                         color="secondary" 
                         onPress={(e) => handleAction(e, "retrigger", campaign.id)}
-                        isLoading={rerunStatus === "loading" && rerunId === campaign.id}
-                        isDisabled={rerunStatus === "loading" && rerunId === campaign.id}
+                        isLoading={(rerunStatus === "loading" && rerunId === campaign.id) || runningIds.includes(campaign.id)}
+                        isDisabled={(rerunStatus === "loading" && rerunId === campaign.id) || runningIds.includes(campaign.id)}
                     >
                         <Play size={16} fill="currentColor" />
                     </Button>
