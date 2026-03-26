@@ -2,7 +2,6 @@ import { NextResponse } from "next/server"
 import { runCampaignJob } from "@/utils/campaign"
 import { deleteCampaignFileJob } from "@/utils/files"
 import { enqueueCampaignWorkerJob, type CampaignWorkerJobPayload } from "@/lib/external-job-queue"
-import { verifySignatureAppRouter } from "@upstash/qstash/nextjs"
 import { getBusinessPrisma } from "@/lib/prisma-business"
 import { FILE_STATUS, SCHEDULE_STATUS } from "@/app/generated/business/prisma"
 
@@ -114,6 +113,14 @@ const enqueueChunkedCampaignJobs = async (
 
 async function handler(request: Request) {
     try {
+        const expectedSecret = process.env.CAMPAIGN_JOB_SECRET?.trim()
+        if (expectedSecret) {
+            const incomingSecret = request.headers.get("x-campaign-job-secret")?.trim()
+            if (!incomingSecret || incomingSecret !== expectedSecret) {
+                return NextResponse.json({ error: "Unauthorized job trigger" }, { status: 401 })
+            }
+        }
+
         const payload = (await request.json()) as CampaignWorkerJobPayload
         if (!payload || typeof payload !== "object" || !("jobType" in payload)) {
             return NextResponse.json({ error: "Invalid job payload" }, { status: 400 })
@@ -187,6 +194,7 @@ async function handler(request: Request) {
                         },
                         {
                             deduplicationId: `chunk-run-${businessId}-${campaignId}-${payload.jobId}-${nextChunkOffset}-${payload.chunkLimit}-${nowBucket}`,
+                            waitForResponse: false,
                         },
                     )
 
@@ -220,4 +228,4 @@ async function handler(request: Request) {
     }
 }
 
-export const POST = verifySignatureAppRouter(handler)
+export const POST = handler

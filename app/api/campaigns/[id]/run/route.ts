@@ -113,7 +113,7 @@ export const POST = async (req: NextRequest, { params }: RouteParams) => {
                 fileStatus: FILE_STATUS.PENDING,
                 logs: {
                     create: {
-                        message: "[MANUAL] Campaign run queued",
+                        message: "[MANUAL] Campaign run triggered",
                         status: SCHEDULE_STATUS.PENDING,
                     },
                 },
@@ -131,6 +131,7 @@ export const POST = async (req: NextRequest, { params }: RouteParams) => {
             },
             {
                 deduplicationId: `manual-run-${businessId}-${campaignId}-${minuteBucket}`,
+                waitForResponse: true,
             },
         )
 
@@ -139,7 +140,7 @@ export const POST = async (req: NextRequest, { params }: RouteParams) => {
             campaignId,
             status: "RUNNING",
             message: "Campaign run accepted",
-            queueMessageId: queueJob.messageId,
+            triggerId: queueJob.messageId,
         })
     } catch (error) {
         console.error("Error running campaign:", error)
@@ -199,7 +200,7 @@ export const GET = async (req: NextRequest, { params }: RouteParams) => {
         }
 
         const latestLogMessage = campaign.logs?.[0]?.message ?? ""
-        const isQueuedLog = latestLogMessage.includes("[MANUAL] Campaign run queued")
+        const isQueuedLog = latestLogMessage.includes("[MANUAL] Campaign run triggered")
         const isRunning =
             campaign.scheduleStatus === SCHEDULE_STATUS.RUNNING ||
             (campaign.scheduleStatus === SCHEDULE_STATUS.PENDING && isQueuedLog)

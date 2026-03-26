@@ -83,38 +83,44 @@ This project is currently in development. Licensing details will be added upon r
 
 ---
 
-## ⚙️ External Campaign Worker (Vercel)
+## ⚙️ Campaign Worker (Vercel)
 
-Campaign cron/manual runs are queued to an external queue and executed by a dedicated worker endpoint for improved reliability on serverless.
+Campaign cron/manual runs trigger a dedicated worker endpoint. Manual chunked runs are processed sequentially by chaining worker API calls.
 
 Required environment variables:
 
 - `CRON_JOBS_SECRET` — Auth secret for `/api/cron/campaign`
-- `QSTASH_TOKEN` — Upstash QStash token used to publish jobs
-- `QSTASH_CURRENT_SIGNING_KEY` — Upstash signing key for request verification
-- `QSTASH_NEXT_SIGNING_KEY` — Upstash next signing key for key rotation
-- `QSTASH_WORKER_URL` — Public base URL for worker callbacks (recommended, e.g. `https://your-app.vercel.app`)
-- `CAMPAIGN_JOB_CHUNK_SIZE` — Optional per-message customer chunk size for manual campaign runs (default: `100`)
+- `CAMPAIGN_JOB_SECRET` — Optional shared secret header (`x-campaign-job-secret`) required by `/api/jobs/campaign`
+- `WORKER_API_URL` — Optional base URL used for worker API triggering (falls back to `APP_URL`, `VERCEL_URL`, then request origin)
+- `CAMPAIGN_JOB_CHUNK_SIZE` — Optional per-message customer chunk size for manual campaign runs (default: `250`)
+- `ABLY_API_KEY` — Optional Ably server API key for realtime campaign progress (single key for both publish and subscribe token issuance)
+- `ABLY_PUBLISH_API_KEY` — Optional dedicated Ably key used by worker to publish campaign progress
+- `ABLY_SUBSCRIBE_API_KEY` — Optional dedicated Ably key used by `/api/realtime/ably-token` to issue subscribe tokens
 
 Worker endpoint:
 
 - `POST /api/jobs/campaign`
 
-Queue flow:
+Worker trigger flow:
 
-- `/api/cron/campaign` enqueues `RUN_CAMPAIGNS` + `DELETE_EXPIRED_FILES`
-- `/api/campaigns/{id}/run` enqueues `RUN_CAMPAIGNS` for one campaign
-- Worker verifies QStash signatures and returns non-2xx on failure so QStash retries
+- `/api/cron/campaign` triggers `RUN_CAMPAIGNS` + `DELETE_EXPIRED_FILES` only when work exists
+- `/api/campaigns/{id}/run` triggers `RUN_CAMPAIGNS` for one campaign
 - Chunked manual runs upload per-chunk ZIP files, then merge into one final campaign ZIP in `CampaignFile`
-- Chunk execution is sequential: chunk 1 queues chunk 2 only after completion, then chunk 3, and so on
+- Chunk execution is sequential: chunk 1 triggers chunk 2 only after completion, then chunk 3, and so on
 
 Chunk cleanup API:
 
 - `DELETE /api/campaign-chunks/{jobId}` marks all chunk records for the job as deleted
 
-Notes:
+Realtime API:
 
-- QStash cannot call `localhost`/loopback addresses. For local testing, use a public tunnel URL in `QSTASH_WORKER_URL`.
+- `POST /api/realtime/ably-token` issues authenticated Ably token requests for frontend subscriptions
+
+Realtime progress flow:
+
+- Worker publishes campaign progress events to `campaign-progress:{campaignId}`
+- Campaign detail UI subscribes to that channel and updates progress live
+- Polling is kept as fallback if Ably is unavailable
 
 ---
 
