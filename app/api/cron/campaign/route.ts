@@ -67,10 +67,28 @@ const hasExpiredCampaignFiles = async (businessId: string) => {
  */
 export const GET = async (request: NextRequest) => {
     try {
-        console.log("Cron job for campaigns executed at", new Date().toISOString());
+        const startedAt = new Date().toISOString();
+        const traceId = request.headers.get("x-campaign-job-trace-id")?.trim() || `cron-${startedAt.slice(0, 19).replace(/[:T]/g, "-")}`;
+        const parentHop = Number(request.headers.get("x-campaign-job-hop") || "0") || 0;
+
+        console.log(
+            "[CampaignCron] request:start",
+            JSON.stringify({
+                traceId,
+                parentHop,
+                method: request.method,
+                path: request.nextUrl.pathname,
+                origin: request.nextUrl.origin,
+                startedAt,
+            }),
+        );
 
         const auth = await requireCronAuth(request);
         if (!auth.ok) {
+            console.warn(
+                "[CampaignCron] request:unauthorized",
+                JSON.stringify({ traceId, parentHop, path: request.nextUrl.pathname }),
+            );
             return auth.response;
         }
 
@@ -113,6 +131,9 @@ export const GET = async (request: NextRequest) => {
                     {
                         deduplicationId: `cron-run-campaigns-${minuteBucket}`,
                         waitForResponse: true,
+                        traceId,
+                        parentHop,
+                        sourceRoute: "/api/cron/campaign",
                     },
                 ),
             );
@@ -128,6 +149,9 @@ export const GET = async (request: NextRequest) => {
                     {
                         deduplicationId: `cron-delete-expired-files-${minuteBucket}`,
                         waitForResponse: true,
+                        traceId,
+                        parentHop,
+                        sourceRoute: "/api/cron/campaign",
                     },
                 ),
             );
@@ -138,8 +162,10 @@ export const GET = async (request: NextRequest) => {
         const cleanupFilesQueueJob = shouldEnqueueCleanup ? triggeredJobs.shift() : undefined;
 
         console.log(
-            "Cron jobs triggered",
+            "[CampaignCron] request:complete",
             JSON.stringify({
+                traceId,
+                parentHop,
                 runCampaignsEnqueued: shouldEnqueueCampaignRuns,
                 cleanupEnqueued: shouldEnqueueCleanup,
                 runCampaignsMessageId: runCampaignsQueueJob?.messageId,
@@ -164,7 +190,13 @@ export const GET = async (request: NextRequest) => {
             { status: 200 },
         );
     } catch (error) {
-        console.error("Error executing cron job for campaigns:", error);
+        console.error(
+            "[CampaignCron] request:error",
+            JSON.stringify({
+                message: error instanceof Error ? error.message : "Unknown error",
+                stack: error instanceof Error ? error.stack : undefined,
+            }),
+        );
         return new Response("Error executing cron job", { status: 500 });
     }
 }
