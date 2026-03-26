@@ -195,6 +195,7 @@ async function handler(request: Request) {
                         {
                             deduplicationId: `chunk-run-${businessId}-${campaignId}-${payload.jobId}-${nextChunkOffset}-${payload.chunkLimit}-${nowBucket}`,
                             waitForResponse: false,
+                            endpointPath: "/api/jobs/campaign/forward",
                         },
                     )
 
