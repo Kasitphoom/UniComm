@@ -55,6 +55,15 @@ type CampaignJobResult = {
     campaigns: CampaignRunResult[]
 }
 
+type CampaignExecutionChunk = {
+    jobId?: string
+    chunkOrder?: number
+    totalChunks?: number
+    offset: number
+    limit: number
+    isFinalChunk?: boolean
+}
+
 type ContactListField = {
     field: string
     type?: string
@@ -354,12 +363,152 @@ export type CampaignWithTemplates = Prisma.CampaignGetPayload<{ include: typeof 
 type CampaignFileResult = {
     file: CampaignFile
     pdfCount: number
+    batchPdfCount?: number
+}
+
+const toBaseFileName = (value: string) => {
+    const normalized = value.trim()
+    if (!normalized) return normalized
+    const segments = normalized.split("/")
+    return segments[segments.length - 1] || normalized
+}
+
+const isChunkExecution = (
+    chunk?: CampaignExecutionChunk,
+): chunk is Required<Pick<CampaignExecutionChunk, "jobId" | "chunkOrder" | "totalChunks" | "offset" | "limit">> & CampaignExecutionChunk => {
+    return Boolean(
+        chunk &&
+            typeof chunk.jobId === "string" &&
+            chunk.jobId &&
+            typeof chunk.chunkOrder === "number" &&
+            typeof chunk.totalChunks === "number",
+    )
+}
+
+const finalizeChunkedCampaignFile = async (
+    businessId: string,
+    campaign: CampaignWithTemplates,
+    businessPrisma: BusinessPrismaClient,
+    storageService: NonNullable<ReturnType<typeof getStorageService>>,
+    chunk: Required<Pick<CampaignExecutionChunk, "jobId" | "chunkOrder" | "totalChunks" | "offset" | "limit">>,
+): Promise<CampaignFileResult | null> => {
+    const chunkFiles = await (businessPrisma as any).campaignChunkFile.findMany({
+        where: {
+            campaignId: campaign.id,
+            jobId: chunk.jobId,
+            isDeleted: false,
+        },
+        orderBy: {
+            chunkOrder: "asc",
+        },
+    })
+
+    if (!Array.isArray(chunkFiles) || chunkFiles.length < chunk.totalChunks) {
+        return null
+    }
+
+    const existingFinalFile = await businessPrisma.campaignFile.findFirst({
+        where: {
+            campaignId: campaign.id,
+            isDeleted: false,
+            fileName: {
+                contains: `job-${chunk.jobId}`,
+            },
+        },
+        orderBy: {
+            createdAt: "desc",
+        },
+    })
+
+    if (existingFinalFile) {
+        return {
+            file: existingFinalFile,
+            pdfCount: existingFinalFile.generatedDocuments,
+        }
+    }
+
+    const finalZip = new JSZip()
+    let totalPdfCount = 0
+
+    for (const chunkFile of chunkFiles) {
+        const chunkZipBuffer = await storageService.getFileBuffer(chunkFile.filePath)
+        const parsedChunkZip = await JSZip.loadAsync(chunkZipBuffer)
+
+        const entries = Object.values(parsedChunkZip.files)
+        for (const entry of entries) {
+            if (entry.dir) continue
+
+            const entryBuffer = await entry.async("nodebuffer")
+            const existing = finalZip.file(entry.name)
+            const outputName = existing ? `chunk-${chunkFile.chunkOrder}-${entry.name}` : entry.name
+            finalZip.file(outputName, entryBuffer)
+        }
+
+        totalPdfCount += Number(chunkFile.generatedDocuments ?? 0)
+    }
+
+    const finalZipBuffer = await finalZip.generateAsync({
+        type: "nodebuffer",
+        compression: "DEFLATE",
+        compressionOptions: { level: 9 },
+    })
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
+    const finalZipFileName = `${businessId}/campaign/campaign-${campaign.name}-job-${chunk.jobId}-${timestamp}.zip`
+    const finalZipUrl = await storageService.uploadFile(finalZipBuffer, finalZipFileName, {
+        contentType: "application/zip",
+    })
+
+    const generationFinishedAt = new Date()
+    const expiresAt = new Date(Date.now() + ZIP_EXPIRATION_MS)
+
+    const campaignFile = await businessPrisma.campaignFile.create({
+        data: {
+            campaignId: campaign.id,
+            fileName: toBaseFileName(finalZipFileName),
+            filePath: finalZipUrl,
+            generatedDocuments: totalPdfCount,
+            status: FILE_STATUS.AVALIABLE,
+            generationStartedAt: new Date(),
+            generationFinishedAt,
+            expiresAt,
+        } as any,
+    })
+
+    for (const chunkFile of chunkFiles) {
+        try {
+            await storageService.deleteFile(chunkFile.filePath)
+        } catch (error) {
+            console.warn(
+                `Failed to delete chunk file ${chunkFile.filePath} for campaign ${campaign.id} and job ${chunk.jobId}:`,
+                error,
+            )
+        }
+    }
+
+    await (businessPrisma as any).campaignChunkFile.updateMany({
+        where: {
+            campaignId: campaign.id,
+            jobId: chunk.jobId,
+            isDeleted: false,
+        },
+        data: {
+            isDeleted: true,
+            deletedAt: new Date(),
+        },
+    })
+
+    return {
+        file: campaignFile,
+        pdfCount: totalPdfCount,
+    }
 }
 
 const createCampaignFile = async (
     businessId: string,
     campaign: CampaignWithTemplates,
     businessPrisma: BusinessPrismaClient,
+    chunk?: CampaignExecutionChunk,
 ): Promise<CampaignFileResult | null> => {
     const generationStartedAt = new Date()
 
@@ -368,7 +517,13 @@ const createCampaignFile = async (
         throw new Error("Campaign is missing a contact list")
     }
 
-    const customers = Array.isArray(contactList.customers) ? contactList.customers : []
+    const allCustomers = Array.isArray(contactList.customers) ? contactList.customers : []
+    const customers = chunk
+        ? allCustomers.slice(
+              Math.max(0, chunk.offset),
+              Math.max(0, chunk.offset) + Math.max(0, chunk.limit),
+          )
+        : allCustomers
     if (customers.length === 0) return null
 
     const contactFields = toContactFields(contactList.fields)
@@ -462,6 +617,7 @@ const createCampaignFile = async (
 
     const pdfArtifacts: PdfArtifact[] = []
     const font = await getPdfmeServerFont()
+    let generatedPdfProgress = 0
 
     for (const template of templates) {
         const fileContent = await storageService.getFileContent(template.filePath!)
@@ -483,6 +639,8 @@ const createCampaignFile = async (
             })
 
             const fileName = `campaign-${campaign.name}-customer-${customer.id ?? "unknown"}.pdf`
+                generatedPdfProgress += 1
+                console.info(generatedPdfProgress)
                 return { fileName, buffer: Buffer.from(pdfBytes) }
             },
         )
@@ -503,6 +661,59 @@ const createCampaignFile = async (
         compressionOptions: { level: 9 },
     })
 
+    if (isChunkExecution(chunk)) {
+        const batchPdfCount = pdfArtifacts.length
+        const chunkZipFileName = `${businessId}/campaign/chunks/${campaign.id}/${chunk.jobId}/chunk-${chunk.chunkOrder}.zip`
+        const chunkZipUrl = await storageService.uploadFile(zipBuffer, chunkZipFileName, {
+            contentType: "application/zip",
+        })
+
+        await (businessPrisma as any).campaignChunkFile.upsert({
+            where: {
+                campaignId_jobId_chunkOrder: {
+                    campaignId: campaign.id,
+                    jobId: chunk.jobId,
+                    chunkOrder: chunk.chunkOrder,
+                },
+            },
+            create: {
+                campaignId: campaign.id,
+                jobId: chunk.jobId,
+                chunkOrder: chunk.chunkOrder,
+                totalChunks: chunk.totalChunks,
+                fileName: chunkZipFileName,
+                filePath: chunkZipUrl,
+                generatedDocuments: pdfArtifacts.length,
+                isDeleted: false,
+            },
+            update: {
+                totalChunks: chunk.totalChunks,
+                fileName: chunkZipFileName,
+                filePath: chunkZipUrl,
+                generatedDocuments: pdfArtifacts.length,
+                isDeleted: false,
+                deletedAt: null,
+            },
+        })
+
+        const finalized = await finalizeChunkedCampaignFile(
+            businessId,
+            campaign,
+            businessPrisma,
+            storageService,
+            chunk,
+        )
+
+        if (!finalized) {
+            return null
+        }
+
+        return {
+            ...finalized,
+            batchPdfCount,
+        }
+    }
+
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
     const zipFileName = `${businessId}/campaign/campaign-${campaign.name}-${timestamp}.zip`
     const zipUrl = await storageService.uploadFile(zipBuffer, zipFileName, {
@@ -514,7 +725,7 @@ const createCampaignFile = async (
 
     const campaignFileData = {
         campaignId: campaign.id,
-        fileName: zipFileName,
+        fileName: toBaseFileName(zipFileName),
         filePath: zipUrl,
         generatedDocuments: pdfArtifacts.length,
         status: FILE_STATUS.AVALIABLE,
@@ -527,13 +738,14 @@ const createCampaignFile = async (
         data: campaignFileData,
     })
 
-    return { file: campaignFile, pdfCount: pdfArtifacts.length }
+    return { file: campaignFile, pdfCount: pdfArtifacts.length, batchPdfCount: pdfArtifacts.length }
 }
 
 const runCampaignForBusiness = async (
     campaignId: string,
     businessId: string,
     triggerSource: CampaignRunTrigger,
+    chunk?: CampaignExecutionChunk,
 ): Promise<CampaignJobResult> => {
     try {
         const business = await prisma.business.findUnique({
@@ -588,16 +800,54 @@ const runCampaignForBusiness = async (
             MAX_PARALLEL_CAMPAIGNS_PER_BUSINESS,
             async (campaign) => {
                 const runStartedAt = new Date()
+                const isChunkRun = isChunkExecution(chunk)
+
+                await businessPrisma.campaign.update({
+                    where: { id: campaign.id },
+                    data: {
+                        scheduleStatus: SCHEDULE_STATUS.RUNNING,
+                        fileStatus: FILE_STATUS.PENDING,
+                    },
+                })
 
                 try {
-                    const campaignFileResult = await createCampaignFile(businessId, campaign, businessPrisma)
+                    const campaignFileResult = await createCampaignFile(businessId, campaign, businessPrisma, chunk)
                     const hasGeneratedFile = Boolean(campaignFileResult?.file?.id)
-                    const nextFileStatus = hasGeneratedFile ? FILE_STATUS.AVALIABLE : FILE_STATUS.EMPTY
-                    const nextScheduleStatus = SCHEDULE_STATUS.TRIGGERED
+                    const totalCustomers = Array.isArray(campaign.contactlist?.customers)
+                        ? campaign.contactlist.customers.length
+                        : 0
+                    const batchGeneratedDocuments = isChunkRun
+                        ? Math.max(
+                              0,
+                              Math.min(
+                                  chunk?.limit ?? 0,
+                                  totalCustomers - (chunk?.offset ?? 0),
+                              ),
+                          )
+                        : campaignFileResult?.batchPdfCount ?? campaignFileResult?.pdfCount ?? 0
+                    const generatedSoFar = isChunkRun
+                        ? Math.min(totalCustomers, (chunk?.offset ?? 0) + (chunk?.limit ?? 0))
+                        : totalCustomers
+                    const nextFileStatus = isChunkRun
+                        ? hasGeneratedFile
+                            ? FILE_STATUS.AVALIABLE
+                            : FILE_STATUS.PENDING
+                        : hasGeneratedFile
+                            ? FILE_STATUS.AVALIABLE
+                            : FILE_STATUS.EMPTY
+                    const nextScheduleStatus = isChunkRun
+                        ? hasGeneratedFile && Boolean(chunk?.isFinalChunk)
+                            ? SCHEDULE_STATUS.TRIGGERED
+                            : SCHEDULE_STATUS.RUNNING
+                        : SCHEDULE_STATUS.TRIGGERED
                     const runFinishedAt = new Date()
-                    const successMessage = hasGeneratedFile
-                        ? `${logPrefix} Campaign run successfully`
-                        : `${logPrefix} Campaign run completed without generated files`
+                    const successMessage = isChunkRun
+                        ? hasGeneratedFile
+                            ? `${logPrefix} Campaign run successfully`
+                            : `${logPrefix} File generated ${generatedSoFar} out of ${totalCustomers}`
+                        : hasGeneratedFile
+                            ? `${logPrefix} Campaign run successfully`
+                            : `${logPrefix} Campaign run completed without generated files`
 
                     if (campaignFileResult) {
                         console.info(
@@ -630,7 +880,7 @@ const runCampaignForBusiness = async (
                         success: true,
                         fileId: campaignFileResult?.file.id,
                         fileStatus: nextFileStatus,
-                        generatedDocuments: campaignFileResult?.pdfCount ?? 0,
+                        generatedDocuments: batchGeneratedDocuments,
                         startedAt: runStartedAt,
                         finishedAt: runFinishedAt,
                     })
@@ -736,6 +986,7 @@ type RunCampaignJobOptions = {
     businessIds?: string[]
     maxParallel?: number
     triggerSource?: CampaignRunTrigger
+    chunk?: CampaignExecutionChunk
 }
 
 export const runCampaignJob = async ({
@@ -743,6 +994,7 @@ export const runCampaignJob = async ({
     businessIds = [],
     maxParallel = MAX_PARALLEL_BUSINESSES,
     triggerSource = "SYSTEM",
+    chunk,
 }: RunCampaignJobOptions) => {
     const businessIdsToRun = businessIds.length > 0 ? businessIds : await getAllBusinessIds()
     if (businessIdsToRun.length === 0) return []
@@ -752,6 +1004,6 @@ export const runCampaignJob = async ({
     return runWithConcurrency(
         businessIdsToRun,
         parallelLimit,
-        async (businessId) => runCampaignForBusiness(campaignId, businessId, triggerSource),
+        async (businessId) => runCampaignForBusiness(campaignId, businessId, triggerSource, chunk),
     )
 }
