@@ -1,7 +1,8 @@
 import { after, NextResponse } from "next/server"
 import { runCampaignJob } from "@/utils/campaign"
 import { deleteCampaignFileJob } from "@/utils/files"
-import { enqueueCampaignWorkerJob, type CampaignWorkerJobPayload } from "@/lib/external-job-queue"
+import { type CampaignWorkerJobPayload } from "@/lib/external-job-queue"
+import { publishCampaignChunk } from "@/lib/qstash"
 import { getBusinessPrisma } from "@/lib/prisma-business"
 import { FILE_STATUS, SCHEDULE_STATUS } from "@/app/generated/business/prisma"
 
@@ -23,7 +24,7 @@ const getChunkSize = () => {
 }
 
 const enqueueChunkedCampaignJobs = async (
-    request: Request,
+    origin: string,
     payload: Extract<CampaignWorkerJobPayload, { jobType: "RUN_CAMPAIGNS" }>,
 ) => {
     const businessId = payload.businessIds?.[0]
@@ -61,7 +62,6 @@ const enqueueChunkedCampaignJobs = async (
 
     const nowBucket = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")
     const chunkCount = Math.ceil(customerCount / chunkSize)
-    const origin = new URL(request.url).origin
     const orchestrationStartedAt = new Date()
     const orchestrationRunLog = await (prisma as any).campaignRunLog.create({
         data: {
@@ -82,7 +82,7 @@ const enqueueChunkedCampaignJobs = async (
     const firstChunkOffset = 0
     const firstChunkOrder = 0
     const firstChunkIsFinal = chunkCount === 1
-    const queued = await enqueueCampaignWorkerJob(
+    const queued = await publishCampaignChunk(
         origin,
         {
             ...payload,
@@ -96,8 +96,6 @@ const enqueueChunkedCampaignJobs = async (
         },
         {
             deduplicationId: `chunk-run-${businessId}-${campaignId}-${jobId}-${firstChunkOffset}-${chunkSize}-${nowBucket}`,
-            waitForResponse: true,
-            endpointPath: "/api/jobs/campaign/forward",
         },
     )
 
@@ -136,7 +134,8 @@ async function handler(request: Request) {
                 (payload.businessIds?.length ?? 0) === 1
 
             if (canOrchestrateChunks) {
-                const chunkedResult = await enqueueChunkedCampaignJobs(request, payload)
+                const origin = new URL(request.url).origin
+                const chunkedResult = await enqueueChunkedCampaignJobs(origin, payload)
                 if (chunkedResult.orchestrated) {
                     return NextResponse.json({
                         ok: true,
@@ -189,7 +188,7 @@ async function handler(request: Request) {
                             const nextIsFinalChunk = nextChunkOrder + 1 >= (payload.totalChunks as number)
                             const nowBucket = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")
 
-                            await enqueueCampaignWorkerJob(
+                            await publishCampaignChunk(
                                 origin,
                                 {
                                     ...payload,
@@ -199,8 +198,6 @@ async function handler(request: Request) {
                                 },
                                 {
                                     deduplicationId: `chunk-run-${businessId}-${campaignId}-${payload.jobId}-${nextChunkOffset}-${payload.chunkLimit}-${nowBucket}`,
-                                    waitForResponse: true,
-                                    endpointPath: "/api/jobs/campaign/forward",
                                 },
                             )
                         }
