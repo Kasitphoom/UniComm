@@ -33,12 +33,10 @@ export const POST = async (request: Request) => {
             incomingTriggerId || `forward-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}`
 
         after(async () => {
-            try {
-                await enqueueCampaignWorkerJob(origin, payload, {
-                    deduplicationId,
-                    waitForResponse: true,
-                })
-            } catch {}
+            void enqueueCampaignWorkerJob(origin, payload, {
+                deduplicationId,
+                waitForResponse: false,
+            }).catch(() => undefined)
         })
 
         return NextResponse.json({
