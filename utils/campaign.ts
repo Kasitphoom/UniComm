@@ -813,10 +813,18 @@ const runCampaignForBusiness = async (
                 try {
                     const campaignFileResult = await createCampaignFile(businessId, campaign, businessPrisma, chunk)
                     const hasGeneratedFile = Boolean(campaignFileResult?.file?.id)
-                    const batchGeneratedDocuments = campaignFileResult?.batchPdfCount ?? campaignFileResult?.pdfCount ?? 0
                     const totalCustomers = Array.isArray(campaign.contactlist?.customers)
                         ? campaign.contactlist.customers.length
                         : 0
+                    const batchGeneratedDocuments = isChunkRun
+                        ? Math.max(
+                              0,
+                              Math.min(
+                                  chunk?.limit ?? 0,
+                                  totalCustomers - (chunk?.offset ?? 0),
+                              ),
+                          )
+                        : campaignFileResult?.batchPdfCount ?? campaignFileResult?.pdfCount ?? 0
                     const generatedSoFar = isChunkRun
                         ? Math.min(totalCustomers, (chunk?.offset ?? 0) + (chunk?.limit ?? 0))
                         : totalCustomers
