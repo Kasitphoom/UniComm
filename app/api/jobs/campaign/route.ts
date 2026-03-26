@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { after, NextResponse } from "next/server"
 import { runCampaignJob } from "@/utils/campaign"
 import { deleteCampaignFileJob } from "@/utils/files"
 import { enqueueCampaignWorkerJob, type CampaignWorkerJobPayload } from "@/lib/external-job-queue"
@@ -159,6 +159,61 @@ async function handler(request: Request) {
                       }
                     : undefined
 
+            const isChunkedExecution = Boolean(payload.chunked)
+
+            if (isChunkedExecution) {
+                const origin = new URL(request.url).origin
+                after(async () => {
+                    const results = await runCampaignJob({
+                        campaignId: payload.campaignId,
+                        businessIds: payload.businessIds,
+                        maxParallel: payload.maxParallel,
+                        triggerSource: payload.triggerSource,
+                        chunk: chunkMeta,
+                    })
+
+                    const hasNextChunk =
+                        typeof payload.chunkOrder === "number" &&
+                        typeof payload.totalChunks === "number" &&
+                        typeof payload.chunkLimit === "number" &&
+                        payload.chunkOrder + 1 < payload.totalChunks
+                    const allSucceeded = results.every((result) => result.success)
+
+                    if (hasNextChunk && allSucceeded) {
+                        const businessId = payload.businessIds?.[0]
+                        const campaignId = payload.campaignId
+
+                        if (businessId && campaignId) {
+                            const nextChunkOrder = (payload.chunkOrder as number) + 1
+                            const nextChunkOffset = nextChunkOrder * (payload.chunkLimit as number)
+                            const nextIsFinalChunk = nextChunkOrder + 1 >= (payload.totalChunks as number)
+                            const nowBucket = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")
+
+                            await enqueueCampaignWorkerJob(
+                                origin,
+                                {
+                                    ...payload,
+                                    chunkOrder: nextChunkOrder,
+                                    chunkOffset: nextChunkOffset,
+                                    isFinalChunk: nextIsFinalChunk,
+                                },
+                                {
+                                    deduplicationId: `chunk-run-${businessId}-${campaignId}-${payload.jobId}-${nextChunkOffset}-${payload.chunkLimit}-${nowBucket}`,
+                                    waitForResponse: true,
+                                    endpointPath: "/api/jobs/campaign/forward",
+                                },
+                            )
+                        }
+                    }
+                })
+
+                return NextResponse.json({
+                    ok: true,
+                    jobType: payload.jobType,
+                    mode: "CHUNK_EXECUTION_ASYNC",
+                })
+            }
+
             const results = await runCampaignJob({
                 campaignId: payload.campaignId,
                 businessIds: payload.businessIds,
@@ -167,52 +222,11 @@ async function handler(request: Request) {
                 chunk: chunkMeta,
             })
 
-            const isChunkedExecution = Boolean(payload.chunked)
-            const hasNextChunk =
-                isChunkedExecution &&
-                typeof payload.chunkOrder === "number" &&
-                typeof payload.totalChunks === "number" &&
-                typeof payload.chunkLimit === "number" &&
-                payload.chunkOrder + 1 < payload.totalChunks
-            const allSucceeded = results.every((result) => result.success)
-
-            let nextChunkMessageId: string | undefined
-            if (hasNextChunk && allSucceeded) {
-                const businessId = payload.businessIds?.[0]
-                const campaignId = payload.campaignId
-
-                if (businessId && campaignId) {
-                    const nextChunkOrder = (payload.chunkOrder as number) + 1
-                    const nextChunkOffset = nextChunkOrder * (payload.chunkLimit as number)
-                    const nextIsFinalChunk = nextChunkOrder + 1 >= (payload.totalChunks as number)
-                    const origin = new URL(request.url).origin
-                    const nowBucket = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")
-
-                    const nextChunkJob = await enqueueCampaignWorkerJob(
-                        origin,
-                        {
-                            ...payload,
-                            chunkOrder: nextChunkOrder,
-                            chunkOffset: nextChunkOffset,
-                            isFinalChunk: nextIsFinalChunk,
-                        },
-                        {
-                            deduplicationId: `chunk-run-${businessId}-${campaignId}-${payload.jobId}-${nextChunkOffset}-${payload.chunkLimit}-${nowBucket}`,
-                            waitForResponse: true,
-                            endpointPath: "/api/jobs/campaign/forward",
-                        },
-                    )
-
-                    nextChunkMessageId = nextChunkJob.messageId
-                }
-            }
-
             return NextResponse.json({
                 ok: true,
                 jobType: payload.jobType,
-                mode: payload.chunked ? "CHUNK_EXECUTION_SEQUENTIAL" : "DEFAULT_EXECUTION",
+                mode: "DEFAULT_EXECUTION",
                 processedBusinesses: results.length,
-                nextChunkMessageId,
             })
         }
 
