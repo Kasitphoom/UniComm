@@ -80,28 +80,24 @@ const enqueueChunkedCampaignJobs = async (
     })
     const jobId = orchestrationRunLog.id as string
 
-    const queued = await Promise.all(
-        Array.from({ length: chunkCount }, (_, chunkIndex) => {
-            const chunkOffset = chunkIndex * chunkSize
-            const isFinalChunk = chunkOffset + chunkSize >= customerCount
-
-            return enqueueCampaignWorkerJob(
-                origin,
-                {
-                    ...payload,
-                    chunked: true,
-                    jobId,
-                    chunkOrder: chunkIndex,
-                    totalChunks: chunkCount,
-                    chunkOffset,
-                    chunkLimit: chunkSize,
-                    isFinalChunk,
-                },
-                {
-                    deduplicationId: `chunk-run-${businessId}-${campaignId}-${jobId}-${chunkOffset}-${chunkSize}-${nowBucket}`,
-                },
-            )
-        }),
+    const firstChunkOffset = 0
+    const firstChunkOrder = 0
+    const firstChunkIsFinal = chunkCount === 1
+    const queued = await enqueueCampaignWorkerJob(
+        origin,
+        {
+            ...payload,
+            chunked: true,
+            jobId,
+            chunkOrder: firstChunkOrder,
+            totalChunks: chunkCount,
+            chunkOffset: firstChunkOffset,
+            chunkLimit: chunkSize,
+            isFinalChunk: firstChunkIsFinal,
+        },
+        {
+            deduplicationId: `chunk-run-${businessId}-${campaignId}-${jobId}-${firstChunkOffset}-${chunkSize}-${nowBucket}`,
+        },
     )
 
     return {
@@ -112,7 +108,7 @@ const enqueueChunkedCampaignJobs = async (
         chunkSize,
         chunkCount,
         jobId,
-        messageIds: queued.map((job) => job.messageId).filter(Boolean),
+        messageIds: [queued.messageId].filter(Boolean),
     }
 }
 
@@ -160,11 +156,50 @@ async function handler(request: Request) {
                         : undefined,
             })
 
+            const isChunkedExecution = Boolean(payload.chunked)
+            const hasNextChunk =
+                isChunkedExecution &&
+                typeof payload.chunkOrder === "number" &&
+                typeof payload.totalChunks === "number" &&
+                typeof payload.chunkLimit === "number" &&
+                payload.chunkOrder + 1 < payload.totalChunks
+            const allSucceeded = results.every((result) => result.success)
+
+            let nextChunkMessageId: string | undefined
+            if (hasNextChunk && allSucceeded) {
+                const businessId = payload.businessIds?.[0]
+                const campaignId = payload.campaignId
+
+                if (businessId && campaignId) {
+                    const nextChunkOrder = (payload.chunkOrder as number) + 1
+                    const nextChunkOffset = nextChunkOrder * (payload.chunkLimit as number)
+                    const nextIsFinalChunk = nextChunkOrder + 1 >= (payload.totalChunks as number)
+                    const origin = new URL(request.url).origin
+                    const nowBucket = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")
+
+                    const nextChunkJob = await enqueueCampaignWorkerJob(
+                        origin,
+                        {
+                            ...payload,
+                            chunkOrder: nextChunkOrder,
+                            chunkOffset: nextChunkOffset,
+                            isFinalChunk: nextIsFinalChunk,
+                        },
+                        {
+                            deduplicationId: `chunk-run-${businessId}-${campaignId}-${payload.jobId}-${nextChunkOffset}-${payload.chunkLimit}-${nowBucket}`,
+                        },
+                    )
+
+                    nextChunkMessageId = nextChunkJob.messageId
+                }
+            }
+
             return NextResponse.json({
                 ok: true,
                 jobType: payload.jobType,
-                mode: payload.chunked ? "CHUNK_EXECUTION" : "DEFAULT_EXECUTION",
+                mode: payload.chunked ? "CHUNK_EXECUTION_SEQUENTIAL" : "DEFAULT_EXECUTION",
                 processedBusinesses: results.length,
+                nextChunkMessageId,
             })
         }
 
