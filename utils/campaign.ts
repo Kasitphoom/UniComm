@@ -365,6 +365,13 @@ type CampaignFileResult = {
     pdfCount: number
 }
 
+const toBaseFileName = (value: string) => {
+    const normalized = value.trim()
+    if (!normalized) return normalized
+    const segments = normalized.split("/")
+    return segments[segments.length - 1] || normalized
+}
+
 const isChunkExecution = (
     chunk?: CampaignExecutionChunk,
 ): chunk is Required<Pick<CampaignExecutionChunk, "jobId" | "chunkOrder" | "totalChunks" | "offset" | "limit">> & CampaignExecutionChunk => {
@@ -457,7 +464,7 @@ const finalizeChunkedCampaignFile = async (
     const campaignFile = await businessPrisma.campaignFile.create({
         data: {
             campaignId: campaign.id,
-            fileName: finalZipFileName,
+            fileName: toBaseFileName(finalZipFileName),
             filePath: finalZipUrl,
             generatedDocuments: totalPdfCount,
             status: FILE_STATUS.AVALIABLE,
@@ -707,7 +714,7 @@ const createCampaignFile = async (
 
     const campaignFileData = {
         campaignId: campaign.id,
-        fileName: zipFileName,
+        fileName: toBaseFileName(zipFileName),
         filePath: zipUrl,
         generatedDocuments: pdfArtifacts.length,
         status: FILE_STATUS.AVALIABLE,
@@ -782,21 +789,37 @@ const runCampaignForBusiness = async (
             MAX_PARALLEL_CAMPAIGNS_PER_BUSINESS,
             async (campaign) => {
                 const runStartedAt = new Date()
+                const isChunkRun = isChunkExecution(chunk)
+
+                await businessPrisma.campaign.update({
+                    where: { id: campaign.id },
+                    data: {
+                        scheduleStatus: SCHEDULE_STATUS.RUNNING,
+                        fileStatus: isChunkRun ? FILE_STATUS.PENDING : FILE_STATUS.PENDING,
+                        logs: {
+                            create: {
+                                message: `${logPrefix} Campaign run started`,
+                                status: SCHEDULE_STATUS.RUNNING,
+                            },
+                        },
+                    },
+                })
 
                 try {
                     const campaignFileResult = await createCampaignFile(businessId, campaign, businessPrisma, chunk)
                     const hasGeneratedFile = Boolean(campaignFileResult?.file?.id)
-                    const isChunkRun = isChunkExecution(chunk)
-                    const nextFileStatus = hasGeneratedFile
-                        ? FILE_STATUS.AVALIABLE
-                        : isChunkRun
-                            ? FILE_STATUS.PENDING
+                    const nextFileStatus = isChunkRun
+                        ? hasGeneratedFile
+                            ? FILE_STATUS.AVALIABLE
+                            : FILE_STATUS.PENDING
+                        : hasGeneratedFile
+                            ? FILE_STATUS.AVALIABLE
                             : FILE_STATUS.EMPTY
-                    const nextScheduleStatus = hasGeneratedFile
-                        ? SCHEDULE_STATUS.TRIGGERED
-                        : isChunkRun
-                            ? SCHEDULE_STATUS.PENDING
-                            : SCHEDULE_STATUS.TRIGGERED
+                    const nextScheduleStatus = isChunkRun
+                        ? hasGeneratedFile && Boolean(chunk?.isFinalChunk)
+                            ? SCHEDULE_STATUS.TRIGGERED
+                            : SCHEDULE_STATUS.RUNNING
+                        : SCHEDULE_STATUS.TRIGGERED
                     const runFinishedAt = new Date()
                     const chunkSuffix = chunk
                         ? ` (chunk offset=${chunk.offset}, limit=${chunk.limit}${chunk.isFinalChunk ? ", final" : ""})`

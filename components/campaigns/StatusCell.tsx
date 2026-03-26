@@ -6,7 +6,8 @@ export const StatusCell = ({ status, type }: { status: string, type: 'schedule' 
     const config = {
         // Schedule Status Mapping
         PENDING: { color: "primary", icon: <Clock size={14}/>, label: "Scheduled" },
-        TRIGGERED: { color: "primary", icon: <Clock size={14}/>, label: "Running" },
+        RUNNING: { color: "primary", icon: <Clock size={14}/>, label: "Running" },
+        TRIGGERED: { color: "success", icon: <CheckCircle2 size={14}/>, label: "Executed" },
         FAILED: { color: "danger", icon: <AlertCircle size={14}/>, label: "Failed" },
         // File Status Mapping
         EMPTY: { color: "default", icon: <FileSearch size={14}/>, label: "No Files" },
