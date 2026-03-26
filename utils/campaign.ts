@@ -205,6 +205,11 @@ const stringifyValue = (value: unknown): string => {
     }
 }
 
+const isPrismaRecordNotFoundError = (error: unknown) => {
+    if (!error || typeof error !== "object") return false
+    return (error as { code?: string }).code === "P2025"
+}
+
 const buildNormalizedValueMap = (data: Record<string, unknown>) => {
     const map = new Map<string, string>()
     Object.entries(data).forEach(([key, value]) => {
@@ -812,24 +817,114 @@ const runCampaignForBusiness = async (
             async (campaign) => {
                 const runStartedAt = new Date()
                 const isChunkRun = isChunkExecution(chunk)
+                const totalDocuments =
+                    (Array.isArray(campaign.contactlist?.customers)
+                        ? campaign.contactlist.customers.length
+                        : 0) * campaign.templates.length
+                let lastProgressPublishedAt = 0
+                let lastProgressPublishedGenerated = 0
+                let lastObservedGenerated: number | null = null
+                let lastObservedTotal: number | null = null
 
-                await businessPrisma.campaign.update({
-                    where: { id: campaign.id },
-                    data: {
-                        scheduleStatus: SCHEDULE_STATUS.RUNNING,
-                        fileStatus: FILE_STATUS.PENDING,
-                    },
-                })
+                const publishProgressThrottled = async (
+                    progress: { generated: number; total: number },
+                    force: boolean = false,
+                ) => {
+                    const normalizedTotal = Math.max(0, progress.total)
+                    const normalizedGenerated = Math.max(0, progress.generated)
+                    const normalized = {
+                        generated: Math.min(normalizedGenerated, normalizedTotal || normalizedGenerated),
+                        total: normalizedTotal,
+                    }
+
+                    const now = Date.now()
+                    const shouldThrottle = !force && now - lastProgressPublishedAt < 1000
+                    const isDuplicate =
+                        !force &&
+                        normalized.generated === lastObservedGenerated &&
+                        normalized.total === lastObservedTotal
+
+                    lastObservedGenerated = normalized.generated
+                    lastObservedTotal = normalized.total
+
+                    if (shouldThrottle || isDuplicate) {
+                        return
+                    }
+
+                    lastProgressPublishedAt = now
+                    lastProgressPublishedGenerated = normalized.generated
+
+                    await publishCampaignProgressEvent({
+                        type: "batch-progress",
+                        campaignId: campaign.id,
+                        businessId,
+                        generated: normalized.generated,
+                        total: normalized.total,
+                        progress:
+                            normalized.total > 0
+                                ? Math.max(
+                                      0,
+                                      Math.min(
+                                          100,
+                                          Math.round((normalized.generated / normalized.total) * 100),
+                                      ),
+                                  )
+                                : 0,
+                        message: `${logPrefix} File generated ${normalized.generated} out of ${normalized.total}`,
+                    })
+                }
+
+                try {
+                    await businessPrisma.campaign.update({
+                        where: { id: campaign.id },
+                        data: {
+                            scheduleStatus: SCHEDULE_STATUS.RUNNING,
+                            fileStatus: FILE_STATUS.PENDING,
+                        },
+                    })
+                } catch (error) {
+                    if (isPrismaRecordNotFoundError(error)) {
+                        const runFinishedAt = new Date()
+                        const errorMessage = "Campaign not found before execution started"
+                        console.warn(
+                            `[Campaign ${campaign.name}] Skipping execution because campaign record no longer exists`,
+                        )
+
+                        await createCampaignRunLog(businessPrisma, {
+                            campaignId: campaign.id,
+                            campaignName: campaign.name,
+                            triggerSource,
+                            status: SCHEDULE_STATUS.FAILED,
+                            success: false,
+                            errorMessage,
+                            fileStatus: FILE_STATUS.FAILED,
+                            generatedDocuments: 0,
+                            startedAt: runStartedAt,
+                            finishedAt: runFinishedAt,
+                        })
+
+                        return {
+                            fileInfo: null,
+                            result: {
+                                campaignId: campaign.id,
+                                success: false,
+                                error: errorMessage,
+                                fileStatus: FILE_STATUS.FAILED,
+                                scheduleStatus: SCHEDULE_STATUS.FAILED,
+                            } satisfies CampaignRunResult,
+                        }
+                    }
+
+                    throw error
+                }
 
                 await publishCampaignProgressEvent({
                     type: "run-started",
                     campaignId: campaign.id,
                     businessId,
-                    generated: Math.max(0, chunk?.offset ?? 0),
-                    total: Array.isArray(campaign.contactlist?.customers)
-                        ? campaign.contactlist.customers.length
-                        : 0,
-                    progress: isChunkRun ? Math.max(0, chunk?.offset ?? 0) : 0,
+                    generated: 0,
+                    total: totalDocuments,
+                    progress: 0,
                     message: `${logPrefix} Campaign run started`,
                 })
 
@@ -840,24 +935,7 @@ const runCampaignForBusiness = async (
                         businessPrisma,
                         chunk,
                         ({ generated, total }) => {
-                            void publishCampaignProgressEvent({
-                                type: "batch-progress",
-                                campaignId: campaign.id,
-                                businessId,
-                                generated,
-                                total,
-                                progress:
-                                    total > 0
-                                        ? Math.max(
-                                              0,
-                                              Math.min(
-                                                  100,
-                                                  Math.round((generated / total) * 100),
-                                              ),
-                                          )
-                                        : 0,
-                                message: `${logPrefix} File generated ${generated} out of ${total}`,
-                            })
+                            void publishProgressThrottled({ generated, total }, false)
                         },
                     )
                     const hasGeneratedFile = Boolean(campaignFileResult?.file?.id)
@@ -905,20 +983,30 @@ const runCampaignForBusiness = async (
                         console.info(`[Campaign ${campaign.name}] No PDFs generated (missing data)`)
                     }
 
-                    await businessPrisma.campaign.update({
-                        where: { id: campaign.id },
-                        data: {
-                            fileStatus: nextFileStatus,
-                            scheduleStatus: nextScheduleStatus,
-                            executedAt: new Date(),
-                            logs: {
-                                create: {
-                                    message: successMessage,
-                                    status: nextScheduleStatus,
+                    try {
+                        await businessPrisma.campaign.update({
+                            where: { id: campaign.id },
+                            data: {
+                                fileStatus: nextFileStatus,
+                                scheduleStatus: nextScheduleStatus,
+                                executedAt: new Date(),
+                                logs: {
+                                    create: {
+                                        message: successMessage,
+                                        status: nextScheduleStatus,
+                                    },
                                 },
                             },
-                        },
-                    })
+                        })
+                    } catch (error) {
+                        if (!isPrismaRecordNotFoundError(error)) {
+                            throw error
+                        }
+
+                        console.warn(
+                            `[Campaign ${campaign.name}] Campaign record no longer exists while writing success state`,
+                        )
+                    }
 
                     await createCampaignRunLog(businessPrisma, {
                         campaignId: campaign.id,
@@ -933,6 +1021,27 @@ const runCampaignForBusiness = async (
                         finishedAt: runFinishedAt,
                     })
 
+                    if (
+                        typeof lastObservedGenerated === "number" &&
+                        typeof lastObservedTotal === "number"
+                    ) {
+                        await publishProgressThrottled(
+                            { generated: lastObservedGenerated, total: lastObservedTotal },
+                            true,
+                        )
+                    }
+
+                    const finalGenerated =
+                        typeof lastObservedGenerated === "number"
+                            ? lastObservedGenerated
+                            : nextScheduleStatus === SCHEDULE_STATUS.TRIGGERED
+                                ? totalDocuments
+                                : 0
+                    const finalTotal =
+                        typeof lastObservedTotal === "number"
+                            ? lastObservedTotal
+                            : totalDocuments
+
                     await publishCampaignProgressEvent({
                         type:
                             nextScheduleStatus === SCHEDULE_STATUS.TRIGGERED
@@ -940,15 +1049,15 @@ const runCampaignForBusiness = async (
                                 : "batch-progress",
                         campaignId: campaign.id,
                         businessId,
-                        generated: generatedSoFar,
-                        total: totalCustomers,
+                        generated: finalGenerated,
+                        total: finalTotal,
                         progress:
-                            totalCustomers > 0
+                            finalTotal > 0
                                 ? Math.max(
                                       0,
                                       Math.min(
                                           100,
-                                          Math.round((generatedSoFar / totalCustomers) * 100),
+                                          Math.round((finalGenerated / finalTotal) * 100),
                                       ),
                                   )
                                 : 0,
@@ -974,20 +1083,30 @@ const runCampaignForBusiness = async (
 
                     console.error(`[Campaign ${campaign.name}] Failed to run: ${errorMessage}`)
 
-                    await businessPrisma.campaign.update({
-                        where: { id: campaign.id },
-                        data: {
-                            fileStatus: nextFileStatus,
-                            scheduleStatus: nextScheduleStatus,
-                            executedAt: new Date(),
-                            logs: {
-                                create: {
-                                    message: `${logPrefix} Campaign run failed: ${errorMessage}`,
-                                    status: nextScheduleStatus,
+                    try {
+                        await businessPrisma.campaign.update({
+                            where: { id: campaign.id },
+                            data: {
+                                fileStatus: nextFileStatus,
+                                scheduleStatus: nextScheduleStatus,
+                                executedAt: new Date(),
+                                logs: {
+                                    create: {
+                                        message: `${logPrefix} Campaign run failed: ${errorMessage}`,
+                                        status: nextScheduleStatus,
+                                    },
                                 },
                             },
-                        },
-                    })
+                        })
+                    } catch (error) {
+                        if (!isPrismaRecordNotFoundError(error)) {
+                            throw error
+                        }
+
+                        console.warn(
+                            `[Campaign ${campaign.name}] Campaign record no longer exists while writing failure state`,
+                        )
+                    }
 
                     await createCampaignRunLog(businessPrisma, {
                         campaignId: campaign.id,
