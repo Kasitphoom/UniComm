@@ -10,13 +10,13 @@ import {
     CardBody,
     CardHeader,
     Chip,
-    CircularProgress,
     Divider,
     ScrollShadow,
     Tabs,
     Tab,
     Tooltip,
     addToast,
+    Progress,
 } from "@heroui/react"
 import {
     Activity,
@@ -482,18 +482,6 @@ const CampaignDetailView = ({ campaign }: Props) => {
                     </div>
                     <div className="flex items-center gap-2">
                         <div className="flex items-center gap-2">
-                            {isRunningNow && (
-                                <CircularProgress
-                                    aria-label="Campaign run progress"
-                                    color="warning"
-                                    size="md"
-                                    value={displayProgress?.value ?? 0}
-                                    formatOptions={{ style: "percent" }}
-                                    classNames={{
-                                        value: "text-xs font-semibold text-warning-700",
-                                    }}
-                                />
-                            )}
                             <Tooltip content={canManageCampaigns ? "Re-trigger" : "No permission"} size="sm" color="secondary">
                                 <Button
                                     isIconOnly
@@ -577,23 +565,35 @@ const CampaignDetailView = ({ campaign }: Props) => {
             </div>
 
             {isRunningNow && (
-                <Card className="border border-warning-200 bg-warning-50/50 shadow-sm flex-none">
-                    <CardBody className="py-3 px-4 flex flex-row items-center justify-between gap-4">
-                        <div className="flex items-center gap-2 text-warning-700">
-                            <Activity size={16} />
-                            <p className="text-sm font-medium">
+                <div className="py-4 flex flex-col gap-3 flex-none">
+                    <div className="flex items-end justify-between text-secondary-700">
+                        <div className="flex items-center gap-2">
+                            <Activity size={16} className="animate-pulse" />
+                            <span className="text-sm font-medium">
                                 {displayProgress
-                                    ? `Generating files ${displayProgress.generated} out of ${displayProgress.total}`
+                                    ? `Generating files: ${displayProgress.generated} of ${displayProgress.total}`
                                     : "Campaign is running..."}
-                            </p>
+                            </span>
                         </div>
                         {displayProgress && (
-                            <Chip size="sm" color="warning" variant="flat" className="font-semibold">
+                            <span className="text-sm font-bold tabular-nums">
                                 {displayProgress.value}%
-                            </Chip>
+                            </span>
                         )}
-                    </CardBody>
-                </Card>
+                    </div>
+                    
+                    <Progress 
+                        size="sm"
+                        color="secondary"
+                        aria-label="Generation progress"
+                        value={displayProgress ? displayProgress.value : 0}
+                        isIndeterminate={!displayProgress}
+                        className="max-w-full"
+                        classNames={{
+                            track: "bg-secondary-100/50", // Makes the unfilled part of the bar very subtle
+                        }}
+                    />
+                </div>
             )}
 
             {/* Content Tabs */}
