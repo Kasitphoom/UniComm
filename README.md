@@ -106,6 +106,7 @@ Queue flow:
 - `/api/campaigns/{id}/run` enqueues `RUN_CAMPAIGNS` for one campaign
 - Worker verifies QStash signatures and returns non-2xx on failure so QStash retries
 - Chunked manual runs upload per-chunk ZIP files, then merge into one final campaign ZIP in `CampaignFile`
+- Chunk execution is sequential: chunk 1 queues chunk 2 only after completion, then chunk 3, and so on
 
 Chunk cleanup API:
 
