@@ -121,7 +121,6 @@ export const POST = async (req: NextRequest, { params }: RouteParams) => {
         })
 
         const minuteBucket = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")
-        const traceId = `manual-run-${businessId}-${campaignId}-${minuteBucket}`
         const queueJob = await enqueueCampaignWorkerJob(
             req.nextUrl.origin,
             {
@@ -131,11 +130,8 @@ export const POST = async (req: NextRequest, { params }: RouteParams) => {
                 businessIds: [businessId],
             },
             {
-                deduplicationId: traceId,
+                deduplicationId: `manual-run-${businessId}-${campaignId}-${minuteBucket}`,
                 waitForResponse: true,
-                traceId,
-                parentHop: 0,
-                sourceRoute: "/api/campaigns/[id]/run",
             },
         )
 
@@ -147,7 +143,6 @@ export const POST = async (req: NextRequest, { params }: RouteParams) => {
             triggerId: queueJob.messageId,
         })
     } catch (error) {
-        console.error("Error running campaign:", error)
         return NextResponse.json(
             { error: error instanceof Error ? error.message : "Unknown error" },
             { status: 500 },
@@ -215,7 +210,6 @@ export const GET = async (req: NextRequest, { params }: RouteParams) => {
             status: isRunning ? "RUNNING" : campaign.scheduleStatus,
         })
     } catch (error) {
-        console.error("Error fetching campaign run status:", error)
         return NextResponse.json(
             { error: error instanceof Error ? error.message : "Unknown error" },
             { status: 500 },
