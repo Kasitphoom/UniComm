@@ -200,7 +200,9 @@ export const GET = async (req: NextRequest, { params }: RouteParams) => {
 
         const latestLogMessage = campaign.logs?.[0]?.message ?? ""
         const isQueuedLog = latestLogMessage.includes("[MANUAL] Campaign run queued")
-        const isRunning = campaign.scheduleStatus === SCHEDULE_STATUS.PENDING && isQueuedLog
+        const isRunning =
+            campaign.scheduleStatus === SCHEDULE_STATUS.RUNNING ||
+            (campaign.scheduleStatus === SCHEDULE_STATUS.PENDING && isQueuedLog)
 
         return NextResponse.json({
             campaign,

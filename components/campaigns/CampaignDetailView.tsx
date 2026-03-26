@@ -549,7 +549,7 @@ const CampaignDetailView = ({ campaign }: Props) => {
                                     const logKey = log._id ?? log.id
                                     const isSuccess = log.status === "TRIGGERED"
                                     const isFailed = log.status === "FAILED"
-                                    const displayStatus = log.status === "TRIGGERED" ? "RUNNING" : log.status
+                                    const displayStatus = log.status === "TRIGGERED" ? "EXECUTED" : log.status
                                     const statusColors = isSuccess
                                         ? "bg-success-50 text-success-600"
                                         : isFailed
