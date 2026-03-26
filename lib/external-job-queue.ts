@@ -25,6 +25,7 @@ type EnqueueCampaignWorkerJobOptions = {
     deduplicationId?: string
     retries?: number
     waitForResponse?: boolean
+    endpointPath?: string
 }
 
 const resolveWorkerBaseUrl = (origin: string) => {
@@ -70,7 +71,8 @@ export const enqueueCampaignWorkerJob = async (
     options: EnqueueCampaignWorkerJobOptions = {},
 ) => {
     const workerBaseUrl = resolveWorkerBaseUrl(origin)
-    const targetUrl = new URL("/api/jobs/campaign", workerBaseUrl).toString()
+    const endpointPath = options.endpointPath || "/api/jobs/campaign"
+    const targetUrl = new URL(endpointPath, workerBaseUrl).toString()
     const triggerId = options.deduplicationId || randomUUID()
 
     const headers: HeadersInit = {
