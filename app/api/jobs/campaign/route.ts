@@ -96,6 +96,8 @@ const enqueueChunkedCampaignJobs = async (
         },
         {
             deduplicationId: `chunk-run-${businessId}-${campaignId}-${jobId}-${firstChunkOffset}-${chunkSize}-${nowBucket}`,
+            waitForResponse: true,
+            endpointPath: "/api/jobs/campaign/forward",
         },
     )
 
@@ -196,7 +198,7 @@ async function handler(request: Request) {
                         },
                         {
                             deduplicationId: `chunk-run-${businessId}-${campaignId}-${payload.jobId}-${nextChunkOffset}-${payload.chunkLimit}-${nowBucket}`,
-                            waitForResponse: false,
+                            waitForResponse: true,
                             endpointPath: "/api/jobs/campaign/forward",
                         },
                     )
