@@ -93,6 +93,9 @@ Required environment variables:
 - `CAMPAIGN_JOB_SECRET` — Optional shared secret header (`x-campaign-job-secret`) required by `/api/jobs/campaign`
 - `WORKER_API_URL` — Optional base URL used for worker API triggering (falls back to `APP_URL`, `VERCEL_URL`, then request origin)
 - `CAMPAIGN_JOB_CHUNK_SIZE` — Optional per-message customer chunk size for manual campaign runs (default: `250`)
+- `ABLY_API_KEY` — Optional Ably server API key for realtime campaign progress (single key for both publish and subscribe token issuance)
+- `ABLY_PUBLISH_API_KEY` — Optional dedicated Ably key used by worker to publish campaign progress
+- `ABLY_SUBSCRIBE_API_KEY` — Optional dedicated Ably key used by `/api/realtime/ably-token` to issue subscribe tokens
 
 Worker endpoint:
 
@@ -108,6 +111,16 @@ Worker trigger flow:
 Chunk cleanup API:
 
 - `DELETE /api/campaign-chunks/{jobId}` marks all chunk records for the job as deleted
+
+Realtime API:
+
+- `POST /api/realtime/ably-token` issues authenticated Ably token requests for frontend subscriptions
+
+Realtime progress flow:
+
+- Worker publishes campaign progress events to `campaign-progress:{campaignId}`
+- Campaign detail UI subscribes to that channel and updates progress live
+- Polling is kept as fallback if Ably is unavailable
 
 ---
 

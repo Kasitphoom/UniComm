@@ -12,6 +12,7 @@ import { plugins } from "@/components/Editor/plugins"
 import { getPdfmeServerFont } from "@/lib/pdfme/server-fonts"
 import JSZip from "jszip"
 import { refreshTemplateDependencies } from "@/utils/template/refreshTemplateDependencies"
+import { publishCampaignProgressEvent } from "@/lib/realtime/ably-server"
 
 const MAX_PARALLEL_BUSINESSES = 10
 const MAX_PARALLEL_CAMPAIGNS_PER_BUSINESS = 3
@@ -509,6 +510,7 @@ const createCampaignFile = async (
     campaign: CampaignWithTemplates,
     businessPrisma: BusinessPrismaClient,
     chunk?: CampaignExecutionChunk,
+    onProgress?: (update: { generated: number; total: number }) => void | Promise<void>,
 ): Promise<CampaignFileResult | null> => {
     const generationStartedAt = new Date()
 
@@ -618,6 +620,10 @@ const createCampaignFile = async (
     const pdfArtifacts: PdfArtifact[] = []
     const font = await getPdfmeServerFont()
     let generatedPdfProgress = 0
+    const totalFilesOverall = allCustomers.length * templates.length
+    const baseGeneratedOverall = chunk
+        ? Math.max(0, chunk.offset) * templates.length
+        : 0
 
     for (const template of templates) {
         const fileContent = await storageService.getFileContent(template.filePath!)
@@ -640,7 +646,12 @@ const createCampaignFile = async (
 
             const fileName = `campaign-${campaign.name}-customer-${customer.id ?? "unknown"}.pdf`
                 generatedPdfProgress += 1
-                console.info(generatedPdfProgress)
+                const generatedOverall = baseGeneratedOverall + generatedPdfProgress
+                console.info(generatedOverall)
+                await onProgress?.({
+                    generated: generatedOverall,
+                    total: totalFilesOverall,
+                })
                 return { fileName, buffer: Buffer.from(pdfBytes) }
             },
         )
@@ -810,8 +821,45 @@ const runCampaignForBusiness = async (
                     },
                 })
 
+                await publishCampaignProgressEvent({
+                    type: "run-started",
+                    campaignId: campaign.id,
+                    businessId,
+                    generated: Math.max(0, chunk?.offset ?? 0),
+                    total: Array.isArray(campaign.contactlist?.customers)
+                        ? campaign.contactlist.customers.length
+                        : 0,
+                    progress: isChunkRun ? Math.max(0, chunk?.offset ?? 0) : 0,
+                    message: `${logPrefix} Campaign run started`,
+                })
+
                 try {
-                    const campaignFileResult = await createCampaignFile(businessId, campaign, businessPrisma, chunk)
+                    const campaignFileResult = await createCampaignFile(
+                        businessId,
+                        campaign,
+                        businessPrisma,
+                        chunk,
+                        ({ generated, total }) => {
+                            void publishCampaignProgressEvent({
+                                type: "batch-progress",
+                                campaignId: campaign.id,
+                                businessId,
+                                generated,
+                                total,
+                                progress:
+                                    total > 0
+                                        ? Math.max(
+                                              0,
+                                              Math.min(
+                                                  100,
+                                                  Math.round((generated / total) * 100),
+                                              ),
+                                          )
+                                        : 0,
+                                message: `${logPrefix} File generated ${generated} out of ${total}`,
+                            })
+                        },
+                    )
                     const hasGeneratedFile = Boolean(campaignFileResult?.file?.id)
                     const totalCustomers = Array.isArray(campaign.contactlist?.customers)
                         ? campaign.contactlist.customers.length
@@ -885,6 +933,28 @@ const runCampaignForBusiness = async (
                         finishedAt: runFinishedAt,
                     })
 
+                    await publishCampaignProgressEvent({
+                        type:
+                            nextScheduleStatus === SCHEDULE_STATUS.TRIGGERED
+                                ? "run-completed"
+                                : "batch-progress",
+                        campaignId: campaign.id,
+                        businessId,
+                        generated: generatedSoFar,
+                        total: totalCustomers,
+                        progress:
+                            totalCustomers > 0
+                                ? Math.max(
+                                      0,
+                                      Math.min(
+                                          100,
+                                          Math.round((generatedSoFar / totalCustomers) * 100),
+                                      ),
+                                  )
+                                : 0,
+                        message: successMessage,
+                    })
+
                     return {
                         fileInfo: campaignFileResult,
                         result: {
@@ -930,6 +1000,13 @@ const runCampaignForBusiness = async (
                         generatedDocuments: 0,
                         startedAt: runStartedAt,
                         finishedAt: runFinishedAt,
+                    })
+
+                    await publishCampaignProgressEvent({
+                        type: "run-failed",
+                        campaignId: campaign.id,
+                        businessId,
+                        message: `${logPrefix} Campaign run failed: ${errorMessage}`,
                     })
 
                     return {
