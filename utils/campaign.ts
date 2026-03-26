@@ -609,6 +609,7 @@ const createCampaignFile = async (
 
     const pdfArtifacts: PdfArtifact[] = []
     const font = await getPdfmeServerFont()
+    let generatedPdfProgress = 0
 
     for (const template of templates) {
         const fileContent = await storageService.getFileContent(template.filePath!)
@@ -630,6 +631,8 @@ const createCampaignFile = async (
             })
 
             const fileName = `campaign-${campaign.name}-customer-${customer.id ?? "unknown"}.pdf`
+                generatedPdfProgress += 1
+                console.info(generatedPdfProgress)
                 return { fileName, buffer: Buffer.from(pdfBytes) }
             },
         )
