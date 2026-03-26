@@ -1,4 +1,4 @@
-import { Client } from "@upstash/qstash"
+import { randomUUID } from "crypto"
 
 export type CampaignJobTrigger = "MANUAL" | "CRON" | "SYSTEM"
 
@@ -24,28 +24,11 @@ export type CampaignWorkerJobPayload =
 type EnqueueCampaignWorkerJobOptions = {
     deduplicationId?: string
     retries?: number
+    waitForResponse?: boolean
 }
-
-const DEFAULT_RETRIES = 5
-
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"])
-
-const getQstashToken = () => {
-    const token = process.env.QSTASH_TOKEN
-
-    if (!token) {
-        throw new Error("QSTASH_TOKEN is not configured")
-    }
-
-    return token
-}
-
-const qstashClient = new Client({ token: getQstashToken() })
-
-const isLoopbackHost = (hostname: string) => LOOPBACK_HOSTS.has(hostname.toLowerCase())
 
 const resolveWorkerBaseUrl = (origin: string) => {
-    const explicitWorkerUrl = process.env.QSTASH_WORKER_URL?.trim()
+    const explicitWorkerUrl = process.env.WORKER_API_URL?.trim()
     if (explicitWorkerUrl) return explicitWorkerUrl
 
     const appUrl = process.env.APP_URL?.trim()
@@ -56,14 +39,29 @@ const resolveWorkerBaseUrl = (origin: string) => {
         return /^https?:\/\//i.test(vercelUrl) ? vercelUrl : `https://${vercelUrl}`
     }
 
-    const originUrl = new URL(origin)
-    if (isLoopbackHost(originUrl.hostname)) {
-        throw new Error(
-            "QStash cannot call loopback/local URLs. Set QSTASH_WORKER_URL (recommended) or APP_URL to your public deployment URL.",
-        )
+    return origin
+}
+
+const getOptionalInternalJobSecret = () => process.env.CAMPAIGN_JOB_SECRET?.trim()
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1"])
+
+const shouldRetryWithHttp = (targetUrl: string, error: unknown) => {
+    const cause = (error as { cause?: { code?: string } })?.cause
+    const code = cause?.code
+
+    if (code !== "ERR_SSL_WRONG_VERSION_NUMBER") {
+        return false
     }
 
-    return origin
+    const target = new URL(targetUrl)
+    return target.protocol === "https:" && LOOPBACK_HOSTS.has(target.hostname.toLowerCase())
+}
+
+const asHttpUrl = (targetUrl: string) => {
+    const url = new URL(targetUrl)
+    url.protocol = "http:"
+    return url.toString()
 }
 
 export const enqueueCampaignWorkerJob = async (
@@ -73,17 +71,69 @@ export const enqueueCampaignWorkerJob = async (
 ) => {
     const workerBaseUrl = resolveWorkerBaseUrl(origin)
     const targetUrl = new URL("/api/jobs/campaign", workerBaseUrl).toString()
-    const retries = Math.max(0, options.retries ?? DEFAULT_RETRIES)
+    const triggerId = options.deduplicationId || randomUUID()
 
-    const result = await qstashClient.publishJSON({
-        url: targetUrl,
-        body: payload,
-        retries,
-        deduplicationId: options.deduplicationId,
+    const headers: HeadersInit = {
+        "content-type": "application/json",
+        "x-campaign-job-trigger-id": triggerId,
+    }
+
+    const internalJobSecret = getOptionalInternalJobSecret()
+    if (internalJobSecret) {
+        headers["x-campaign-job-secret"] = internalJobSecret
+    }
+
+    const triggerRequest = fetch(targetUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+        cache: "no-store",
     })
+
+    if (options.waitForResponse) {
+        let response: Response
+
+        try {
+            response = await triggerRequest
+        } catch (error) {
+            if (!shouldRetryWithHttp(targetUrl, error)) {
+                throw error
+            }
+
+            response = await fetch(asHttpUrl(targetUrl), {
+                method: "POST",
+                headers,
+                body: JSON.stringify(payload),
+                cache: "no-store",
+            })
+        }
+
+        if (!response.ok) {
+            const responseBody = await response.text().catch(() => "")
+            throw new Error(
+                `Failed to trigger campaign worker API (${response.status}): ${responseBody || response.statusText}`,
+            )
+        }
+    } else {
+        void triggerRequest.catch((error) => {
+            if (!shouldRetryWithHttp(targetUrl, error)) {
+                console.error("Failed to trigger campaign worker API:", error)
+                return
+            }
+
+            void fetch(asHttpUrl(targetUrl), {
+                method: "POST",
+                headers,
+                body: JSON.stringify(payload),
+                cache: "no-store",
+            }).catch((retryError) => {
+                console.error("Failed to trigger campaign worker API after HTTP fallback:", retryError)
+            })
+        })
+    }
 
     return {
         targetUrl,
-        messageId: result.messageId,
+        messageId: triggerId,
     }
 }
