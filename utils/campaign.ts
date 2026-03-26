@@ -484,12 +484,7 @@ const finalizeChunkedCampaignFile = async (
     for (const chunkFile of chunkFiles) {
         try {
             await storageService.deleteFile(chunkFile.filePath)
-        } catch (error) {
-            console.warn(
-                `Failed to delete chunk file ${chunkFile.filePath} for campaign ${campaign.id} and job ${chunk.jobId}:`,
-                error,
-            )
-        }
+        } catch {}
     }
 
     await (businessPrisma as any).campaignChunkFile.updateMany({
@@ -543,7 +538,6 @@ const createCampaignFile = async (
     const templates = (
         await Promise.all(
             sourceTemplates.map(async (template) => {
-                console.log(`Refreshing dependencies for template ${template.id} (${template.title})`)
                 const refreshedTemplate = await refreshTemplateDependencies({
                     prisma: businessPrisma,
                     templateId: template.id,
@@ -652,7 +646,6 @@ const createCampaignFile = async (
             const fileName = `campaign-${campaign.name}-customer-${customer.id ?? "unknown"}.pdf`
                 generatedPdfProgress += 1
                 const generatedOverall = baseGeneratedOverall + generatedPdfProgress
-                console.info(generatedOverall)
                 await onProgress?.({
                     generated: generatedOverall,
                     total: totalFilesOverall,
@@ -798,9 +791,6 @@ const runCampaignForBusiness = async (
             })
         
         if (!campaigns || (Array.isArray(campaigns) && campaigns.length === 0)) {
-            console.info(
-                `[Campaign Runner][${triggerSource}] No campaigns to run for business ${business.name} (${business.id})`,
-            )
             return { businessId, success: false, error: "No campaigns to run", campaigns: [] }
         }
 
@@ -808,9 +798,6 @@ const runCampaignForBusiness = async (
         let lastFileInfo: CampaignFileResult | null = null
         const logPrefix = getLogPrefix(triggerSource)
         
-        console.log(
-            `[Campaign Runner][${triggerSource}] Running ${campaignsToRun.length} campaign(s) for business ${business.name} (${business.id})`,
-        )
         const campaignOutcomes = await runWithConcurrency(
             campaignsToRun,
             MAX_PARALLEL_CAMPAIGNS_PER_BUSINESS,
@@ -886,9 +873,6 @@ const runCampaignForBusiness = async (
                     if (isPrismaRecordNotFoundError(error)) {
                         const runFinishedAt = new Date()
                         const errorMessage = "Campaign not found before execution started"
-                        console.warn(
-                            `[Campaign ${campaign.name}] Skipping execution because campaign record no longer exists`,
-                        )
 
                         await createCampaignRunLog(businessPrisma, {
                             campaignId: campaign.id,
@@ -975,14 +959,6 @@ const runCampaignForBusiness = async (
                             ? `${logPrefix} Campaign run successfully`
                             : `${logPrefix} Campaign run completed without generated files`
 
-                    if (campaignFileResult) {
-                        console.info(
-                            `[Campaign ${campaign.name}] Uploaded campaign ZIP (${campaignFileResult.pdfCount} PDFs) to ${campaignFileResult.file.filePath}`,
-                        )
-                    } else {
-                        console.info(`[Campaign ${campaign.name}] No PDFs generated (missing data)`)
-                    }
-
                     try {
                         await businessPrisma.campaign.update({
                             where: { id: campaign.id },
@@ -1003,9 +979,6 @@ const runCampaignForBusiness = async (
                             throw error
                         }
 
-                        console.warn(
-                            `[Campaign ${campaign.name}] Campaign record no longer exists while writing success state`,
-                        )
                     }
 
                     await createCampaignRunLog(businessPrisma, {
@@ -1081,8 +1054,6 @@ const runCampaignForBusiness = async (
                     const nextScheduleStatus = SCHEDULE_STATUS.FAILED
                     const runFinishedAt = new Date()
 
-                    console.error(`[Campaign ${campaign.name}] Failed to run: ${errorMessage}`)
-
                     try {
                         await businessPrisma.campaign.update({
                             where: { id: campaign.id },
@@ -1103,9 +1074,6 @@ const runCampaignForBusiness = async (
                             throw error
                         }
 
-                        console.warn(
-                            `[Campaign ${campaign.name}] Campaign record no longer exists while writing failure state`,
-                        )
                     }
 
                     await createCampaignRunLog(businessPrisma, {
@@ -1152,11 +1120,6 @@ const runCampaignForBusiness = async (
         const aggregatedError = allSuccessful
             ? undefined
             : campaignResults.find((result) => !result.success)?.error ?? "One or more campaigns failed"
-
-        const summaryMessage = allSuccessful
-            ? `[Campaign Runner][${triggerSource}] Successfully processed ${campaignResults.length} campaign(s) for business ${business.name} (${business.id})`
-            : `[Campaign Runner][${triggerSource}] Completed with failures for business ${business.name} (${business.id}). Successful: ${campaignResults.filter((result) => result.success).length}, Failed: ${campaignResults.filter((result) => !result.success).length}`
-        console.info(summaryMessage)
 
         return {
             businessId,

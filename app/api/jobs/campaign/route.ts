@@ -25,7 +25,6 @@ const getChunkSize = () => {
 const enqueueChunkedCampaignJobs = async (
     request: Request,
     payload: Extract<CampaignWorkerJobPayload, { jobType: "RUN_CAMPAIGNS" }>,
-    trace: { traceId: string; parentHop: number },
 ) => {
     const businessId = payload.businessIds?.[0]
     const campaignId = payload.campaignId
@@ -97,9 +96,8 @@ const enqueueChunkedCampaignJobs = async (
         },
         {
             deduplicationId: `chunk-run-${businessId}-${campaignId}-${jobId}-${firstChunkOffset}-${chunkSize}-${nowBucket}`,
-            traceId: trace.traceId,
-            parentHop: trace.parentHop,
-            sourceRoute: "/api/jobs/campaign",
+            waitForResponse: true,
+            endpointPath: "/api/jobs/campaign/forward",
         },
     )
 
@@ -116,57 +114,19 @@ const enqueueChunkedCampaignJobs = async (
 }
 
 async function handler(request: Request) {
-    const startedAt = new Date().toISOString()
-    const traceId = request.headers.get("x-campaign-job-trace-id")?.trim() || `job-${startedAt.slice(0, 19).replace(/[:T]/g, "-")}`
-    const parentHop = Number(request.headers.get("x-campaign-job-hop") || "0") || 0
-    const incomingTriggerId = request.headers.get("x-campaign-job-trigger-id")?.trim()
-    const sourceRoute = request.headers.get("x-campaign-job-source-route")?.trim() || "unknown"
-
     try {
-        console.log(
-            "[CampaignWorker] request:start",
-            JSON.stringify({
-                traceId,
-                parentHop,
-                incomingTriggerId,
-                sourceRoute,
-                method: request.method,
-                url: request.url,
-                startedAt,
-            }),
-        )
-
         const expectedSecret = process.env.CAMPAIGN_JOB_SECRET?.trim()
         if (expectedSecret) {
             const incomingSecret = request.headers.get("x-campaign-job-secret")?.trim()
             if (!incomingSecret || incomingSecret !== expectedSecret) {
-                console.warn(
-                    "[CampaignWorker] request:unauthorized",
-                    JSON.stringify({ traceId, parentHop, incomingTriggerId, sourceRoute }),
-                )
                 return NextResponse.json({ error: "Unauthorized job trigger" }, { status: 401 })
             }
         }
 
         const payload = (await request.json()) as CampaignWorkerJobPayload
         if (!payload || typeof payload !== "object" || !("jobType" in payload)) {
-            console.warn(
-                "[CampaignWorker] request:invalid-payload",
-                JSON.stringify({ traceId, parentHop, incomingTriggerId, sourceRoute }),
-            )
             return NextResponse.json({ error: "Invalid job payload" }, { status: 400 })
         }
-
-        console.log(
-            "[CampaignWorker] request:payload",
-            JSON.stringify({
-                traceId,
-                parentHop,
-                incomingTriggerId,
-                sourceRoute,
-                payload,
-            }),
-        )
 
         if (isRunCampaignJobPayload(payload)) {
             const canOrchestrateChunks =
@@ -176,22 +136,8 @@ async function handler(request: Request) {
                 (payload.businessIds?.length ?? 0) === 1
 
             if (canOrchestrateChunks) {
-                const chunkedResult = await enqueueChunkedCampaignJobs(request, payload, {
-                    traceId,
-                    parentHop,
-                })
+                const chunkedResult = await enqueueChunkedCampaignJobs(request, payload)
                 if (chunkedResult.orchestrated) {
-                    console.log(
-                        "[CampaignWorker] request:chunk-orchestrated",
-                        JSON.stringify({
-                            traceId,
-                            parentHop,
-                            incomingTriggerId,
-                            sourceRoute,
-                            ...chunkedResult,
-                        }),
-                    )
-
                     return NextResponse.json({
                         ok: true,
                         jobType: payload.jobType,
@@ -213,21 +159,6 @@ async function handler(request: Request) {
                       }
                     : undefined
 
-            const executionStartedAt = Date.now()
-            console.log(
-                "[CampaignWorker] runCampaignJob:start",
-                JSON.stringify({
-                    traceId,
-                    parentHop,
-                    incomingTriggerId,
-                    sourceRoute,
-                    campaignId: payload.campaignId,
-                    businessIdsCount: payload.businessIds?.length ?? 0,
-                    triggerSource: payload.triggerSource,
-                    chunk: chunkMeta,
-                }),
-            )
-
             const results = await runCampaignJob({
                 campaignId: payload.campaignId,
                 businessIds: payload.businessIds,
@@ -235,26 +166,6 @@ async function handler(request: Request) {
                 triggerSource: payload.triggerSource,
                 chunk: chunkMeta,
             })
-
-            const executionDurationMs = Date.now() - executionStartedAt
-            const successfulBusinesses = results.filter((result) => result.success).length
-            const failedBusinesses = results.length - successfulBusinesses
-
-            console.log(
-                "[CampaignWorker] runCampaignJob:complete",
-                JSON.stringify({
-                    traceId,
-                    parentHop,
-                    incomingTriggerId,
-                    sourceRoute,
-                    campaignId: payload.campaignId,
-                    chunk: chunkMeta,
-                    processedBusinesses: results.length,
-                    successfulBusinesses,
-                    failedBusinesses,
-                    durationMs: executionDurationMs,
-                }),
-            )
 
             const isChunkedExecution = Boolean(payload.chunked)
             const hasNextChunk =
@@ -287,46 +198,14 @@ async function handler(request: Request) {
                         },
                         {
                             deduplicationId: `chunk-run-${businessId}-${campaignId}-${payload.jobId}-${nextChunkOffset}-${payload.chunkLimit}-${nowBucket}`,
-                            waitForResponse: false,
+                            waitForResponse: true,
                             endpointPath: "/api/jobs/campaign/forward",
-                            traceId,
-                            parentHop,
-                            sourceRoute: "/api/jobs/campaign",
                         },
-                    )
-
-                    console.log(
-                        "[CampaignWorker] relay:next-chunk-enqueued",
-                        JSON.stringify({
-                            traceId,
-                            parentHop,
-                            incomingTriggerId,
-                            sourceRoute,
-                            nextChunkOrder,
-                            nextChunkOffset,
-                            totalChunks: payload.totalChunks,
-                            nextChunkMessageId: nextChunkJob.messageId,
-                        }),
                     )
 
                     nextChunkMessageId = nextChunkJob.messageId
                 }
             }
-
-            console.log(
-                "[CampaignWorker] request:complete",
-                JSON.stringify({
-                    traceId,
-                    parentHop,
-                    incomingTriggerId,
-                    sourceRoute,
-                    jobType: payload.jobType,
-                    mode: payload.chunked ? "CHUNK_EXECUTION_SEQUENTIAL" : "DEFAULT_EXECUTION",
-                    processedBusinesses: results.length,
-                    allSucceeded,
-                    nextChunkMessageId,
-                }),
-            )
 
             return NextResponse.json({
                 ok: true,
@@ -339,43 +218,11 @@ async function handler(request: Request) {
 
         if (payload.jobType === "DELETE_EXPIRED_FILES") {
             await deleteCampaignFileJob()
-            console.log(
-                "[CampaignWorker] request:cleanup-complete",
-                JSON.stringify({
-                    traceId,
-                    parentHop,
-                    incomingTriggerId,
-                    sourceRoute,
-                    jobType: payload.jobType,
-                }),
-            )
             return NextResponse.json({ ok: true, jobType: payload.jobType })
         }
 
-        console.warn(
-            "[CampaignWorker] request:unsupported-job",
-            JSON.stringify({
-                traceId,
-                parentHop,
-                incomingTriggerId,
-                sourceRoute,
-                payload,
-            }),
-        )
-
         return NextResponse.json({ error: "Unsupported job type" }, { status: 400 })
     } catch (error) {
-        console.error(
-            "[CampaignWorker] request:error",
-            JSON.stringify({
-                traceId,
-                parentHop,
-                incomingTriggerId,
-                sourceRoute,
-                message: error instanceof Error ? error.message : "Unknown worker error",
-                stack: error instanceof Error ? error.stack : undefined,
-            }),
-        )
         return NextResponse.json(
             {
                 error: error instanceof Error ? error.message : "Unknown worker error",
