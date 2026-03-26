@@ -16,6 +16,7 @@ import {
     Tab,
     Tooltip,
     addToast,
+    Progress,
 } from "@heroui/react"
 import {
     Activity,
@@ -43,6 +44,8 @@ import type { CampaignDetail } from "@/types/campaign"
 import type { CampaignFormValues } from "./newCampaignSteps/types"
 import { StatusCell } from "./StatusCell"
 import { timeDifferenceFormatter } from "@/utils/DateFormatter"
+import type { CampaignProgressEvent } from "@/lib/realtime/campaign-progress"
+import { getCampaignProgressChannel } from "@/lib/realtime/campaign-progress"
 
 // --- Helper Functions ---
 
@@ -137,6 +140,12 @@ type Props = {
     campaign: CampaignDetail
 }
 
+type RealtimeProgress = {
+    generated: number
+    total: number
+    value: number
+}
+
 const CampaignDetailView = ({ campaign }: Props) => {
     const router = useRouter()
     const dispatch = useAppDispatch()
@@ -145,7 +154,22 @@ const CampaignDetailView = ({ campaign }: Props) => {
     const { status: updateStatus } = useAppSelector((state) => state.campaigns.update)
     const { status: deleteStatus, deletingId } = useAppSelector((state) => state.campaigns.remove)
     const { status: rerunStatus, currentId: rerunId, runningIds } = useAppSelector((state) => state.campaigns.rerun)
+    const liveCampaign = useAppSelector((state) =>
+        state.campaigns.list.items.find((item) => item.id === campaign.id),
+    )
     const pollingIntervalRef = useRef<number | null>(null)
+    const [realtimeProgress, setRealtimeProgress] = useState<RealtimeProgress | null>(null)
+
+    const liveTemplates = liveCampaign?.templates ?? campaign.templates
+    const liveLogs =
+        (liveCampaign as unknown as { logs?: CampaignDetail["logs"] } | undefined)?.logs ??
+        campaign.logs
+    const liveFiles =
+        (liveCampaign as unknown as { files?: CampaignDetail["files"] } | undefined)?.files ??
+        campaign.files
+    const liveScheduleStatus = liveCampaign?.scheduleStatus ?? campaign.scheduleStatus
+    const liveScheduledAt = liveCampaign?.scheduledAt ?? campaign.scheduledAt
+    const liveExecutedAt = liveCampaign?.executedAt ?? campaign.executedAt
 
     const stopPolling = useCallback(() => {
         if (pollingIntervalRef.current) {
@@ -190,6 +214,73 @@ const CampaignDetailView = ({ campaign }: Props) => {
     useEffect(() => {
         return () => stopPolling()
     }, [stopPolling])
+
+    useEffect(() => {
+        let isActive = true
+        let realtimeClient: any
+        let channel: any
+        let messageHandler: ((message: { data?: unknown }) => void) | undefined
+
+        const connectRealtime = async () => {
+            try {
+                const ablyModule = await import("ably")
+                const Realtime = (ablyModule as any).Realtime
+                if (!Realtime || !isActive) return
+
+                realtimeClient = new Realtime({
+                    authUrl: "/api/realtime/ably-token",
+                    authMethod: "POST",
+                    autoConnect: true,
+                })
+
+                channel = realtimeClient.channels.get(getCampaignProgressChannel(campaign.id))
+                messageHandler = (message: { data?: unknown }) => {
+                    const data = message.data as CampaignProgressEvent | undefined
+                    if (!data || data.campaignId !== campaign.id) return
+
+                    if (
+                        typeof data.generated === "number" &&
+                        typeof data.total === "number" &&
+                        data.total > 0
+                    ) {
+                        setRealtimeProgress({
+                            generated: data.generated,
+                            total: data.total,
+                            value: Math.max(
+                                0,
+                                Math.min(100, Math.round((data.generated / data.total) * 100)),
+                            ),
+                        })
+                    }
+
+                    if (data.type === "run-started" || data.type === "batch-progress") {
+                        startPolling()
+                        return
+                    }
+
+                    if (data.type === "run-completed" || data.type === "run-failed") {
+                        void pollOnce()
+                    }
+                }
+
+                await channel.subscribe(messageHandler)
+            } catch {
+                // Polling fallback remains active if realtime setup fails.
+            }
+        }
+
+        void connectRealtime()
+
+        return () => {
+            isActive = false
+            if (channel && messageHandler) {
+                channel.unsubscribe(messageHandler)
+            }
+            if (realtimeClient) {
+                realtimeClient.close()
+            }
+        }
+    }, [campaign.id, pollOnce, startPolling])
 
     // Local State
     const [isWizardOpen, setWizardOpen] = useState(false)
@@ -316,23 +407,51 @@ const CampaignDetailView = ({ campaign }: Props) => {
     // Sort Data
 
     const sortedFiles = useMemo(() => 
-        [...campaign.files].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    , [campaign.files])
+        [...liveFiles].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    , [liveFiles])
 
     const sortedLogs = useMemo(() => 
-        [...campaign.logs]
+        [...liveLogs]
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
             .map((log) => ({ ...log, _id: log.id }))
-    , [campaign.logs])
+    , [liveLogs])
 
     // Derived Data
-    const templateTitle = campaign.templates[0]?.template?.title ?? "Untitled template"
+    const templateTitle = liveTemplates[0]?.template?.title ?? "Untitled template"
     const contactListName = campaign.contactlist?.name ?? "Unknown list"
     const contactCount = campaign.contactlist?._count?.customers ?? campaign.totalRecords
     const fieldCount = Array.isArray(campaign.contactlist?.fields) ? campaign.contactlist?.fields.length ?? 0 : 0
     const nowTimestamp = Date.now()
     const latestAvailableFile = sortedFiles.find((file) => !isExpired(file.expiresAt, nowTimestamp))
     const hasDownloadableFiles = Boolean(latestAvailableFile)
+    const isRunningNow = runningIds.includes(campaign.id) || liveScheduleStatus === "RUNNING"
+
+    useEffect(() => {
+        if (!isRunningNow) {
+            setRealtimeProgress(null)
+        }
+    }, [isRunningNow])
+
+    const liveProgress = useMemo(() => {
+        for (const log of sortedLogs) {
+            const match = /File generated\s+(\d+)\s+out of\s+(\d+)/i.exec(log.message ?? "")
+            if (!match) continue
+
+            const generated = Number(match[1])
+            const total = Number(match[2])
+
+            if (!Number.isFinite(generated) || !Number.isFinite(total) || total <= 0) {
+                continue
+            }
+
+            const value = Math.max(0, Math.min(100, Math.round((generated / total) * 100)))
+            return { generated, total, value }
+        }
+
+        return null
+    }, [sortedLogs])
+
+    const displayProgress = realtimeProgress ?? liveProgress
     
     const handleDownloadLatest = useCallback(() => {
         if (!latestAvailableFile) return
@@ -347,7 +466,7 @@ const CampaignDetailView = ({ campaign }: Props) => {
                     <div className="space-y-2">
                         <div className="flex items-center gap-3 flex-wrap">
                             <h1 className="text-xl font-bold text-default-900 tracking-tight">{campaign.name}</h1>
-                            <StatusCell status={campaign.scheduleStatus} type="schedule" />
+                            <StatusCell status={liveScheduleStatus} type="schedule" />
                         </div>
                         <div className="flex items-center gap-4 text-small text-default-500 flex-wrap">
                             <div className="flex items-center gap-1.5">
@@ -425,8 +544,8 @@ const CampaignDetailView = ({ campaign }: Props) => {
                 />
                 <MetricCard 
                     title="Scheduled Date" 
-                    value={formatDateTime(campaign.scheduledAt, false)} 
-                    subtext={campaign.scheduledAt ? new Date(campaign.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ""}
+                    value={formatDateTime(liveScheduledAt, false)} 
+                    subtext={liveScheduledAt ? new Date(liveScheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ""}
                     icon={CalendarClock}
                 />
                 <MetricCard 
@@ -438,12 +557,44 @@ const CampaignDetailView = ({ campaign }: Props) => {
                 />
                 <MetricCard 
                     title="Execution Status" 
-                    value={campaign.executedAt ? "Completed" : "Pending"}
-                    subtext={campaign.executedAt ? formatRelative(campaign.executedAt) : "Waiting"}
-                    icon={campaign.executedAt ? CheckCircle2 : Activity}
-                    variant={campaign.executedAt ? "success" : "warning"}
+                    value={isRunningNow ? "Running" : liveExecutedAt ? "Completed" : "Pending"}
+                    subtext={liveExecutedAt ? formatRelative(liveExecutedAt) : "Waiting"}
+                    icon={liveExecutedAt ? CheckCircle2 : Activity}
+                    variant={liveExecutedAt ? "success" : "warning"}
                 />
             </div>
+
+            {isRunningNow && (
+                <div className="py-4 flex flex-col gap-3 flex-none">
+                    <div className="flex items-end justify-between text-secondary-700">
+                        <div className="flex items-center gap-2">
+                            <Activity size={16} className="animate-pulse" />
+                            <span className="text-sm font-medium">
+                                {displayProgress
+                                    ? `Generating files: ${displayProgress.generated} of ${displayProgress.total}`
+                                    : "Campaign is running..."}
+                            </span>
+                        </div>
+                        {displayProgress && (
+                            <span className="text-sm font-bold tabular-nums">
+                                {displayProgress.value}%
+                            </span>
+                        )}
+                    </div>
+                    
+                    <Progress 
+                        size="sm"
+                        color="secondary"
+                        aria-label="Generation progress"
+                        value={displayProgress ? displayProgress.value : 0}
+                        isIndeterminate={!displayProgress}
+                        className="max-w-full"
+                        classNames={{
+                            track: "bg-secondary-100/50", // Makes the unfilled part of the bar very subtle
+                        }}
+                    />
+                </div>
+            )}
 
             {/* Content Tabs */}
             <div className="flex flex-col gap-4 flex-1 min-h-0">
