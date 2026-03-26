@@ -201,23 +201,60 @@ async function handler(request: Request) {
                 }
             }
 
+            const chunkMeta =
+                payload.chunkOffset !== undefined && payload.chunkLimit !== undefined
+                    ? {
+                          jobId: payload.jobId,
+                          chunkOrder: payload.chunkOrder,
+                          totalChunks: payload.totalChunks,
+                          offset: payload.chunkOffset,
+                          limit: payload.chunkLimit,
+                          isFinalChunk: Boolean(payload.isFinalChunk),
+                      }
+                    : undefined
+
+            const executionStartedAt = Date.now()
+            console.log(
+                "[CampaignWorker] runCampaignJob:start",
+                JSON.stringify({
+                    traceId,
+                    parentHop,
+                    incomingTriggerId,
+                    sourceRoute,
+                    campaignId: payload.campaignId,
+                    businessIdsCount: payload.businessIds?.length ?? 0,
+                    triggerSource: payload.triggerSource,
+                    chunk: chunkMeta,
+                }),
+            )
+
             const results = await runCampaignJob({
                 campaignId: payload.campaignId,
                 businessIds: payload.businessIds,
                 maxParallel: payload.maxParallel,
                 triggerSource: payload.triggerSource,
-                chunk:
-                    payload.chunkOffset !== undefined && payload.chunkLimit !== undefined
-                        ? {
-                              jobId: payload.jobId,
-                              chunkOrder: payload.chunkOrder,
-                              totalChunks: payload.totalChunks,
-                              offset: payload.chunkOffset,
-                              limit: payload.chunkLimit,
-                              isFinalChunk: Boolean(payload.isFinalChunk),
-                          }
-                        : undefined,
+                chunk: chunkMeta,
             })
+
+            const executionDurationMs = Date.now() - executionStartedAt
+            const successfulBusinesses = results.filter((result) => result.success).length
+            const failedBusinesses = results.length - successfulBusinesses
+
+            console.log(
+                "[CampaignWorker] runCampaignJob:complete",
+                JSON.stringify({
+                    traceId,
+                    parentHop,
+                    incomingTriggerId,
+                    sourceRoute,
+                    campaignId: payload.campaignId,
+                    chunk: chunkMeta,
+                    processedBusinesses: results.length,
+                    successfulBusinesses,
+                    failedBusinesses,
+                    durationMs: executionDurationMs,
+                }),
+            )
 
             const isChunkedExecution = Boolean(payload.chunked)
             const hasNextChunk =
