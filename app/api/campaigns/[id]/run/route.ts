@@ -121,6 +121,7 @@ export const POST = async (req: NextRequest, { params }: RouteParams) => {
         })
 
         const minuteBucket = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")
+        const traceId = `manual-run-${businessId}-${campaignId}-${minuteBucket}`
         const queueJob = await enqueueCampaignWorkerJob(
             req.nextUrl.origin,
             {
@@ -130,8 +131,11 @@ export const POST = async (req: NextRequest, { params }: RouteParams) => {
                 businessIds: [businessId],
             },
             {
-                deduplicationId: `manual-run-${businessId}-${campaignId}-${minuteBucket}`,
+                deduplicationId: traceId,
                 waitForResponse: true,
+                traceId,
+                parentHop: 0,
+                sourceRoute: "/api/campaigns/[id]/run",
             },
         )
 
