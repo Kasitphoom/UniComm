@@ -194,7 +194,7 @@ async function handler(request: Request) {
                         },
                         {
                             deduplicationId: `chunk-run-${businessId}-${campaignId}-${payload.jobId}-${nextChunkOffset}-${payload.chunkLimit}-${nowBucket}`,
-                            waitForResponse: true,
+                            waitForResponse: false,
                         },
                     )
 
