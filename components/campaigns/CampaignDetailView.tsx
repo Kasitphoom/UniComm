@@ -10,13 +10,13 @@ import {
     CardBody,
     CardHeader,
     Chip,
-    CircularProgress,
     Divider,
     ScrollShadow,
     Tabs,
     Tab,
     Tooltip,
     addToast,
+    Progress,
 } from "@heroui/react"
 import {
     Activity,
@@ -44,6 +44,8 @@ import type { CampaignDetail } from "@/types/campaign"
 import type { CampaignFormValues } from "./newCampaignSteps/types"
 import { StatusCell } from "./StatusCell"
 import { timeDifferenceFormatter } from "@/utils/DateFormatter"
+import type { CampaignProgressEvent } from "@/lib/realtime/campaign-progress"
+import { getCampaignProgressChannel } from "@/lib/realtime/campaign-progress"
 
 // --- Helper Functions ---
 
@@ -138,6 +140,12 @@ type Props = {
     campaign: CampaignDetail
 }
 
+type RealtimeProgress = {
+    generated: number
+    total: number
+    value: number
+}
+
 const CampaignDetailView = ({ campaign }: Props) => {
     const router = useRouter()
     const dispatch = useAppDispatch()
@@ -150,6 +158,7 @@ const CampaignDetailView = ({ campaign }: Props) => {
         state.campaigns.list.items.find((item) => item.id === campaign.id),
     )
     const pollingIntervalRef = useRef<number | null>(null)
+    const [realtimeProgress, setRealtimeProgress] = useState<RealtimeProgress | null>(null)
 
     const liveTemplates = liveCampaign?.templates ?? campaign.templates
     const liveLogs =
@@ -205,6 +214,73 @@ const CampaignDetailView = ({ campaign }: Props) => {
     useEffect(() => {
         return () => stopPolling()
     }, [stopPolling])
+
+    useEffect(() => {
+        let isActive = true
+        let realtimeClient: any
+        let channel: any
+        let messageHandler: ((message: { data?: unknown }) => void) | undefined
+
+        const connectRealtime = async () => {
+            try {
+                const ablyModule = await import("ably")
+                const Realtime = (ablyModule as any).Realtime
+                if (!Realtime || !isActive) return
+
+                realtimeClient = new Realtime({
+                    authUrl: "/api/realtime/ably-token",
+                    authMethod: "POST",
+                    autoConnect: true,
+                })
+
+                channel = realtimeClient.channels.get(getCampaignProgressChannel(campaign.id))
+                messageHandler = (message: { data?: unknown }) => {
+                    const data = message.data as CampaignProgressEvent | undefined
+                    if (!data || data.campaignId !== campaign.id) return
+
+                    if (
+                        typeof data.generated === "number" &&
+                        typeof data.total === "number" &&
+                        data.total > 0
+                    ) {
+                        setRealtimeProgress({
+                            generated: data.generated,
+                            total: data.total,
+                            value: Math.max(
+                                0,
+                                Math.min(100, Math.round((data.generated / data.total) * 100)),
+                            ),
+                        })
+                    }
+
+                    if (data.type === "run-started" || data.type === "batch-progress") {
+                        startPolling()
+                        return
+                    }
+
+                    if (data.type === "run-completed" || data.type === "run-failed") {
+                        void pollOnce()
+                    }
+                }
+
+                await channel.subscribe(messageHandler)
+            } catch {
+                // Polling fallback remains active if realtime setup fails.
+            }
+        }
+
+        void connectRealtime()
+
+        return () => {
+            isActive = false
+            if (channel && messageHandler) {
+                channel.unsubscribe(messageHandler)
+            }
+            if (realtimeClient) {
+                realtimeClient.close()
+            }
+        }
+    }, [campaign.id, pollOnce, startPolling])
 
     // Local State
     const [isWizardOpen, setWizardOpen] = useState(false)
@@ -350,6 +426,12 @@ const CampaignDetailView = ({ campaign }: Props) => {
     const hasDownloadableFiles = Boolean(latestAvailableFile)
     const isRunningNow = runningIds.includes(campaign.id) || liveScheduleStatus === "RUNNING"
 
+    useEffect(() => {
+        if (!isRunningNow) {
+            setRealtimeProgress(null)
+        }
+    }, [isRunningNow])
+
     const liveProgress = useMemo(() => {
         for (const log of sortedLogs) {
             const match = /File generated\s+(\d+)\s+out of\s+(\d+)/i.exec(log.message ?? "")
@@ -368,6 +450,8 @@ const CampaignDetailView = ({ campaign }: Props) => {
 
         return null
     }, [sortedLogs])
+
+    const displayProgress = realtimeProgress ?? liveProgress
     
     const handleDownloadLatest = useCallback(() => {
         if (!latestAvailableFile) return
@@ -398,19 +482,6 @@ const CampaignDetailView = ({ campaign }: Props) => {
                     </div>
                     <div className="flex items-center gap-2">
                         <div className="flex items-center gap-2">
-                            {isRunningNow && (
-                                <CircularProgress
-                                    aria-label="Campaign run progress"
-                                    color="warning"
-                                    showValueLabel
-                                    size="md"
-                                    value={liveProgress?.value ?? 0}
-                                    formatOptions={{ style: "percent" }}
-                                    classNames={{
-                                        value: "text-xs font-semibold text-warning-700",
-                                    }}
-                                />
-                            )}
                             <Tooltip content={canManageCampaigns ? "Re-trigger" : "No permission"} size="sm" color="secondary">
                                 <Button
                                     isIconOnly
@@ -486,7 +557,7 @@ const CampaignDetailView = ({ campaign }: Props) => {
                 />
                 <MetricCard 
                     title="Execution Status" 
-                    value={liveExecutedAt ? "Completed" : "Pending"}
+                    value={isRunningNow ? "Running" : liveExecutedAt ? "Completed" : "Pending"}
                     subtext={liveExecutedAt ? formatRelative(liveExecutedAt) : "Waiting"}
                     icon={liveExecutedAt ? CheckCircle2 : Activity}
                     variant={liveExecutedAt ? "success" : "warning"}
@@ -494,23 +565,35 @@ const CampaignDetailView = ({ campaign }: Props) => {
             </div>
 
             {isRunningNow && (
-                <Card className="border border-warning-200 bg-warning-50/50 shadow-sm flex-none">
-                    <CardBody className="py-3 px-4 flex flex-row items-center justify-between gap-4">
-                        <div className="flex items-center gap-2 text-warning-700">
-                            <Activity size={16} />
-                            <p className="text-sm font-medium">
-                                {liveProgress
-                                    ? `Generating files ${liveProgress.generated} out of ${liveProgress.total}`
+                <div className="py-4 flex flex-col gap-3 flex-none">
+                    <div className="flex items-end justify-between text-secondary-700">
+                        <div className="flex items-center gap-2">
+                            <Activity size={16} className="animate-pulse" />
+                            <span className="text-sm font-medium">
+                                {displayProgress
+                                    ? `Generating files: ${displayProgress.generated} of ${displayProgress.total}`
                                     : "Campaign is running..."}
-                            </p>
+                            </span>
                         </div>
-                        {liveProgress && (
-                            <Chip size="sm" color="warning" variant="flat" className="font-semibold">
-                                {liveProgress.value}%
-                            </Chip>
+                        {displayProgress && (
+                            <span className="text-sm font-bold tabular-nums">
+                                {displayProgress.value}%
+                            </span>
                         )}
-                    </CardBody>
-                </Card>
+                    </div>
+                    
+                    <Progress 
+                        size="sm"
+                        color="secondary"
+                        aria-label="Generation progress"
+                        value={displayProgress ? displayProgress.value : 0}
+                        isIndeterminate={!displayProgress}
+                        className="max-w-full"
+                        classNames={{
+                            track: "bg-secondary-100/50", // Makes the unfilled part of the bar very subtle
+                        }}
+                    />
+                </div>
             )}
 
             {/* Content Tabs */}
