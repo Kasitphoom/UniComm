@@ -83,4 +83,39 @@ This project is currently in development. Licensing details will be added upon r
 
 ---
 
+## ⚙️ External Campaign Worker (Vercel)
+
+Campaign cron/manual runs are queued to an external queue and executed by a dedicated worker endpoint for improved reliability on serverless.
+
+Required environment variables:
+
+- `CRON_JOBS_SECRET` — Auth secret for `/api/cron/campaign`
+- `QSTASH_TOKEN` — Upstash QStash token used to publish jobs
+- `QSTASH_CURRENT_SIGNING_KEY` — Upstash signing key for request verification
+- `QSTASH_NEXT_SIGNING_KEY` — Upstash next signing key for key rotation
+- `QSTASH_WORKER_URL` — Public base URL for worker callbacks (recommended, e.g. `https://your-app.vercel.app`)
+- `CAMPAIGN_JOB_CHUNK_SIZE` — Optional per-message customer chunk size for manual campaign runs (default: `100`)
+
+Worker endpoint:
+
+- `POST /api/jobs/campaign`
+
+Queue flow:
+
+- `/api/cron/campaign` enqueues `RUN_CAMPAIGNS` + `DELETE_EXPIRED_FILES`
+- `/api/campaigns/{id}/run` enqueues `RUN_CAMPAIGNS` for one campaign
+- Worker verifies QStash signatures and returns non-2xx on failure so QStash retries
+- Chunked manual runs upload per-chunk ZIP files, then merge into one final campaign ZIP in `CampaignFile`
+- Chunk execution is sequential: chunk 1 queues chunk 2 only after completion, then chunk 3, and so on
+
+Chunk cleanup API:
+
+- `DELETE /api/campaign-chunks/{jobId}` marks all chunk records for the job as deleted
+
+Notes:
+
+- QStash cannot call `localhost`/loopback addresses. For local testing, use a public tunnel URL in `QSTASH_WORKER_URL`.
+
+---
+
 ⭐ _If you find UniComm interesting, please consider starring the repository!_

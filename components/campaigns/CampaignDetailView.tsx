@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useCallback } from "react"
+import { useMemo, useState, useCallback, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import {
     Accordion,
@@ -34,7 +34,7 @@ import {
 } from "lucide-react"
 import { fromDate, getLocalTimeZone, now, parseAbsoluteToLocal } from "@internationalized/date"
 import { useAppDispatch, useAppSelector } from "@/store/hooks"
-import { updateCampaign, deleteCampaign, rerunCampaign } from "@/features/campaigns/campaignsSlice"
+import { updateCampaign, deleteCampaign, rerunCampaign, pollCampaignRunStatus } from "@/features/campaigns/campaignsSlice"
 import { UserRole } from "@/app/generated/business/prisma"
 import { useUserHasPermissionClient } from "@/utils/permissions"
 import CampaignWizardModal from "./CampaignWizardModal"
@@ -144,7 +144,52 @@ const CampaignDetailView = ({ campaign }: Props) => {
     // Redux State
     const { status: updateStatus } = useAppSelector((state) => state.campaigns.update)
     const { status: deleteStatus, deletingId } = useAppSelector((state) => state.campaigns.remove)
-    const { status: rerunStatus, currentId: rerunId } = useAppSelector((state) => state.campaigns.rerun)
+    const { status: rerunStatus, currentId: rerunId, runningIds } = useAppSelector((state) => state.campaigns.rerun)
+    const pollingIntervalRef = useRef<number | null>(null)
+
+    const stopPolling = useCallback(() => {
+        if (pollingIntervalRef.current) {
+            window.clearInterval(pollingIntervalRef.current)
+            pollingIntervalRef.current = null
+        }
+    }, [])
+
+    const pollOnce = useCallback(async () => {
+        try {
+            const result = await dispatch(pollCampaignRunStatus(campaign.id)).unwrap()
+            if (!result.isRunning) {
+                stopPolling()
+                addToast({
+                    title: "Campaign run completed",
+                    description: "Status has been updated.",
+                    color: "success",
+                })
+                router.refresh()
+            }
+        } catch {
+            // Keep polling on transient errors
+        }
+    }, [campaign.id, dispatch, router, stopPolling])
+
+    const startPolling = useCallback(() => {
+        if (pollingIntervalRef.current) return
+        void pollOnce()
+        pollingIntervalRef.current = window.setInterval(() => {
+            void pollOnce()
+        }, 5000)
+    }, [pollOnce])
+
+    useEffect(() => {
+        if (runningIds.includes(campaign.id)) {
+            startPolling()
+        } else {
+            stopPolling()
+        }
+    }, [campaign.id, runningIds, startPolling, stopPolling])
+
+    useEffect(() => {
+        return () => stopPolling()
+    }, [stopPolling])
 
     // Local State
     const [isWizardOpen, setWizardOpen] = useState(false)
@@ -183,28 +228,27 @@ const CampaignDetailView = ({ campaign }: Props) => {
         setWizardOpen(true)
     }, [canManageCampaigns])
 
-    const isRerunLoading = rerunStatus === "loading" && rerunId === campaign.id
+    const isRerunLoading = (rerunStatus === "loading" && rerunId === campaign.id) || runningIds.includes(campaign.id)
 
     const handleRerun = useCallback(async () => {
-        if (!canManageCampaigns || rerunStatus === "loading" && rerunId === campaign.id) return
+        if (!canManageCampaigns || ((rerunStatus === "loading" && rerunId === campaign.id) || runningIds.includes(campaign.id))) return
 
         try {
             await dispatch(rerunCampaign(campaign.id)).unwrap()
+            startPolling()
             addToast({
                 title: "Campaign run triggered",
-                description: "We will update the status once the files are ready.",
+                description: "Campaign is running in the background.",
                 color: "success",
             })
-            router.refresh()
         } catch (error) {
             addToast({
                 title: "Failed to re-trigger campaign",
                 description: error instanceof Error ? error.message : "Unexpected error",
                 color: "danger",
             })
-            router.refresh()
         }
-    }, [campaign.id, canManageCampaigns, dispatch, rerunId, rerunStatus, router])
+    }, [campaign.id, canManageCampaigns, dispatch, rerunId, rerunStatus, runningIds, startPolling])
 
     const handleUpdate = useCallback(async (values: CampaignFormValues) => {
         if (!canManageCampaigns || !values.templateId || !values.customerListId || !values.scheduleDate) {
@@ -505,6 +549,7 @@ const CampaignDetailView = ({ campaign }: Props) => {
                                     const logKey = log._id ?? log.id
                                     const isSuccess = log.status === "TRIGGERED"
                                     const isFailed = log.status === "FAILED"
+                                    const displayStatus = log.status === "TRIGGERED" ? "EXECUTED" : log.status
                                     const statusColors = isSuccess
                                         ? "bg-success-50 text-success-600"
                                         : isFailed
@@ -531,7 +576,7 @@ const CampaignDetailView = ({ campaign }: Props) => {
                                                         <p className="text-sm text-default-900 truncate">{log.message || "Status updated"}</p>
                                                     </div>
                                                     <div className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${statusColors}`}>
-                                                        {log.status}
+                                                        {displayStatus}
                                                     </div>
                                                 </div>
                                             )}

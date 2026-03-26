@@ -14,6 +14,8 @@ import JSZip from "jszip"
 import { refreshTemplateDependencies } from "@/utils/template/refreshTemplateDependencies"
 
 const MAX_PARALLEL_BUSINESSES = 10
+const MAX_PARALLEL_CAMPAIGNS_PER_BUSINESS = 3
+const MAX_PARALLEL_CUSTOMER_PDFS = 8
 const ZIP_EXPIRATION_MS = 14 * 24 * 60 * 60 * 1000 // 2 weeks
 type BusinessPrismaClient = ReturnType<typeof getBusinessPrisma>
 
@@ -53,6 +55,15 @@ type CampaignJobResult = {
     campaigns: CampaignRunResult[]
 }
 
+type CampaignExecutionChunk = {
+    jobId?: string
+    chunkOrder?: number
+    totalChunks?: number
+    offset: number
+    limit: number
+    isFinalChunk?: boolean
+}
+
 type ContactListField = {
     field: string
     type?: string
@@ -61,6 +72,32 @@ type ContactListField = {
 type PdfArtifact = {
     fileName: string
     buffer: Buffer
+}
+
+const runWithConcurrency = async <T, R>(
+    items: T[],
+    maxParallel: number,
+    worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> => {
+    if (items.length === 0) return []
+
+    const parallel = Math.max(1, Math.min(maxParallel, items.length))
+    const results = new Array<R>(items.length)
+    let nextIndex = 0
+
+    const workers = Array.from({ length: parallel }, async () => {
+        while (true) {
+            const currentIndex = nextIndex
+            nextIndex += 1
+
+            if (currentIndex >= items.length) break
+
+            results[currentIndex] = await worker(items[currentIndex], currentIndex)
+        }
+    })
+
+    await Promise.all(workers)
+    return results
 }
 
 const normalizeFieldName = (value: string) => value.trim().toLowerCase()
@@ -326,12 +363,152 @@ export type CampaignWithTemplates = Prisma.CampaignGetPayload<{ include: typeof 
 type CampaignFileResult = {
     file: CampaignFile
     pdfCount: number
+    batchPdfCount?: number
+}
+
+const toBaseFileName = (value: string) => {
+    const normalized = value.trim()
+    if (!normalized) return normalized
+    const segments = normalized.split("/")
+    return segments[segments.length - 1] || normalized
+}
+
+const isChunkExecution = (
+    chunk?: CampaignExecutionChunk,
+): chunk is Required<Pick<CampaignExecutionChunk, "jobId" | "chunkOrder" | "totalChunks" | "offset" | "limit">> & CampaignExecutionChunk => {
+    return Boolean(
+        chunk &&
+            typeof chunk.jobId === "string" &&
+            chunk.jobId &&
+            typeof chunk.chunkOrder === "number" &&
+            typeof chunk.totalChunks === "number",
+    )
+}
+
+const finalizeChunkedCampaignFile = async (
+    businessId: string,
+    campaign: CampaignWithTemplates,
+    businessPrisma: BusinessPrismaClient,
+    storageService: NonNullable<ReturnType<typeof getStorageService>>,
+    chunk: Required<Pick<CampaignExecutionChunk, "jobId" | "chunkOrder" | "totalChunks" | "offset" | "limit">>,
+): Promise<CampaignFileResult | null> => {
+    const chunkFiles = await (businessPrisma as any).campaignChunkFile.findMany({
+        where: {
+            campaignId: campaign.id,
+            jobId: chunk.jobId,
+            isDeleted: false,
+        },
+        orderBy: {
+            chunkOrder: "asc",
+        },
+    })
+
+    if (!Array.isArray(chunkFiles) || chunkFiles.length < chunk.totalChunks) {
+        return null
+    }
+
+    const existingFinalFile = await businessPrisma.campaignFile.findFirst({
+        where: {
+            campaignId: campaign.id,
+            isDeleted: false,
+            fileName: {
+                contains: `job-${chunk.jobId}`,
+            },
+        },
+        orderBy: {
+            createdAt: "desc",
+        },
+    })
+
+    if (existingFinalFile) {
+        return {
+            file: existingFinalFile,
+            pdfCount: existingFinalFile.generatedDocuments,
+        }
+    }
+
+    const finalZip = new JSZip()
+    let totalPdfCount = 0
+
+    for (const chunkFile of chunkFiles) {
+        const chunkZipBuffer = await storageService.getFileBuffer(chunkFile.filePath)
+        const parsedChunkZip = await JSZip.loadAsync(chunkZipBuffer)
+
+        const entries = Object.values(parsedChunkZip.files)
+        for (const entry of entries) {
+            if (entry.dir) continue
+
+            const entryBuffer = await entry.async("nodebuffer")
+            const existing = finalZip.file(entry.name)
+            const outputName = existing ? `chunk-${chunkFile.chunkOrder}-${entry.name}` : entry.name
+            finalZip.file(outputName, entryBuffer)
+        }
+
+        totalPdfCount += Number(chunkFile.generatedDocuments ?? 0)
+    }
+
+    const finalZipBuffer = await finalZip.generateAsync({
+        type: "nodebuffer",
+        compression: "DEFLATE",
+        compressionOptions: { level: 9 },
+    })
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
+    const finalZipFileName = `${businessId}/campaign/campaign-${campaign.name}-job-${chunk.jobId}-${timestamp}.zip`
+    const finalZipUrl = await storageService.uploadFile(finalZipBuffer, finalZipFileName, {
+        contentType: "application/zip",
+    })
+
+    const generationFinishedAt = new Date()
+    const expiresAt = new Date(Date.now() + ZIP_EXPIRATION_MS)
+
+    const campaignFile = await businessPrisma.campaignFile.create({
+        data: {
+            campaignId: campaign.id,
+            fileName: toBaseFileName(finalZipFileName),
+            filePath: finalZipUrl,
+            generatedDocuments: totalPdfCount,
+            status: FILE_STATUS.AVALIABLE,
+            generationStartedAt: new Date(),
+            generationFinishedAt,
+            expiresAt,
+        } as any,
+    })
+
+    for (const chunkFile of chunkFiles) {
+        try {
+            await storageService.deleteFile(chunkFile.filePath)
+        } catch (error) {
+            console.warn(
+                `Failed to delete chunk file ${chunkFile.filePath} for campaign ${campaign.id} and job ${chunk.jobId}:`,
+                error,
+            )
+        }
+    }
+
+    await (businessPrisma as any).campaignChunkFile.updateMany({
+        where: {
+            campaignId: campaign.id,
+            jobId: chunk.jobId,
+            isDeleted: false,
+        },
+        data: {
+            isDeleted: true,
+            deletedAt: new Date(),
+        },
+    })
+
+    return {
+        file: campaignFile,
+        pdfCount: totalPdfCount,
+    }
 }
 
 const createCampaignFile = async (
     businessId: string,
     campaign: CampaignWithTemplates,
     businessPrisma: BusinessPrismaClient,
+    chunk?: CampaignExecutionChunk,
 ): Promise<CampaignFileResult | null> => {
     const generationStartedAt = new Date()
 
@@ -340,7 +517,13 @@ const createCampaignFile = async (
         throw new Error("Campaign is missing a contact list")
     }
 
-    const customers = Array.isArray(contactList.customers) ? contactList.customers : []
+    const allCustomers = Array.isArray(contactList.customers) ? contactList.customers : []
+    const customers = chunk
+        ? allCustomers.slice(
+              Math.max(0, chunk.offset),
+              Math.max(0, chunk.offset) + Math.max(0, chunk.limit),
+          )
+        : allCustomers
     if (customers.length === 0) return null
 
     const contactFields = toContactFields(contactList.fields)
@@ -434,12 +617,16 @@ const createCampaignFile = async (
 
     const pdfArtifacts: PdfArtifact[] = []
     const font = await getPdfmeServerFont()
+    let generatedPdfProgress = 0
 
     for (const template of templates) {
         const fileContent = await storageService.getFileContent(template.filePath!)
         const parsedContent = await transformXmlToTemplate(fileContent, { resolveComponentSchemas })
 
-        for (const customer of customers) {
+        const generatedArtifacts = await runWithConcurrency(
+            customers,
+            MAX_PARALLEL_CUSTOMER_PDFS,
+            async (customer) => {
             const customerData = toCustomerRecord(customer.data)
             const inputs = buildInputsForCustomer(parsedContent, customerData, contactFieldMap)
             const pdfBytes = await generate({
@@ -452,8 +639,13 @@ const createCampaignFile = async (
             })
 
             const fileName = `campaign-${campaign.name}-customer-${customer.id ?? "unknown"}.pdf`
-            pdfArtifacts.push({ fileName, buffer: Buffer.from(pdfBytes) })
-        }
+                generatedPdfProgress += 1
+                console.info(generatedPdfProgress)
+                return { fileName, buffer: Buffer.from(pdfBytes) }
+            },
+        )
+
+        pdfArtifacts.push(...generatedArtifacts)
     }
 
     if (pdfArtifacts.length === 0) return null
@@ -469,6 +661,59 @@ const createCampaignFile = async (
         compressionOptions: { level: 9 },
     })
 
+    if (isChunkExecution(chunk)) {
+        const batchPdfCount = pdfArtifacts.length
+        const chunkZipFileName = `${businessId}/campaign/chunks/${campaign.id}/${chunk.jobId}/chunk-${chunk.chunkOrder}.zip`
+        const chunkZipUrl = await storageService.uploadFile(zipBuffer, chunkZipFileName, {
+            contentType: "application/zip",
+        })
+
+        await (businessPrisma as any).campaignChunkFile.upsert({
+            where: {
+                campaignId_jobId_chunkOrder: {
+                    campaignId: campaign.id,
+                    jobId: chunk.jobId,
+                    chunkOrder: chunk.chunkOrder,
+                },
+            },
+            create: {
+                campaignId: campaign.id,
+                jobId: chunk.jobId,
+                chunkOrder: chunk.chunkOrder,
+                totalChunks: chunk.totalChunks,
+                fileName: chunkZipFileName,
+                filePath: chunkZipUrl,
+                generatedDocuments: pdfArtifacts.length,
+                isDeleted: false,
+            },
+            update: {
+                totalChunks: chunk.totalChunks,
+                fileName: chunkZipFileName,
+                filePath: chunkZipUrl,
+                generatedDocuments: pdfArtifacts.length,
+                isDeleted: false,
+                deletedAt: null,
+            },
+        })
+
+        const finalized = await finalizeChunkedCampaignFile(
+            businessId,
+            campaign,
+            businessPrisma,
+            storageService,
+            chunk,
+        )
+
+        if (!finalized) {
+            return null
+        }
+
+        return {
+            ...finalized,
+            batchPdfCount,
+        }
+    }
+
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
     const zipFileName = `${businessId}/campaign/campaign-${campaign.name}-${timestamp}.zip`
     const zipUrl = await storageService.uploadFile(zipBuffer, zipFileName, {
@@ -480,7 +725,7 @@ const createCampaignFile = async (
 
     const campaignFileData = {
         campaignId: campaign.id,
-        fileName: zipFileName,
+        fileName: toBaseFileName(zipFileName),
         filePath: zipUrl,
         generatedDocuments: pdfArtifacts.length,
         status: FILE_STATUS.AVALIABLE,
@@ -493,13 +738,14 @@ const createCampaignFile = async (
         data: campaignFileData,
     })
 
-    return { file: campaignFile, pdfCount: pdfArtifacts.length }
+    return { file: campaignFile, pdfCount: pdfArtifacts.length, batchPdfCount: pdfArtifacts.length }
 }
 
 const runCampaignForBusiness = async (
     campaignId: string,
     businessId: string,
     triggerSource: CampaignRunTrigger,
+    chunk?: CampaignExecutionChunk,
 ): Promise<CampaignJobResult> => {
     try {
         const business = await prisma.business.findUnique({
@@ -544,114 +790,167 @@ const runCampaignForBusiness = async (
 
         const campaignsToRun = Array.isArray(campaigns) ? campaigns : [campaigns]
         let lastFileInfo: CampaignFileResult | null = null
-        const campaignResults: CampaignRunResult[] = []
         const logPrefix = getLogPrefix(triggerSource)
         
         console.log(
             `[Campaign Runner][${triggerSource}] Running ${campaignsToRun.length} campaign(s) for business ${business.name} (${business.id})`,
         )
-        for (const campaign of campaignsToRun) {
-            const runStartedAt = new Date()
-            try {
-                const campaignFileResult = await createCampaignFile(businessId, campaign, businessPrisma)
-                const hasGeneratedFile = Boolean(campaignFileResult?.file?.id)
-                const nextFileStatus = hasGeneratedFile ? FILE_STATUS.AVALIABLE : FILE_STATUS.EMPTY
-                const nextScheduleStatus = SCHEDULE_STATUS.TRIGGERED
-                const runFinishedAt = new Date()
-                const successMessage = hasGeneratedFile
-                    ? `${logPrefix} Campaign run successfully`
-                    : `${logPrefix} Campaign run completed without generated files`
+        const campaignOutcomes = await runWithConcurrency(
+            campaignsToRun,
+            MAX_PARALLEL_CAMPAIGNS_PER_BUSINESS,
+            async (campaign) => {
+                const runStartedAt = new Date()
+                const isChunkRun = isChunkExecution(chunk)
 
-                if (campaignFileResult) {
-                    lastFileInfo = campaignFileResult
-                    console.info(
-                        `[Campaign ${campaign.name}] Uploaded campaign ZIP (${campaignFileResult.pdfCount} PDFs) to ${campaignFileResult.file.filePath}`,
-                    )
-                } else {
-                    console.info(`[Campaign ${campaign.name}] No PDFs generated (missing data)`)
+                await businessPrisma.campaign.update({
+                    where: { id: campaign.id },
+                    data: {
+                        scheduleStatus: SCHEDULE_STATUS.RUNNING,
+                        fileStatus: FILE_STATUS.PENDING,
+                    },
+                })
+
+                try {
+                    const campaignFileResult = await createCampaignFile(businessId, campaign, businessPrisma, chunk)
+                    const hasGeneratedFile = Boolean(campaignFileResult?.file?.id)
+                    const totalCustomers = Array.isArray(campaign.contactlist?.customers)
+                        ? campaign.contactlist.customers.length
+                        : 0
+                    const batchGeneratedDocuments = isChunkRun
+                        ? Math.max(
+                              0,
+                              Math.min(
+                                  chunk?.limit ?? 0,
+                                  totalCustomers - (chunk?.offset ?? 0),
+                              ),
+                          )
+                        : campaignFileResult?.batchPdfCount ?? campaignFileResult?.pdfCount ?? 0
+                    const generatedSoFar = isChunkRun
+                        ? Math.min(totalCustomers, (chunk?.offset ?? 0) + (chunk?.limit ?? 0))
+                        : totalCustomers
+                    const nextFileStatus = isChunkRun
+                        ? hasGeneratedFile
+                            ? FILE_STATUS.AVALIABLE
+                            : FILE_STATUS.PENDING
+                        : hasGeneratedFile
+                            ? FILE_STATUS.AVALIABLE
+                            : FILE_STATUS.EMPTY
+                    const nextScheduleStatus = isChunkRun
+                        ? hasGeneratedFile && Boolean(chunk?.isFinalChunk)
+                            ? SCHEDULE_STATUS.TRIGGERED
+                            : SCHEDULE_STATUS.RUNNING
+                        : SCHEDULE_STATUS.TRIGGERED
+                    const runFinishedAt = new Date()
+                    const successMessage = isChunkRun
+                        ? hasGeneratedFile
+                            ? `${logPrefix} Campaign run successfully`
+                            : `${logPrefix} File generated ${generatedSoFar} out of ${totalCustomers}`
+                        : hasGeneratedFile
+                            ? `${logPrefix} Campaign run successfully`
+                            : `${logPrefix} Campaign run completed without generated files`
+
+                    if (campaignFileResult) {
+                        console.info(
+                            `[Campaign ${campaign.name}] Uploaded campaign ZIP (${campaignFileResult.pdfCount} PDFs) to ${campaignFileResult.file.filePath}`,
+                        )
+                    } else {
+                        console.info(`[Campaign ${campaign.name}] No PDFs generated (missing data)`)
+                    }
+
+                    await businessPrisma.campaign.update({
+                        where: { id: campaign.id },
+                        data: {
+                            fileStatus: nextFileStatus,
+                            scheduleStatus: nextScheduleStatus,
+                            executedAt: new Date(),
+                            logs: {
+                                create: {
+                                    message: successMessage,
+                                    status: nextScheduleStatus,
+                                },
+                            },
+                        },
+                    })
+
+                    await createCampaignRunLog(businessPrisma, {
+                        campaignId: campaign.id,
+                        campaignName: campaign.name,
+                        triggerSource,
+                        status: nextScheduleStatus,
+                        success: true,
+                        fileId: campaignFileResult?.file.id,
+                        fileStatus: nextFileStatus,
+                        generatedDocuments: batchGeneratedDocuments,
+                        startedAt: runStartedAt,
+                        finishedAt: runFinishedAt,
+                    })
+
+                    return {
+                        fileInfo: campaignFileResult,
+                        result: {
+                            campaignId: campaign.id,
+                            success: true,
+                            fileId: campaignFileResult?.file.id,
+                            fileStatus: nextFileStatus,
+                            scheduleStatus: nextScheduleStatus,
+                            pdfCount: campaignFileResult?.pdfCount,
+                        } satisfies CampaignRunResult,
+                    }
+                } catch (campaignError) {
+                    const errorMessage = campaignError instanceof Error ? campaignError.message : "Unknown error"
+                    const nextFileStatus = FILE_STATUS.FAILED
+                    const nextScheduleStatus = SCHEDULE_STATUS.FAILED
+                    const runFinishedAt = new Date()
+
+                    console.error(`[Campaign ${campaign.name}] Failed to run: ${errorMessage}`)
+
+                    await businessPrisma.campaign.update({
+                        where: { id: campaign.id },
+                        data: {
+                            fileStatus: nextFileStatus,
+                            scheduleStatus: nextScheduleStatus,
+                            executedAt: new Date(),
+                            logs: {
+                                create: {
+                                    message: `${logPrefix} Campaign run failed: ${errorMessage}`,
+                                    status: nextScheduleStatus,
+                                },
+                            },
+                        },
+                    })
+
+                    await createCampaignRunLog(businessPrisma, {
+                        campaignId: campaign.id,
+                        campaignName: campaign.name,
+                        triggerSource,
+                        status: nextScheduleStatus,
+                        success: false,
+                        errorMessage,
+                        fileStatus: nextFileStatus,
+                        generatedDocuments: 0,
+                        startedAt: runStartedAt,
+                        finishedAt: runFinishedAt,
+                    })
+
+                    return {
+                        fileInfo: null,
+                        result: {
+                            campaignId: campaign.id,
+                            success: false,
+                            error: errorMessage,
+                            fileStatus: nextFileStatus,
+                            scheduleStatus: nextScheduleStatus,
+                        } satisfies CampaignRunResult,
+                    }
                 }
+            },
+        )
 
-                await businessPrisma.campaign.update({
-                    where: { id: campaign.id },
-                    data: {
-                        fileStatus: nextFileStatus,
-                        scheduleStatus: nextScheduleStatus,
-                        executedAt: new Date(),
-                        logs: {
-                            create: {
-                                message: successMessage,
-                                status: nextScheduleStatus,
-                            },
-                        },
-                    },
-                })
-
-                await createCampaignRunLog(businessPrisma, {
-                    campaignId: campaign.id,
-                    campaignName: campaign.name,
-                    triggerSource,
-                    status: nextScheduleStatus,
-                    success: true,
-                    fileId: campaignFileResult?.file.id,
-                    fileStatus: nextFileStatus,
-                    generatedDocuments: campaignFileResult?.pdfCount ?? 0,
-                    startedAt: runStartedAt,
-                    finishedAt: runFinishedAt,
-                })
-
-                campaignResults.push({
-                    campaignId: campaign.id,
-                    success: true,
-                    fileId: campaignFileResult?.file.id,
-                    fileStatus: nextFileStatus,
-                    scheduleStatus: nextScheduleStatus,
-                    pdfCount: campaignFileResult?.pdfCount,
-                })
-            } catch (campaignError) {
-                const errorMessage = campaignError instanceof Error ? campaignError.message : "Unknown error"
-                const nextFileStatus = FILE_STATUS.FAILED
-                const nextScheduleStatus = SCHEDULE_STATUS.FAILED
-                const runFinishedAt = new Date()
-
-                console.error(`[Campaign ${campaign.name}] Failed to run: ${errorMessage}`)
-
-                await businessPrisma.campaign.update({
-                    where: { id: campaign.id },
-                    data: {
-                        fileStatus: nextFileStatus,
-                        scheduleStatus: nextScheduleStatus,
-                        executedAt: new Date(),
-                        logs: {
-                            create: {
-                                message: `${logPrefix} Campaign run failed: ${errorMessage}`,
-                                status: nextScheduleStatus,
-                            },
-                        },
-                    },
-                })
-
-                await createCampaignRunLog(businessPrisma, {
-                    campaignId: campaign.id,
-                    campaignName: campaign.name,
-                    triggerSource,
-                    status: nextScheduleStatus,
-                    success: false,
-                    errorMessage,
-                    fileStatus: nextFileStatus,
-                    generatedDocuments: 0,
-                    startedAt: runStartedAt,
-                    finishedAt: runFinishedAt,
-                })
-
-                campaignResults.push({
-                    campaignId: campaign.id,
-                    success: false,
-                    error: errorMessage,
-                    fileStatus: nextFileStatus,
-                    scheduleStatus: nextScheduleStatus,
-                })
-            }
-        }
+        const campaignResults = campaignOutcomes.map((outcome) => outcome.result)
+        const lastSuccessfulWithFile = [...campaignOutcomes]
+            .reverse()
+            .find((outcome) => Boolean(outcome.fileInfo))
+        lastFileInfo = lastSuccessfulWithFile?.fileInfo ?? null
 
         const allSuccessful = campaignResults.every((result) => result.success)
         const aggregatedError = allSuccessful
@@ -687,6 +986,7 @@ type RunCampaignJobOptions = {
     businessIds?: string[]
     maxParallel?: number
     triggerSource?: CampaignRunTrigger
+    chunk?: CampaignExecutionChunk
 }
 
 export const runCampaignJob = async ({
@@ -694,20 +994,16 @@ export const runCampaignJob = async ({
     businessIds = [],
     maxParallel = MAX_PARALLEL_BUSINESSES,
     triggerSource = "SYSTEM",
+    chunk,
 }: RunCampaignJobOptions) => {
     const businessIdsToRun = businessIds.length > 0 ? businessIds : await getAllBusinessIds()
     if (businessIdsToRun.length === 0) return []
 
     const parallelLimit = Math.max(1, maxParallel)
-    const results: CampaignJobResult[] = []
 
-    for (let i = 0; i < businessIdsToRun.length; i += parallelLimit) {
-        const batch = businessIdsToRun.slice(i, i + parallelLimit)
-        const batchResults = await Promise.all(
-            batch.map((businessId) => runCampaignForBusiness(campaignId, businessId, triggerSource)),
-        )
-        results.push(...batchResults)
-    }
-
-    return results
+    return runWithConcurrency(
+        businessIdsToRun,
+        parallelLimit,
+        async (businessId) => runCampaignForBusiness(campaignId, businessId, triggerSource, chunk),
+    )
 }

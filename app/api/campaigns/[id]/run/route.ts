@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/api-auth"
-import { runCampaignJob } from "@/utils/campaign"
 import { userHasPermissionAPI } from "@/utils/permissions"
 import { getBusinessPrisma } from "@/lib/prisma-business"
-import { Prisma, UserRole } from "@/app/generated/business/prisma"
+import { FILE_STATUS, Prisma, SCHEDULE_STATUS, UserRole } from "@/app/generated/business/prisma"
+import { enqueueCampaignWorkerJob } from "@/lib/external-job-queue"
+
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
+export const maxDuration = 300
 
 const campaignInclude = {
     templates: {
@@ -102,48 +106,111 @@ export const POST = async (req: NextRequest, { params }: RouteParams) => {
             )
         }
 
-        const jobResults = await runCampaignJob({
-            campaignId,
-            businessIds: [businessId],
-            triggerSource: "MANUAL",
+        await prisma.campaign.update({
+            where: { id: campaignId },
+            data: {
+                scheduleStatus: SCHEDULE_STATUS.PENDING,
+                fileStatus: FILE_STATUS.PENDING,
+                logs: {
+                    create: {
+                        message: "[MANUAL] Campaign run queued",
+                        status: SCHEDULE_STATUS.PENDING,
+                    },
+                },
+            },
         })
-        const jobResult = jobResults.find((result) => result.businessId === businessId)
-        const campaignResult = jobResult?.campaigns.find((result) => result.campaignId === campaignId)
 
-        if (!jobResult || !campaignResult) {
+        const minuteBucket = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")
+        const queueJob = await enqueueCampaignWorkerJob(
+            req.nextUrl.origin,
+            {
+                jobType: "RUN_CAMPAIGNS",
+                triggerSource: "MANUAL",
+                campaignId,
+                businessIds: [businessId],
+            },
+            {
+                deduplicationId: `manual-run-${businessId}-${campaignId}-${minuteBucket}`,
+            },
+        )
+
+        return NextResponse.json({
+            accepted: true,
+            campaignId,
+            status: "RUNNING",
+            message: "Campaign run accepted",
+            queueMessageId: queueJob.messageId,
+        })
+    } catch (error) {
+        console.error("Error running campaign:", error)
+        return NextResponse.json(
+            { error: error instanceof Error ? error.message : "Unknown error" },
+            { status: 500 },
+        )
+    }
+}
+
+export const GET = async (req: NextRequest, { params }: RouteParams) => {
+    try {
+        const auth = await requireAuth(req)
+        if (!auth.ok) return auth.response
+
+        const businessId = auth.businessId
+        if (!businessId) {
             return NextResponse.json(
-                { error: "Campaign job did not return a result", result: jobResult ?? null },
-                { status: 500 },
+                { error: "No active business selected" },
+                { status: 400 },
             )
         }
 
-        const updatedCampaign = await prisma.campaign.findUnique({
+        const hasPermission = await userHasPermissionAPI(req, [
+            UserRole.OWNER,
+            UserRole.ADMIN,
+            UserRole.MEMBER,
+        ])
+
+        if (!hasPermission) {
+            return NextResponse.json(
+                { error: "Insufficient permissions" },
+                { status: 403 },
+            )
+        }
+
+        const { id: campaignId } = await params
+        if (!campaignId) {
+            return NextResponse.json(
+                { error: "Campaign ID is required" },
+                { status: 400 },
+            )
+        }
+
+        const prisma = await getBusinessPrisma(businessId)
+
+        const campaign = await prisma.campaign.findUnique({
             where: { id: campaignId },
             include: campaignInclude,
         })
 
-        if (!updatedCampaign) {
+        if (!campaign) {
             return NextResponse.json(
-                { error: "Campaign not found after run", result: campaignResult },
+                { error: "Campaign not found" },
                 { status: 404 },
             )
         }
 
-        if (!campaignResult.success) {
-            return NextResponse.json(
-                {
-                    error: campaignResult.error ?? "Failed to execute campaign",
-                    result: campaignResult,
-                    jobResult,
-                    campaign: updatedCampaign,
-                },
-                { status: 500 },
-            )
-        }
+        const latestLogMessage = campaign.logs?.[0]?.message ?? ""
+        const isQueuedLog = latestLogMessage.includes("[MANUAL] Campaign run queued")
+        const isRunning =
+            campaign.scheduleStatus === SCHEDULE_STATUS.RUNNING ||
+            (campaign.scheduleStatus === SCHEDULE_STATUS.PENDING && isQueuedLog)
 
-        return NextResponse.json({ result: campaignResult, jobResult, campaign: updatedCampaign })
+        return NextResponse.json({
+            campaign,
+            isRunning,
+            status: isRunning ? "RUNNING" : campaign.scheduleStatus,
+        })
     } catch (error) {
-        console.error("Error running campaign:", error)
+        console.error("Error fetching campaign run status:", error)
         return NextResponse.json(
             { error: error instanceof Error ? error.message : "Unknown error" },
             { status: 500 },

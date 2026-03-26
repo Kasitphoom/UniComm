@@ -1,7 +1,10 @@
 import { requireCronAuth } from "@/lib/api-auth";
-import { runCampaignJob } from "@/utils/campaign";
-import { deleteCampaignFileJob } from "@/utils/files";
+import { enqueueCampaignWorkerJob } from "@/lib/external-job-queue";
 import { NextRequest, NextResponse } from "next/server";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 /**
  * @swagger
@@ -28,11 +31,47 @@ export const GET = async (request: NextRequest) => {
             return auth.response;
         }
 
-        const results = await runCampaignJob({ triggerSource: "CRON" });
-        await deleteCampaignFileJob();
+        const minuteBucket = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")
+
+        const [runCampaignsQueueJob, cleanupFilesQueueJob] = await Promise.all([
+            enqueueCampaignWorkerJob(
+                request.nextUrl.origin,
+                {
+                    jobType: "RUN_CAMPAIGNS",
+                    triggerSource: "CRON",
+                },
+                {
+                    deduplicationId: `cron-run-campaigns-${minuteBucket}`,
+                },
+            ),
+            enqueueCampaignWorkerJob(
+                request.nextUrl.origin,
+                {
+                    jobType: "DELETE_EXPIRED_FILES",
+                },
+                {
+                    deduplicationId: `cron-delete-expired-files-${minuteBucket}`,
+                },
+            ),
+        ])
+
+        console.log(
+            "Cron jobs enqueued",
+            JSON.stringify({
+                runCampaignsMessageId: runCampaignsQueueJob.messageId,
+                cleanupFilesMessageId: cleanupFilesQueueJob.messageId,
+            }),
+        )
 
         return NextResponse.json(
-            { message: "Cron job executed", processedBusinesses: results.length },
+            {
+                message: "Cron jobs enqueued",
+                acceptedAt: new Date().toISOString(),
+                jobs: {
+                    runCampaignsMessageId: runCampaignsQueueJob.messageId,
+                    cleanupFilesMessageId: cleanupFilesQueueJob.messageId,
+                },
+            },
             { status: 200 },
         );
     } catch (error) {

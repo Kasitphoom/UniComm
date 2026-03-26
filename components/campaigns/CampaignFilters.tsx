@@ -89,7 +89,8 @@ const CampaignFilters = ({
                     >
                         <DropdownItem key="ALL">All Statuses</DropdownItem>
                         <DropdownItem key="PENDING">Pending</DropdownItem>
-                        <DropdownItem key="TRIGGERED">Triggered</DropdownItem>
+                        <DropdownItem key="RUNNING">Running</DropdownItem>
+                        <DropdownItem key="TRIGGERED">Executed</DropdownItem>
                         <DropdownItem key="FAILED" color="danger" className="text-danger">
                             Failed
                         </DropdownItem>

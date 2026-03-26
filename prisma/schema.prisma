@@ -177,6 +177,7 @@ enum SCHEDULE_STATUS {
   PENDING
   TRIGGERED
   FAILED
+  RUNNING
 }
 
 enum FILE_STATUS {
@@ -205,6 +206,7 @@ model Campaign {
 
   logs  CampaignLog[]
   files CampaignFile[]
+  chunkFiles CampaignChunkFile[]
 
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
@@ -278,6 +280,28 @@ model CampaignFile {
   expiresAt            DateTime?
 
   createdAt DateTime @default(now())
+}
+
+model CampaignChunkFile {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  campaignId String   @db.ObjectId
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  jobId       String
+  chunkOrder  Int
+  totalChunks Int
+
+  fileName           String
+  filePath           String
+  generatedDocuments Int      @default(0)
+
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@unique([campaignId, jobId, chunkOrder])
+  @@index([campaignId, jobId])
+  @@index([jobId])
 }
 
 // ======== MIGRATION MODEL (for tracking applied migrations in each business database) =========
