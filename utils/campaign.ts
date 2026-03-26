@@ -363,6 +363,7 @@ export type CampaignWithTemplates = Prisma.CampaignGetPayload<{ include: typeof 
 type CampaignFileResult = {
     file: CampaignFile
     pdfCount: number
+    batchPdfCount?: number
 }
 
 const toBaseFileName = (value: string) => {
@@ -661,6 +662,7 @@ const createCampaignFile = async (
     })
 
     if (isChunkExecution(chunk)) {
+        const batchPdfCount = pdfArtifacts.length
         const chunkZipFileName = `${businessId}/campaign/chunks/${campaign.id}/${chunk.jobId}/chunk-${chunk.chunkOrder}.zip`
         const chunkZipUrl = await storageService.uploadFile(zipBuffer, chunkZipFileName, {
             contentType: "application/zip",
@@ -694,13 +696,22 @@ const createCampaignFile = async (
             },
         })
 
-        return finalizeChunkedCampaignFile(
+        const finalized = await finalizeChunkedCampaignFile(
             businessId,
             campaign,
             businessPrisma,
             storageService,
             chunk,
         )
+
+        if (!finalized) {
+            return null
+        }
+
+        return {
+            ...finalized,
+            batchPdfCount,
+        }
     }
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
@@ -727,7 +738,7 @@ const createCampaignFile = async (
         data: campaignFileData,
     })
 
-    return { file: campaignFile, pdfCount: pdfArtifacts.length }
+    return { file: campaignFile, pdfCount: pdfArtifacts.length, batchPdfCount: pdfArtifacts.length }
 }
 
 const runCampaignForBusiness = async (
@@ -795,19 +806,20 @@ const runCampaignForBusiness = async (
                     where: { id: campaign.id },
                     data: {
                         scheduleStatus: SCHEDULE_STATUS.RUNNING,
-                        fileStatus: isChunkRun ? FILE_STATUS.PENDING : FILE_STATUS.PENDING,
-                        logs: {
-                            create: {
-                                message: `${logPrefix} Campaign run started`,
-                                status: SCHEDULE_STATUS.RUNNING,
-                            },
-                        },
+                        fileStatus: FILE_STATUS.PENDING,
                     },
                 })
 
                 try {
                     const campaignFileResult = await createCampaignFile(businessId, campaign, businessPrisma, chunk)
                     const hasGeneratedFile = Boolean(campaignFileResult?.file?.id)
+                    const batchGeneratedDocuments = campaignFileResult?.batchPdfCount ?? campaignFileResult?.pdfCount ?? 0
+                    const totalCustomers = Array.isArray(campaign.contactlist?.customers)
+                        ? campaign.contactlist.customers.length
+                        : 0
+                    const generatedSoFar = isChunkRun
+                        ? Math.min(totalCustomers, (chunk?.offset ?? 0) + (chunk?.limit ?? 0))
+                        : totalCustomers
                     const nextFileStatus = isChunkRun
                         ? hasGeneratedFile
                             ? FILE_STATUS.AVALIABLE
@@ -821,14 +833,13 @@ const runCampaignForBusiness = async (
                             : SCHEDULE_STATUS.RUNNING
                         : SCHEDULE_STATUS.TRIGGERED
                     const runFinishedAt = new Date()
-                    const chunkSuffix = chunk
-                        ? ` (chunk offset=${chunk.offset}, limit=${chunk.limit}${chunk.isFinalChunk ? ", final" : ""})`
-                        : ""
-                    const successMessage = hasGeneratedFile
-                        ? `${logPrefix} Campaign run successfully${chunkSuffix}`
-                        : isChunkRun
-                            ? `${logPrefix} Campaign chunk uploaded${chunkSuffix}`
-                            : `${logPrefix} Campaign run completed without generated files${chunkSuffix}`
+                    const successMessage = isChunkRun
+                        ? hasGeneratedFile
+                            ? `${logPrefix} Campaign run successfully`
+                            : `${logPrefix} File generated ${generatedSoFar} out of ${totalCustomers}`
+                        : hasGeneratedFile
+                            ? `${logPrefix} Campaign run successfully`
+                            : `${logPrefix} Campaign run completed without generated files`
 
                     if (campaignFileResult) {
                         console.info(
@@ -861,7 +872,7 @@ const runCampaignForBusiness = async (
                         success: true,
                         fileId: campaignFileResult?.file.id,
                         fileStatus: nextFileStatus,
-                        generatedDocuments: campaignFileResult?.pdfCount ?? 0,
+                        generatedDocuments: batchGeneratedDocuments,
                         startedAt: runStartedAt,
                         finishedAt: runFinishedAt,
                     })
