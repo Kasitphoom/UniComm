@@ -129,7 +129,7 @@ async function handler(request: Request) {
         if (isRunCampaignJobPayload(payload)) {
             const canOrchestrateChunks =
                 !payload.chunked &&
-                payload.triggerSource === "MANUAL" &&
+                (payload.triggerSource === "MANUAL" || payload.triggerSource === "CRON") &&
                 payload.campaignId &&
                 (payload.businessIds?.length ?? 0) === 1
 
