@@ -1,5 +1,5 @@
 import { requireCronAuth } from "@/lib/api-auth";
-import { enqueueCampaignWorkerJob } from "@/lib/external-job-queue";
+import { publishCampaignChunk } from "@/lib/qstash";
 import { getAllBusinessIds } from "@/utils/business";
 import { getBusinessPrisma } from "@/lib/prisma-business";
 import { SCHEDULE_STATUS } from "@/app/generated/business/prisma";
@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const hasRunnableCampaignsNow = async (businessId: string) => {
+const getRunnableCampaignIds = async (businessId: string): Promise<string[]> => {
     const prisma = getBusinessPrisma(businessId);
 
     const startTime = new Date();
@@ -17,7 +17,7 @@ const hasRunnableCampaignsNow = async (businessId: string) => {
     const endTime = new Date(startTime.getTime());
     endTime.setSeconds(endTime.getSeconds() + 59, 999);
 
-    const campaign = await prisma.campaign.findFirst({
+    const campaigns = await prisma.campaign.findMany({
         where: {
             scheduleStatus: SCHEDULE_STATUS.PENDING,
             scheduledAt: {
@@ -28,7 +28,7 @@ const hasRunnableCampaignsNow = async (businessId: string) => {
         select: { id: true },
     });
 
-    return Boolean(campaign?.id);
+    return campaigns.map((c) => c.id);
 };
 
 const hasExpiredCampaignFiles = async (businessId: string) => {
@@ -67,8 +67,6 @@ const hasExpiredCampaignFiles = async (businessId: string) => {
  */
 export const GET = async (request: NextRequest) => {
     try {
-        console.log("Cron job for campaigns executed at", new Date().toISOString());
-
         const auth = await requireCronAuth(request);
         if (!auth.ok) {
             return auth.response;
@@ -85,86 +83,78 @@ export const GET = async (request: NextRequest) => {
             );
         }
 
+        const minuteBucket = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+        const origin = request.nextUrl.origin;
+
         const checks = await Promise.all(
             businessIds.map(async (businessId) => {
-                const [hasCampaigns, hasExpiredFiles] = await Promise.all([
-                    hasRunnableCampaignsNow(businessId),
+                const [campaignIds, hasExpiredFiles] = await Promise.all([
+                    getRunnableCampaignIds(businessId),
                     hasExpiredCampaignFiles(businessId),
                 ]);
-
-                return { hasCampaigns, hasExpiredFiles };
+                return { businessId, campaignIds, hasExpiredFiles };
             }),
         );
 
-        const shouldEnqueueCampaignRuns = checks.some((result) => result.hasCampaigns);
+        const campaignPublishes: Promise<{ messageId: string; targetUrl: string }>[] = [];
+        for (const { businessId, campaignIds } of checks) {
+            for (const campaignId of campaignIds) {
+                campaignPublishes.push(
+                    publishCampaignChunk(
+                        origin,
+                        {
+                            jobType: "RUN_CAMPAIGNS",
+                            triggerSource: "CRON",
+                            campaignId,
+                            businessIds: [businessId],
+                        },
+                        {
+                            deduplicationId: `cron-run-${businessId}-${campaignId}-${minuteBucket}`,
+                        },
+                    ),
+                );
+            }
+        }
+
         const shouldEnqueueCleanup = checks.some((result) => result.hasExpiredFiles);
-
-        const minuteBucket = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")
-        const triggerTasks: Promise<{ messageId?: string }>[] = [];
-
-        if (shouldEnqueueCampaignRuns) {
-            triggerTasks.push(
-                enqueueCampaignWorkerJob(
-                    request.nextUrl.origin,
-                    {
-                        jobType: "RUN_CAMPAIGNS",
-                        triggerSource: "CRON",
-                    },
-                    {
-                        deduplicationId: `cron-run-campaigns-${minuteBucket}`,
-                        waitForResponse: true,
-                    },
-                ),
-            );
-        }
-
         if (shouldEnqueueCleanup) {
-            triggerTasks.push(
-                enqueueCampaignWorkerJob(
-                    request.nextUrl.origin,
-                    {
-                        jobType: "DELETE_EXPIRED_FILES",
-                    },
-                    {
-                        deduplicationId: `cron-delete-expired-files-${minuteBucket}`,
-                        waitForResponse: true,
-                    },
+            campaignPublishes.push(
+                publishCampaignChunk(
+                    origin,
+                    { jobType: "DELETE_EXPIRED_FILES" },
+                    { deduplicationId: `cron-delete-expired-files-${minuteBucket}` },
                 ),
             );
         }
 
-        const triggeredJobs = await Promise.all(triggerTasks);
-        const runCampaignsQueueJob = shouldEnqueueCampaignRuns ? triggeredJobs.shift() : undefined;
-        const cleanupFilesQueueJob = shouldEnqueueCleanup ? triggeredJobs.shift() : undefined;
+        if (campaignPublishes.length === 0) {
+            return NextResponse.json(
+                {
+                    message: "No campaign or cleanup jobs to trigger",
+                    acceptedAt: new Date().toISOString(),
+                },
+                { status: 200 },
+            );
+        }
 
-        console.log(
-            "Cron jobs triggered",
-            JSON.stringify({
-                runCampaignsEnqueued: shouldEnqueueCampaignRuns,
-                cleanupEnqueued: shouldEnqueueCleanup,
-                runCampaignsMessageId: runCampaignsQueueJob?.messageId,
-                cleanupFilesMessageId: cleanupFilesQueueJob?.messageId,
-            }),
-        )
+        const published = await Promise.all(campaignPublishes);
+        const campaignMessageIds = published.slice(0, published.length - (shouldEnqueueCleanup ? 1 : 0)).map((p) => p.messageId);
+        const cleanupMessageId = shouldEnqueueCleanup ? published[published.length - 1].messageId : undefined;
 
         return NextResponse.json(
             {
-                message:
-                    shouldEnqueueCampaignRuns || shouldEnqueueCleanup
-                        ? "Cron jobs triggered"
-                        : "No campaign or cleanup jobs to trigger",
+                message: "Cron jobs triggered",
                 acceptedAt: new Date().toISOString(),
                 jobs: {
-                    runCampaignsEnqueued: shouldEnqueueCampaignRuns,
+                    campaignsEnqueued: campaignMessageIds.length,
+                    campaignMessageIds,
                     cleanupEnqueued: shouldEnqueueCleanup,
-                    runCampaignsMessageId: runCampaignsQueueJob?.messageId,
-                    cleanupFilesMessageId: cleanupFilesQueueJob?.messageId,
+                    cleanupMessageId,
                 },
             },
             { status: 200 },
         );
     } catch (error) {
-        console.error("Error executing cron job for campaigns:", error);
         return new Response("Error executing cron job", { status: 500 });
     }
 }
