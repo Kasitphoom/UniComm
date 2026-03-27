@@ -189,4 +189,166 @@ test.describe("Campaign workflow E2E", () => {
         expect(createCampaignPayload.customerListId).toBe("list-1")
         expect(createCampaignPayload.templateIds).toEqual(["template-1"])
     })
+
+    test("re-trigger campaign and receive generated file result", async ({ page, context }) => {
+        let pollRunPayload: any = null
+
+        await context.addCookies([
+            {
+                name: "uc_default_business",
+                value: "business-a",
+                domain: "localhost",
+                path: "/",
+            },
+        ])
+
+        await page.route("**/api/auth/session", async (route) => {
+            await route.fulfill({
+                status: 200,
+                contentType: "application/json",
+                body: JSON.stringify({
+                    expires: "2099-01-01T00:00:00.000Z",
+                    user: {
+                        id: "user-1",
+                        email: "owner@business-a.com",
+                        name: "Owner",
+                        activeBusinessId: "business-a",
+                        currentBusinessProfile: {
+                            id: "profile-1",
+                            businessId: "business-a",
+                            role: "OWNER",
+                            email: "owner@business-a.com",
+                            displayName: "Owner",
+                        },
+                    },
+                }),
+            })
+        })
+
+        await page.route("**/api/campaigns**", async (route) => {
+            const request = route.request()
+            const url = new URL(request.url())
+
+            if (request.method() === "GET" && url.pathname === "/api/campaigns") {
+                await route.fulfill({
+                    status: 200,
+                    contentType: "application/json",
+                    body: JSON.stringify({
+                        campaigns: [
+                            {
+                                id: "507f1f77bcf86cd799439011",
+                                name: "Existing Campaign",
+                                scheduledAt: "2026-03-27T18:00:00.000Z",
+                                totalRecords: 25,
+                                scheduleStatus: "PENDING",
+                                fileStatus: "EMPTY",
+                                templates: [
+                                    {
+                                        id: "link-1",
+                                        template: {
+                                            id: "template-1",
+                                            title: "Offer Template",
+                                        },
+                                    },
+                                ],
+                                logs: [],
+                            },
+                        ],
+                        currentPage: 1,
+                        totalPages: 1,
+                        totalCount: 1,
+                    }),
+                })
+                return
+            }
+
+            await route.continue()
+        })
+
+        await page.route("**/api/campaigns/507f1f77bcf86cd799439011/run", async (route) => {
+            const request = route.request()
+
+            if (request.method() === "POST") {
+                await route.fulfill({
+                    status: 200,
+                    contentType: "application/json",
+                    body: JSON.stringify({
+                        accepted: true,
+                        campaignId: "507f1f77bcf86cd799439011",
+                        status: "RUNNING",
+                        message: "Campaign run accepted",
+                        triggerId: "trigger-001",
+                    }),
+                })
+                return
+            }
+
+            if (request.method() === "GET") {
+                pollRunPayload = {
+                    campaign: {
+                        id: "507f1f77bcf86cd799439011",
+                        name: "Existing Campaign",
+                        scheduledAt: "2026-03-27T18:00:00.000Z",
+                        totalRecords: 25,
+                        scheduleStatus: "TRIGGERED",
+                        fileStatus: "AVALIABLE",
+                        templates: [
+                            {
+                                id: "link-1",
+                                template: {
+                                    id: "template-1",
+                                    title: "Offer Template",
+                                },
+                            },
+                        ],
+                        logs: [
+                            {
+                                id: "log-1",
+                                message: "File generated 25 out of 25",
+                                status: "TRIGGERED",
+                                createdAt: "2026-03-27T18:01:00.000Z",
+                            },
+                        ],
+                        files: [
+                            {
+                                id: "file-1",
+                                fileName: "existing-campaign.zip",
+                                filePath: "https://example.com/existing-campaign.zip",
+                                status: "AVALIABLE",
+                                createdAt: "2026-03-27T18:01:00.000Z",
+                                expiresAt: "2026-04-10T18:01:00.000Z",
+                            },
+                        ],
+                    },
+                    isRunning: false,
+                    status: "TRIGGERED",
+                }
+
+                await route.fulfill({
+                    status: 200,
+                    contentType: "application/json",
+                    body: JSON.stringify(pollRunPayload),
+                })
+                return
+            }
+
+            await route.continue()
+        })
+
+        await page.goto("/campaigns")
+        await expect(page.getByRole("heading", { name: "Campaigns" })).toBeVisible()
+
+        const campaignRow = page.locator("tr", { hasText: "Existing Campaign" })
+        await expect(campaignRow).toBeVisible()
+
+        await campaignRow.locator("button").nth(1).click()
+
+        await expect(campaignRow.getByText("Executed").first()).toBeVisible({ timeout: 10000 })
+        await expect(campaignRow.getByText("Ready").first()).toBeVisible({ timeout: 10000 })
+
+        expect(pollRunPayload).toBeTruthy()
+        expect(Array.isArray(pollRunPayload.campaign.files)).toBe(true)
+        expect(pollRunPayload.campaign.files.length).toBeGreaterThan(0)
+        expect(pollRunPayload.campaign.files[0].fileName).toContain(".zip")
+    })
 })
