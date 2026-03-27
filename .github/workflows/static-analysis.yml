@@ -81,6 +81,9 @@ jobs:
       MAIN_DATABASE_URL: mongodb://localhost:27017/main
       BUSINESS_DATABASE_URL: mongodb://localhost:27017/admin
       E2E_BYPASS_AUTH: "true"
+      NEXTAUTH_URL: http://localhost:4100
+      NEXTAUTH_SECRET: e2e-secret
+      AUTH_SECRET: e2e-secret
 
     steps:
       - name: Checkout repository

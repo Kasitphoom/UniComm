@@ -14,7 +14,7 @@ export default defineConfig({
         video: "retain-on-failure",
     },
     webServer: {
-        command: "E2E_BYPASS_AUTH=true npm run dev",
+        command: "E2E_BYPASS_AUTH=true NEXTAUTH_SECRET=e2e-secret AUTH_SECRET=e2e-secret NEXTAUTH_URL=http://localhost:4100 npm run dev",
         url: "http://localhost:4100",
         reuseExistingServer: !process.env.CI,
         timeout: 180000,
