@@ -25,7 +25,10 @@ type EnqueueCampaignWorkerJobOptions = {
     deduplicationId?: string
     retries?: number
     waitForResponse?: boolean
+    endpointPath?: string
 }
+
+const HEADER_TRIGGER_ID = "x-campaign-job-trigger-id"
 
 const resolveWorkerBaseUrl = (origin: string) => {
     const explicitWorkerUrl = process.env.WORKER_API_URL?.trim()
@@ -70,12 +73,13 @@ export const enqueueCampaignWorkerJob = async (
     options: EnqueueCampaignWorkerJobOptions = {},
 ) => {
     const workerBaseUrl = resolveWorkerBaseUrl(origin)
-    const targetUrl = new URL("/api/jobs/campaign", workerBaseUrl).toString()
+    const endpointPath = options.endpointPath || "/api/jobs/campaign"
+    const targetUrl = new URL(endpointPath, workerBaseUrl).toString()
     const triggerId = options.deduplicationId || randomUUID()
 
     const headers: HeadersInit = {
         "content-type": "application/json",
-        "x-campaign-job-trigger-id": triggerId,
+        [HEADER_TRIGGER_ID]: triggerId,
     }
 
     const internalJobSecret = getOptionalInternalJobSecret()
@@ -117,7 +121,6 @@ export const enqueueCampaignWorkerJob = async (
     } else {
         void triggerRequest.catch((error) => {
             if (!shouldRetryWithHttp(targetUrl, error)) {
-                console.error("Failed to trigger campaign worker API:", error)
                 return
             }
 
@@ -126,9 +129,7 @@ export const enqueueCampaignWorkerJob = async (
                 headers,
                 body: JSON.stringify(payload),
                 cache: "no-store",
-            }).catch((retryError) => {
-                console.error("Failed to trigger campaign worker API after HTTP fallback:", retryError)
-            })
+            }).catch(() => undefined)
         })
     }
 

@@ -143,7 +143,6 @@ export const POST = async (req: NextRequest, { params }: RouteParams) => {
             triggerId: queueJob.messageId,
         })
     } catch (error) {
-        console.error("Error running campaign:", error)
         return NextResponse.json(
             { error: error instanceof Error ? error.message : "Unknown error" },
             { status: 500 },
@@ -211,7 +210,6 @@ export const GET = async (req: NextRequest, { params }: RouteParams) => {
             status: isRunning ? "RUNNING" : campaign.scheduleStatus,
         })
     } catch (error) {
-        console.error("Error fetching campaign run status:", error)
         return NextResponse.json(
             { error: error instanceof Error ? error.message : "Unknown error" },
             { status: 500 },

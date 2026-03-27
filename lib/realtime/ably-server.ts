@@ -7,6 +7,7 @@ import {
 
 let ablyRestClient: Ably.Rest | null = null
 let isPublishingDisabled = false
+let lastRateLimitWarningAt = 0
 
 const getAblyRestClient = () => {
     if (ablyRestClient) return ablyRestClient
@@ -40,9 +41,11 @@ export const publishCampaignProgressEvent = async (
     try {
         await channel.publish(eventType, data)
     } catch (error) {
-        const ablyError = error as { code?: number; statusCode?: number }
+        const ablyError = error as { code?: number; statusCode?: number; message?: string }
         const isAuthCapabilityError =
             ablyError?.code === 40160 || ablyError?.statusCode === 401
+        const isRateLimitError =
+            ablyError?.code === 42910 || ablyError?.statusCode === 429
 
         if (isAuthCapabilityError) {
             isPublishingDisabled = true
@@ -50,6 +53,18 @@ export const publishCampaignProgressEvent = async (
                 "Ably publishing disabled due to authorization/capability error. Ensure ABLY_PUBLISH_API_KEY (or ABLY_API_KEY) has publish capability on campaign-progress:* channels.",
                 error,
             )
+            return
+        }
+
+        if (isRateLimitError) {
+            const now = Date.now()
+            if (now - lastRateLimitWarningAt > 10000) {
+                lastRateLimitWarningAt = now
+                console.warn(
+                    "Ably rate limit reached for campaign progress channel; progress updates are being throttled.",
+                    ablyError?.message || error,
+                )
+            }
             return
         }
 
