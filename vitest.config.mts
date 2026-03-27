@@ -22,6 +22,7 @@ export default defineConfig({
             ],
         },
         include: ["tests/**/*.{test,spec}.{ts,tsx}"],
+        exclude: ["tests/e2e/**"],
     },
     resolve: {
         alias: {
