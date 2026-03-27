@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from "vitest"
 import {
     transformXmlToTemplate,
     transformTemplateToXml,
+    extractVariablesFromSchema,
 } from "@/utils/template/xml-pdf-transformer"
 
 // isolate from text-migration so tests focus on the xml parsing logic only
@@ -187,5 +188,79 @@ describe("transformTemplateToXml → transformXmlToTemplate round-trip", () => {
         expect(schema.position).toMatchObject({ x: 15, y: 25 })
         expect(schema.width).toBe(80)
         expect(schema.height).toBe(40)
+    })
+})
+
+describe("transformTemplateToXml", () => {
+    it("uses A4 defaults when basePdf is a string", async () => {
+        const template = {
+            schemas: [[{ type: "image", position: { x: 1, y: 2 }, width: 10, height: 5 }]],
+            basePdf: "binary-pdf-reference",
+        } as any
+
+        const { xml } = await transformTemplateToXml(template)
+
+        expect(xml).toContain('width="21"')
+        expect(xml).toContain('height="29.7"')
+    })
+
+    it("serializes nested values including attributes/content/position", async () => {
+        const template = {
+            schemas: [[
+                {
+                    type: "custom",
+                    position: { x: 12, y: 34 },
+                    content: "Hello",
+                    visible: true,
+                    attributes: { dataId: "x-1" },
+                    nested: { child: "yes" },
+                    tags: ["a", "b"],
+                },
+            ]],
+            basePdf: { width: 210, height: 297 },
+        } as any
+
+        const { xml } = await transformTemplateToXml(template)
+
+        expect(xml).toContain("<custom")
+        expect(xml).toContain('x="12"')
+        expect(xml).toContain('y="34"')
+        expect(xml).toContain('visible="true"')
+        expect(xml).toContain('dataId="x-1"')
+        expect(xml).toContain("<nested")
+        expect(xml).toContain("<tags>a</tags>")
+    })
+
+    it("uses fallback tag 'item' when schema type is missing", async () => {
+        const template = {
+            schemas: [[{ position: { x: 0, y: 0 }, value: 1 }]],
+            basePdf: { width: 210, height: 297 },
+        } as any
+
+        const { xml } = await transformTemplateToXml(template)
+
+        expect(xml).toContain("<item")
+    })
+})
+
+describe("extractVariablesFromSchema", () => {
+    it("collects variables from text schemas including nested component blocks", () => {
+        const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined)
+
+        const variables = extractVariablesFromSchema([
+            [
+                { type: "TextWithVariables", variables: "first_name" } as any,
+                {
+                    type: "ComponentBlocks",
+                    componentSchemas: [
+                        { type: "TextWithVariables", variables: ["last_name", 123] } as any,
+                    ],
+                } as any,
+            ],
+        ])
+
+        expect(variables).toEqual(["first_name", "last_name"])
+        expect(logSpy).toHaveBeenCalled()
+        logSpy.mockRestore()
     })
 })

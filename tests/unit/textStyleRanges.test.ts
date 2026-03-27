@@ -4,6 +4,14 @@ import {
     normalizeBoldRanges,
     normalizeStyleRanges,
     normalizeFontSizeRanges,
+    isIndexBold,
+    isIndexInStyleRanges,
+    getFontSizeAtIndex,
+    setFontSizeRange,
+    renderStyledRanges,
+    projectBoldRangesBySourceMap,
+    projectStyleRangesBySourceMap,
+    projectFontSizeRangesBySourceMap,
     toggleStyleRanges,
 } from "@/lib/template/plugins/textWithVariables/textStyleRanges"
 
@@ -136,5 +144,96 @@ describe("toggleStyleRanges", () => {
     it("normalises reversed start/end arguments", () => {
         const result = toggleStyleRanges(8, 2, [])
         expect(result).toEqual([{ start: 2, end: 8 }])
+    })
+})
+
+describe("index helpers", () => {
+    it("detects bold/style membership and font size fallback correctly", () => {
+        expect(isIndexBold(2, [{ start: 1, end: 3 }])).toBe(true)
+        expect(isIndexBold(5, [{ start: 1, end: 3 }])).toBe(false)
+
+        expect(isIndexInStyleRanges(4, [{ start: 4, end: 6 }])).toBe(true)
+        expect(isIndexInStyleRanges(2, [{ start: 4, end: 6 }])).toBe(false)
+
+        expect(getFontSizeAtIndex(1, [{ start: 0, end: 2, size: 14 }], 10)).toBe(14)
+        expect(getFontSizeAtIndex(8, [{ start: 0, end: 2, size: 14 }], 10)).toBe(10)
+    })
+})
+
+describe("setFontSizeRange", () => {
+    it("splits overlapping ranges and inserts target size segment", () => {
+        const current = [{ start: 0, end: 9, size: 12 }]
+        const result = setFontSizeRange(3, 6, 20, current, 10)
+
+        expect(result).toEqual([
+            { start: 0, end: 2, size: 12 },
+            { start: 3, end: 6, size: 20 },
+            { start: 7, end: 9, size: 12 },
+        ])
+    })
+
+    it("does not add a segment when target equals base font size", () => {
+        const current = [{ start: 0, end: 4, size: 12 }]
+        const result = setFontSizeRange(1, 3, 10, current, 10)
+
+        expect(result).toEqual([
+            { start: 0, end: 0, size: 12 },
+            { start: 4, end: 4, size: 12 },
+        ])
+    })
+
+    it("normalizes reversed bounds and minimum size floor", () => {
+        const result = setFontSizeRange(8, 4, 2, [], 10)
+        expect(result).toEqual([{ start: 4, end: 8, size: 6 }])
+    })
+})
+
+describe("renderStyledRanges", () => {
+    it("returns empty string for empty text", () => {
+        expect(renderStyledRanges("", [], [], 10)).toBe("")
+    })
+
+    it("renders escaped plain text when no styles apply", () => {
+        const html = renderStyledRanges("A<&>'\"", [], [], 10)
+        expect(html).toBe("A&lt;&amp;&gt;&#039;&quot;")
+    })
+
+    it("creates spans when style runs change", () => {
+        const html = renderStyledRanges(
+            "abcd",
+            [{ start: 1, end: 2 }],
+            [{ start: 2, end: 3, size: 16 }],
+            10,
+            [{ start: 0, end: 0 }],
+            [{ start: 3, end: 3 }],
+            [{ start: 2, end: 2 }],
+        )
+
+        expect(html).toContain("font-style: italic")
+        expect(html).toContain("font-weight: 700")
+        expect(html).toContain("font-size: 16pt")
+        expect(html).toContain("text-decoration")
+    })
+})
+
+describe("projection helpers", () => {
+    it("projects bold/style ranges using output-to-source map", () => {
+        const map = [10, 11, 12, 20, 21]
+        const bold = projectBoldRangesBySourceMap([{ start: 11, end: 12 }], map)
+        const style = projectStyleRangesBySourceMap([{ start: 20, end: 21 }], map)
+
+        expect(bold).toEqual([{ start: 1, end: 2 }])
+        expect(style).toEqual([{ start: 3, end: 4 }])
+    })
+
+    it("projects font sizes and omits base-size-only segments", () => {
+        const map = [0, 1, 2, 3, 4]
+        const ranges = projectFontSizeRangesBySourceMap(
+            [{ start: 1, end: 3, size: 18 }],
+            map,
+            10,
+        )
+
+        expect(ranges).toEqual([{ start: 1, end: 3, size: 18 }])
     })
 })

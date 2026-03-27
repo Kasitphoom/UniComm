@@ -14,8 +14,10 @@ vi.mock("next/headers", () => ({
 }))
 
 import { PrismaClient } from "@/app/generated/business/prisma"
+import { cookies } from "next/headers"
 import {
     getBusinessPrisma,
+    getBusinessPrismaByCookie,
     disconnectAllBusinessPrisma,
     buildBusinessDbUrl,
 } from "@/lib/prisma-business"
@@ -110,5 +112,42 @@ describe("buildBusinessDbUrl", () => {
     it("throws when BUSINESS_DATABASE_URL is not configured", () => {
         delete process.env.BUSINESS_DATABASE_URL
         expect(() => buildBusinessDbUrl("any")).toThrow("BUSINESS_DATABASE_URL is not set")
+    })
+})
+
+describe("getBusinessPrismaByCookie", () => {
+    it("resolves to the tenant-specific cached prisma client from cookie", async () => {
+        vi.mocked(cookies).mockResolvedValue({
+            get: vi.fn().mockReturnValue({ value: "tenant-z" }),
+        } as any)
+
+        const fromCookie = await getBusinessPrismaByCookie()
+        const direct = getBusinessPrisma("tenant-z")
+
+        expect(fromCookie).toBe(direct)
+    })
+
+    it("throws when business cookie is missing", async () => {
+        vi.mocked(cookies).mockResolvedValue({
+            get: vi.fn().mockReturnValue(undefined),
+        } as any)
+
+        await expect(getBusinessPrismaByCookie()).rejects.toThrow("No business ID found in cookies")
+    })
+})
+
+describe("disconnectAllBusinessPrisma error handling", () => {
+    it("logs errors from failed disconnects and still clears cache", async () => {
+        const client = getBusinessPrisma("tenant-error")
+        ;(client.$disconnect as any).mockRejectedValueOnce(new Error("disconnect failed"))
+        const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined)
+
+        await disconnectAllBusinessPrisma()
+
+        expect(errorSpy).toHaveBeenCalled()
+        const replacement = getBusinessPrisma("tenant-error")
+        expect(replacement).not.toBe(client)
+
+        errorSpy.mockRestore()
     })
 })

@@ -5,10 +5,23 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { getBusinessPrisma } from "@/lib/prisma-business"
 import { publishCampaignChunk } from "@/lib/qstash"
+import { runCampaignJob } from "@/utils/campaign"
+import { deleteCampaignFileJob } from "@/utils/files"
+import { after } from "next/server"
 import { POST } from "@/app/api/jobs/campaign/route"
 
 const mockFindUnique = vi.fn()
 const mockRunLogCreate = vi.fn()
+
+vi.mock("next/server", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("next/server")>()
+    return {
+        ...actual,
+        after: vi.fn(async (callback: () => void | Promise<void>) => {
+            await callback()
+        }),
+    }
+})
 
 vi.mock("@/lib/prisma-business", () => ({
     getBusinessPrisma: vi.fn(),
@@ -63,9 +76,22 @@ function makeRequest() {
     })
 }
 
+function makeRequestWithPayload(payload: unknown, headers: Record<string, string> = {}) {
+    return new Request("http://localhost/api/jobs/campaign", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            ...headers,
+        },
+        body: JSON.stringify(payload),
+    })
+}
+
 describe("Campaign chunking — Equation 5.7: N_chunks = ⌈ N_customers / S_chunk ⌉", () => {
     beforeEach(() => {
         vi.clearAllMocks()
+        delete process.env.CAMPAIGN_JOB_SECRET
+        delete process.env.CAMPAIGN_JOB_CHUNK_SIZE
     })
 
     it("returns chunkCount = 3 for 501 customers with default chunk size 250", async () => {
@@ -120,6 +146,179 @@ describe("Campaign chunking — Equation 5.7: N_chunks = ⌈ N_customers / S_chu
         await POST(makeRequest())
 
         expect(vi.mocked(publishCampaignChunk)).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe("Campaign route handler branches", () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+        delete process.env.CAMPAIGN_JOB_SECRET
+        delete process.env.CAMPAIGN_JOB_CHUNK_SIZE
+    })
+
+    it("returns 401 when campaign secret is configured but header is missing", async () => {
+        process.env.CAMPAIGN_JOB_SECRET = "expected-secret"
+
+        const response = await POST(makeRequest())
+        const body = await response.json()
+
+        expect(response.status).toBe(401)
+        expect(body.error).toMatch(/unauthorized/i)
+    })
+
+    it("accepts request when campaign secret header matches", async () => {
+        process.env.CAMPAIGN_JOB_SECRET = "expected-secret"
+        setupMocksForCustomerCount(251)
+
+        const response = await POST(
+            makeRequestWithPayload(
+                {
+                    jobType: "RUN_CAMPAIGNS",
+                    triggerSource: "MANUAL",
+                    campaignId: "campaign-abc",
+                    businessIds: ["business-1"],
+                },
+                { "x-campaign-job-secret": "expected-secret" },
+            ),
+        )
+
+        expect(response.status).toBe(200)
+    })
+
+    it("returns 400 for invalid payload without jobType", async () => {
+        const response = await POST(makeRequestWithPayload({}))
+        const body = await response.json()
+
+        expect(response.status).toBe(400)
+        expect(body.error).toMatch(/invalid job payload/i)
+    })
+
+    it("returns DEFAULT_EXECUTION and processed business count for non-orchestrated runs", async () => {
+        setupMocksForCustomerCount(250)
+        vi.mocked(runCampaignJob).mockResolvedValue([
+            { success: true },
+            { success: true },
+        ] as any)
+
+        const response = await POST(makeRequest())
+        const body = await response.json()
+
+        expect(body.mode).toBe("DEFAULT_EXECUTION")
+        expect(body.processedBusinesses).toBe(2)
+    })
+
+    it("falls back to default chunk size when env chunk size is not a number", async () => {
+        process.env.CAMPAIGN_JOB_CHUNK_SIZE = "not-a-number"
+        setupMocksForCustomerCount(251)
+
+        const response = await POST(makeRequest())
+        const body = await response.json()
+
+        expect(body.mode).toBe("CHUNK_ORCHESTRATED")
+        expect(body.chunkSize).toBe(250)
+    })
+
+    it("enforces minimum chunk size of 1 when env chunk size is zero", async () => {
+        process.env.CAMPAIGN_JOB_CHUNK_SIZE = "0"
+        setupMocksForCustomerCount(2)
+
+        const response = await POST(makeRequest())
+        const body = await response.json()
+
+        expect(body.mode).toBe("CHUNK_ORCHESTRATED")
+        expect(body.chunkSize).toBe(1)
+    })
+
+    it("returns CHUNK_EXECUTION_ASYNC and schedules the next chunk when current chunk succeeds", async () => {
+        vi.mocked(runCampaignJob).mockResolvedValue([{ success: true }] as any)
+
+        const response = await POST(
+            makeRequestWithPayload({
+                jobType: "RUN_CAMPAIGNS",
+                triggerSource: "MANUAL",
+                campaignId: "campaign-abc",
+                businessIds: ["business-1"],
+                chunked: true,
+                jobId: "run-log-1",
+                chunkOrder: 0,
+                totalChunks: 3,
+                chunkOffset: 0,
+                chunkLimit: 200,
+                isFinalChunk: false,
+            }),
+        )
+        const body = await response.json()
+
+        expect(body.mode).toBe("CHUNK_EXECUTION_ASYNC")
+        expect(vi.mocked(after)).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(publishCampaignChunk)).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(publishCampaignChunk)).toHaveBeenCalledWith(
+            "http://localhost",
+            expect.objectContaining({
+                chunkOrder: 1,
+                chunkOffset: 200,
+                isFinalChunk: false,
+            }),
+            expect.any(Object),
+        )
+    })
+
+    it("does not enqueue a next chunk when chunked execution has failures", async () => {
+        vi.mocked(runCampaignJob).mockResolvedValue([{ success: false }] as any)
+
+        const response = await POST(
+            makeRequestWithPayload({
+                jobType: "RUN_CAMPAIGNS",
+                triggerSource: "MANUAL",
+                campaignId: "campaign-abc",
+                businessIds: ["business-1"],
+                chunked: true,
+                jobId: "run-log-1",
+                chunkOrder: 0,
+                totalChunks: 2,
+                chunkOffset: 0,
+                chunkLimit: 100,
+            }),
+        )
+
+        expect(response.status).toBe(200)
+        expect(vi.mocked(publishCampaignChunk)).not.toHaveBeenCalled()
+    })
+
+    it("handles DELETE_EXPIRED_FILES jobs", async () => {
+        const response = await POST(
+            makeRequestWithPayload({
+                jobType: "DELETE_EXPIRED_FILES",
+            }),
+        )
+        const body = await response.json()
+
+        expect(body.ok).toBe(true)
+        expect(body.jobType).toBe("DELETE_EXPIRED_FILES")
+        expect(vi.mocked(deleteCampaignFileJob)).toHaveBeenCalledTimes(1)
+    })
+
+    it("returns 400 for unsupported job type", async () => {
+        const response = await POST(
+            makeRequestWithPayload({
+                jobType: "UNSUPPORTED_JOB",
+            }),
+        )
+        const body = await response.json()
+
+        expect(response.status).toBe(400)
+        expect(body.error).toMatch(/unsupported job type/i)
+    })
+
+    it("returns 500 when campaign runner throws", async () => {
+        setupMocksForCustomerCount(250)
+        vi.mocked(runCampaignJob).mockRejectedValue(new Error("worker exploded"))
+
+        const response = await POST(makeRequest())
+        const body = await response.json()
+
+        expect(response.status).toBe(500)
+        expect(body.error).toMatch(/worker exploded/i)
     })
 })
 
