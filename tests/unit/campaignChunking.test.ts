@@ -1,27 +1,11 @@
-/**
- * Section 5.5.4 — Asynchronous Campaign Chunking (Equation 5.7)
- *
- * White-box tests for the chunk boundary calculation:
- *
- *   N_chunks = ⌈ N_customers / S_chunk ⌉
- *
- * The production function `enqueueChunkedCampaignJobs` (internal to the route)
- * computes this at line 64:
- *
- *   const chunkCount = Math.ceil(customerCount / chunkSize)
- *
- * Strategy: mock all I/O dependencies (Prisma, QStash) and invoke the exported
- * POST handler with a RUN_CAMPAIGNS payload. The handler's JSON response
- * includes `chunkCount`, letting us assert the math directly against real code.
- */
+// for dissertation section 5.5.4 — asynchronous campaign chunking
+//
+// enqueueChunkedCampaignJobs is internal to the route, so we mock all i/o deps
+// and call the exported POST handler to assert chunkCount from the response
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { getBusinessPrisma } from "@/lib/prisma-business"
 import { publishCampaignChunk } from "@/lib/qstash"
 import { POST } from "@/app/api/jobs/campaign/route"
-
-// ---------------------------------------------------------------------------
-// Mocks
-// ---------------------------------------------------------------------------
 
 const mockFindUnique = vi.fn()
 const mockRunLogCreate = vi.fn()
@@ -47,10 +31,6 @@ vi.mock("@/app/generated/business/prisma", () => ({
     FILE_STATUS: { PENDING: "PENDING", DONE: "DONE" },
     SCHEDULE_STATUS: { RUNNING: "RUNNING", DONE: "DONE" },
 }))
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function setupMocksForCustomerCount(customerCount: number) {
     mockFindUnique.mockResolvedValue({
@@ -83,17 +63,13 @@ function makeRequest() {
     })
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 describe("Campaign chunking — Equation 5.7: N_chunks = ⌈ N_customers / S_chunk ⌉", () => {
     beforeEach(() => {
         vi.clearAllMocks()
     })
 
     it("returns chunkCount = 3 for 501 customers with default chunk size 250", async () => {
-        // ⌈501 / 250⌉ = ⌈2.004⌉ = 3
+        // ⌈501 / 250⌉ = 3
         setupMocksForCustomerCount(501)
         const response = await POST(makeRequest())
         const body = await response.json()
@@ -103,7 +79,7 @@ describe("Campaign chunking — Equation 5.7: N_chunks = ⌈ N_customers / S_chu
     })
 
     it("returns chunkCount = 2 for exactly 500 customers", async () => {
-        // ⌈500 / 250⌉ = ⌈2.0⌉ = 2
+        // ⌈500 / 250⌉ = 2
         setupMocksForCustomerCount(500)
         const response = await POST(makeRequest())
         const body = await response.json()
@@ -113,7 +89,7 @@ describe("Campaign chunking — Equation 5.7: N_chunks = ⌈ N_customers / S_chu
     })
 
     it("returns chunkCount = 2 for 251 customers (boundary above one chunk)", async () => {
-        // ⌈251 / 250⌉ = ⌈1.004⌉ = 2
+        // ⌈251 / 250⌉ = 2
         setupMocksForCustomerCount(251)
         const response = await POST(makeRequest())
         const body = await response.json()
@@ -122,8 +98,7 @@ describe("Campaign chunking — Equation 5.7: N_chunks = ⌈ N_customers / S_chu
         expect(body.chunkCount).toBe(2)
     })
 
-    it("does NOT orchestrate chunks when customerCount ≤ chunkSize (falls through to default execution)", async () => {
-        // 250 customers with chunk size 250 → orchestration short-circuits
+    it("does NOT orchestrate chunks when customerCount ≤ chunkSize", async () => {
         setupMocksForCustomerCount(250)
         const response = await POST(makeRequest())
         const body = await response.json()
@@ -148,12 +123,9 @@ describe("Campaign chunking — Equation 5.7: N_chunks = ⌈ N_customers / S_chu
     })
 })
 
-// ---------------------------------------------------------------------------
-// Pure formula verification (Equation 5.7 boundary conditions)
-// ---------------------------------------------------------------------------
-
+// boundary condition table for Equation 5.7
 describe("Equation 5.7 — ⌈ N / S ⌉ boundary conditions", () => {
-    const S = 250  // default chunk size
+    const S = 250
 
     it.each([
         [1,    S, 1],

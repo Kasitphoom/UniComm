@@ -1,22 +1,8 @@
-/**
- * Section 5.4 — Cryptographic Deduplication (Equation 5.5: v = H(T))
- *
- * White-box tests for the SHA-256 content-addressable storage function.
- *
- * Three properties are verified:
- *   1. Idempotency    — H(T) is identical across repeated calls with the same template.
- *   2. Sensitivity    — Changing a single character in T produces a completely different hash.
- *   3. Key-order independence — The `stable()` helper sorts object keys before hashing,
- *      so two objects that are structurally equal but with different key ordering
- *      must produce the same hash.
- */
-import { describe, it, expect } from "vitest"
+// for dissertation section 5.4 — cryptographic deduplication
+import { describe, it, expect, vi } from "vitest"
 import { hashTemplate } from "@/lib/draftStore"
 
-// idb-keyval is only used by the draft persistence helpers (loadTemplateDraft,
-// saveTemplateDraft) — not by hashTemplate itself. Mock it so the module
-// loads cleanly without a real IndexedDB environment.
-import { vi } from "vitest"
+// idb-keyval is not used by hashTemplate itself, mock it so the module loads cleanly
 vi.mock("idb-keyval", () => ({
     get: vi.fn(),
     set: vi.fn(),
@@ -46,7 +32,7 @@ describe("hashTemplate — idempotency (Equation 5.5)", () => {
 
         expect(h1).toBe(h2)
         expect(h2).toBe(h3)
-        expect(h1).toHaveLength(64) // SHA-256 → 32 bytes → 64 hex chars
+        expect(h1).toHaveLength(64) // sha-256 = 32 bytes = 64 hex chars
     })
 
     it("produces a valid lowercase hex string", async () => {
@@ -63,7 +49,7 @@ describe("hashTemplate — content sensitivity", () => {
                 [
                     {
                         ...baseTemplate.schemas[0][0],
-                        content: "Hello {{Name}}!",  // one extra '!'
+                        content: "Hello {{Name}}!", // one extra '!'
                     },
                 ],
             ],
@@ -78,7 +64,7 @@ describe("hashTemplate — content sensitivity", () => {
     it("produces a different hash when a numeric property changes", async () => {
         const modified = {
             ...baseTemplate,
-            basePdf: { ...baseTemplate.basePdf, width: 211 },  // 210 → 211
+            basePdf: { ...baseTemplate.basePdf, width: 211 }, // 210 → 211
         }
 
         const original = await hashTemplate(baseTemplate)
@@ -89,16 +75,15 @@ describe("hashTemplate — content sensitivity", () => {
 
     it("produces a different hash for an empty template vs a populated one", async () => {
         const empty = { schemas: [[]], basePdf: { width: 210, height: 297, padding: [0, 0, 0, 0] } } as any
-        const hashEmpty = await hashTemplate(empty)
-        const hashBase = await hashTemplate(baseTemplate)
 
-        expect(hashEmpty).not.toBe(hashBase)
+        expect(await hashTemplate(empty)).not.toBe(await hashTemplate(baseTemplate))
     })
 })
 
 describe("hashTemplate — key-order independence (stable stringify)", () => {
-    it("produces identical hashes for objects with the same data but different key order", async () => {
-        // The internal `stable()` helper sorts keys recursively before hashing.
+    it("produces identical hashes for objects with same data but different key order", async () => {
+        // the internal stable() helper sort keys recursively before hashing,
+        // so two structurally equal object should always produce the same hash
         const templateA = {
             basePdf: { width: 210, height: 297, padding: [10, 10, 10, 10] },
             schemas: [[{ type: "image", width: 50, height: 50, position: { x: 0, y: 0 } }]],

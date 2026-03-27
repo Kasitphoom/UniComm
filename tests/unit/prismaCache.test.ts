@@ -1,26 +1,7 @@
-/**
- * Section 5.2.2 — Multi-Tenant Connection Caching
- *
- * White-box tests for `getBusinessPrisma`, which uses a module-level
- * `Map<string, PrismaClient>` to cache database connections.
- *
- * Assertions:
- *   1. Cache miss  — a new PrismaClient is constructed on the first call.
- *   2. Cache hit   — the exact same object reference is returned on subsequent
- *                    calls with the same businessId, proving no new connection
- *                    is opened.
- *   3. Isolation   — different businessIds produce different client instances.
- *   4. Cache clear — `disconnectAllBusinessPrisma` drains the cache so the
- *                    next call creates a fresh client.
- */
+// for dissertation section 5.2.2 — multi-tenant connection caching
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-// ---------------------------------------------------------------------------
-// Mock the generated Prisma client.
-// Must use a regular `function` (not an arrow function) so it is constructable
-// via `new PrismaClient(...)`.
-// ---------------------------------------------------------------------------
-
+// must use regular function (not arrow) so it constructable via new PrismaClient(...)
 vi.mock("@/app/generated/business/prisma", () => {
     const PrismaClient = vi.fn(function(this: any) {
         this.$disconnect = vi.fn().mockResolvedValue(undefined)
@@ -32,10 +13,6 @@ vi.mock("next/headers", () => ({
     cookies: vi.fn(),
 }))
 
-// ---------------------------------------------------------------------------
-// Module under test — imported AFTER mocks are registered
-// ---------------------------------------------------------------------------
-
 import { PrismaClient } from "@/app/generated/business/prisma"
 import {
     getBusinessPrisma,
@@ -43,20 +20,11 @@ import {
     buildBusinessDbUrl,
 } from "@/lib/prisma-business"
 
-// ---------------------------------------------------------------------------
-// Setup
-// ---------------------------------------------------------------------------
-
 beforeEach(async () => {
-    // Clear the in-memory cache and reset all constructor call tracking.
     await disconnectAllBusinessPrisma()
     vi.mocked(PrismaClient).mockClear()
     process.env.BUSINESS_DATABASE_URL = "mongodb://localhost:27017/admin"
 })
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 describe("getBusinessPrisma — cache miss (first call)", () => {
     it("constructs a new PrismaClient on the first call for a given businessId", () => {
@@ -78,7 +46,7 @@ describe("getBusinessPrisma — cache hit (second call)", () => {
         const first = getBusinessPrisma("tenant-b")
         const second = getBusinessPrisma("tenant-b")
 
-        // Reference equality proves the cache was hit — no new connection
+        // reference equality proves no new connection was opened
         expect(first).toBe(second)
     })
 
@@ -87,7 +55,7 @@ describe("getBusinessPrisma — cache hit (second call)", () => {
         getBusinessPrisma("tenant-b")
         getBusinessPrisma("tenant-b")
 
-        // Three calls → only one PrismaClient instantiation
+        // three calls → only one instantiation
         expect(PrismaClient).toHaveBeenCalledTimes(1)
     })
 })
@@ -102,9 +70,9 @@ describe("getBusinessPrisma — tenant isolation", () => {
 
     it("constructs exactly one client per unique businessId", () => {
         getBusinessPrisma("tenant-e")
-        getBusinessPrisma("tenant-e")  // cache hit — no new instance
+        getBusinessPrisma("tenant-e") // cache hit
         getBusinessPrisma("tenant-f")
-        getBusinessPrisma("tenant-f")  // cache hit — no new instance
+        getBusinessPrisma("tenant-f") // cache hit
 
         expect(PrismaClient).toHaveBeenCalledTimes(2)
     })

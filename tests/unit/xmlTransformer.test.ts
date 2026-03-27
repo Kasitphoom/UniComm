@@ -1,32 +1,14 @@
-/**
- * Section 5.5.2 — XML to Template Transformation (Algorithm 2)
- *
- * White-box tests for the two-way XML ↔ pdfme Template transformation layer.
- *
- * Key behaviours verified:
- *   1. Dimension units: XML stores dimensions in centimetres; pdfme requires
- *      millimetres. The transformer must multiply by 10.
- *   2. Schema reconstruction: XML attributes are mapped back to the correct
- *      schema fields including the nested `position` object.
- *   3. ComponentBlock resolution: deeply nested ComponentBlocks are resolved
- *      via the optional resolver callback (Algorithm 2 main path).
- *   4. Round-trip fidelity: Template → XML → Template preserves all fields.
- */
+// for dissertation section 5.5.2 — XML to template transformation
 import { describe, it, expect, vi } from "vitest"
 import {
     transformXmlToTemplate,
     transformTemplateToXml,
 } from "@/utils/template/xml-pdf-transformer"
 
-// Isolate from the text-migration step so tests are focused on the
-// XML parsing logic only.
+// isolate from text-migration so tests focus on the xml parsing logic only
 vi.mock("@/lib/template/plugins/textMigration", () => ({
     migrateTemplateSchemas: (schemas: unknown) => schemas,
 }))
-
-// ---------------------------------------------------------------------------
-// transformXmlToTemplate
-// ---------------------------------------------------------------------------
 
 describe("transformXmlToTemplate — dimension conversion", () => {
     it("converts centimetre attributes to millimetres (×10)", async () => {
@@ -49,7 +31,7 @@ describe("transformXmlToTemplate — dimension conversion", () => {
     })
 
     it("handles non-standard page sizes", async () => {
-        // Letter: 21.59 cm × 27.94 cm
+        // letter: 21.59 cm × 27.94 cm
         const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Document width="21.59" height="27.94"></Document>`
 
@@ -133,7 +115,7 @@ describe("transformXmlToTemplate — ComponentBlock resolution (Algorithm 2)", (
     })
 
     it("resolves a deeply nested ComponentBlock chain", async () => {
-        // PageBlock → contains HeaderBlock → contains a leaf image schema
+        // PageBlock → HeaderBlock → leaf image schema
         const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Document width="21" height="29.7">
     <Page>
@@ -145,12 +127,7 @@ describe("transformXmlToTemplate — ComponentBlock resolution (Algorithm 2)", (
 
         const resolver = vi.fn().mockImplementation(async (name: string) => {
             if (name === "PageBlock") {
-                return [
-                    {
-                        type: "ComponentBlocks",
-                        componentName: "HeaderBlock",
-                    },
-                ]
+                return [{ type: "ComponentBlocks", componentName: "HeaderBlock" }]
             }
             if (name === "HeaderBlock") return leafSchema
             return null
@@ -182,10 +159,6 @@ describe("transformXmlToTemplate — ComponentBlock resolution (Algorithm 2)", (
         expect(block.componentSchemas).toBeUndefined()
     })
 })
-
-// ---------------------------------------------------------------------------
-// Round-trip: Template → XML → Template
-// ---------------------------------------------------------------------------
 
 describe("transformTemplateToXml → transformXmlToTemplate round-trip", () => {
     it("preserves basePdf dimensions after a full round-trip", async () => {

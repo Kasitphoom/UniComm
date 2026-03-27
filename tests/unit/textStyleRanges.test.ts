@@ -1,10 +1,4 @@
-/**
- * Section 5.3.2 — Rich-Text Range Algorithms (Part 1)
- *
- * White-box tests for the style normalization and merging algorithms.
- * These functions implement Algorithm 1: merging and splitting overlapping
- * formatting ranges described as {start, end} or {start, end, size}.
- */
+// for dissertation section 5.3.2 — style normalisation and merging algorithms
 import { describe, it, expect } from "vitest"
 import {
     normalizeBoldRanges,
@@ -12,10 +6,6 @@ import {
     normalizeFontSizeRanges,
     toggleStyleRanges,
 } from "@/lib/template/plugins/textWithVariables/textStyleRanges"
-
-// ---------------------------------------------------------------------------
-// normalizeBoldRanges
-// ---------------------------------------------------------------------------
 
 describe("normalizeBoldRanges", () => {
     it("returns empty array for null input", () => {
@@ -32,13 +22,12 @@ describe("normalizeBoldRanges", () => {
     })
 
     it("merges two overlapping ranges (chars 0–5 then 3–8) into a single range", () => {
-        // This is the core Algorithm 1 assertion from the dissertation.
+        // core assertion for algorithm 1 — overlapping ranges should produce one clean output
         const input = [{ start: 0, end: 5 }, { start: 3, end: 8 }]
         expect(normalizeBoldRanges(input)).toEqual([{ start: 0, end: 8 }])
     })
 
     it("merges adjacent ranges whose ends are exactly one apart", () => {
-        // current.start === last.end + 1 → should merge
         const input = [{ start: 0, end: 3 }, { start: 4, end: 7 }]
         expect(normalizeBoldRanges(input)).toEqual([{ start: 0, end: 7 }])
     })
@@ -78,10 +67,7 @@ describe("normalizeBoldRanges", () => {
     })
 })
 
-// ---------------------------------------------------------------------------
-// normalizeStyleRanges  (italic / underline / strikethrough — same algorithm)
-// ---------------------------------------------------------------------------
-
+// italic / underline / strikethrough uses the same merging algorithm
 describe("normalizeStyleRanges", () => {
     it("merges overlapping ranges identically to normalizeBoldRanges", () => {
         const input = [{ start: 0, end: 5 }, { start: 3, end: 8 }]
@@ -92,10 +78,6 @@ describe("normalizeStyleRanges", () => {
         expect(normalizeStyleRanges(null)).toEqual([])
     })
 })
-
-// ---------------------------------------------------------------------------
-// normalizeFontSizeRanges
-// ---------------------------------------------------------------------------
 
 describe("normalizeFontSizeRanges", () => {
     it("merges same-size overlapping ranges into one", () => {
@@ -132,10 +114,6 @@ describe("normalizeFontSizeRanges", () => {
     })
 })
 
-// ---------------------------------------------------------------------------
-// toggleStyleRanges  (toggle bold/italic/etc on a text selection)
-// ---------------------------------------------------------------------------
-
 describe("toggleStyleRanges", () => {
     it("adds a new range when there is no existing coverage", () => {
         const result = toggleStyleRanges(2, 6, [])
@@ -145,13 +123,12 @@ describe("toggleStyleRanges", () => {
     it("removes a range that is fully covered (toggle off)", () => {
         const existing = [{ start: 0, end: 10 }]
         const result = toggleStyleRanges(2, 6, existing)
-        // Chars 2–6 were covered; toggling should remove that span
         expect(result.every((r) => r.start > 6 || r.end < 2)).toBe(true)
     })
 
-    it("extends an existing range when a partially overlapping range is toggled on", () => {
+    it("extends an existing range when partially overlapping range is toggled on", () => {
         const existing = [{ start: 0, end: 4 }]
-        // Selecting 3–7 partially overlaps with 0–4; should extend to cover 0–7
+        // selecting 3–7 partially overlaps with 0–4, should extend to cover 0–7
         const result = toggleStyleRanges(3, 7, existing)
         expect(result).toEqual([{ start: 0, end: 7 }])
     })
