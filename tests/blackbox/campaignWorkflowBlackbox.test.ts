@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import { NextRequest } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { requireAuth } from "@/lib/api-auth"
 import { userHasPermissionAPI } from "@/utils/permissions"
 import { getBusinessPrisma } from "@/lib/prisma-business"
@@ -117,6 +117,43 @@ describe("Campaign black-box workflow validation", () => {
         expect(Array.isArray(body.campaigns)).toBe(true)
     })
 
+    it("returns 401 for campaign list when auth fails", async () => {
+        vi.mocked(requireAuth).mockResolvedValueOnce({
+            ok: false,
+            response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+        } as any)
+
+        const res = await listCampaignsGET(new Request("http://localhost/api/campaigns") as any)
+        expect(res.status).toBe(401)
+    })
+
+    it("normalizes pagination and enum filters on campaign list", async () => {
+        const req = new Request(
+            "http://localhost/api/campaigns?page=0&perPage=999&fileStatus=pending,READY,unknown&scheduleStatus=running&range=TODAY",
+            { method: "GET" },
+        )
+
+        const res = await listCampaignsGET(req as any)
+        expect(res.status).toBe(200)
+        expect(mockCampaignFindMany).toHaveBeenCalledWith(
+            expect.objectContaining({
+                take: 50,
+                skip: 0,
+            }),
+        )
+    })
+
+    it("accepts custom date range with zone annotations in campaign list filters", async () => {
+        const req = new Request(
+            "http://localhost/api/campaigns?range=CUSTOM&startDate=2026-03-01T00:00:00.000Z[Europe/London]&endDate=2026-03-10T00:00:00.000Z[Europe/London]",
+            { method: "GET" },
+        )
+
+        const res = await listCampaignsGET(req as any)
+        expect(res.status).toBe(200)
+        expect(mockCampaignFindMany).toHaveBeenCalledTimes(1)
+    })
+
     it("returns 400 when selected template requires fields missing from customer list", async () => {
         mockCampaignFindUnique.mockResolvedValueOnce(null)
         mockContactListFindUnique.mockResolvedValueOnce({
@@ -177,6 +214,39 @@ describe("Campaign black-box workflow validation", () => {
         expect(res.status).toBe(201)
         expect(body.id).toBe("campaign-1")
         expect(body.name).toBe("April Run")
+    })
+
+    it("returns 403 when caller lacks permission to create campaign", async () => {
+        vi.mocked(userHasPermissionAPI).mockResolvedValueOnce(false)
+
+        const req = makeJsonRequest("http://localhost/api/campaigns", {
+            name: "April Run",
+            scheduledAt: new Date().toISOString(),
+            templateIds: ["template-1"],
+            customerListId: "list-1",
+        })
+
+        const res = await createCampaignPOST(req as any)
+        expect(res.status).toBe(403)
+    })
+
+    it("returns 400 when no active business is available for create-campaign", async () => {
+        vi.mocked(requireAuth).mockResolvedValueOnce({
+            ok: true,
+            businessId: null,
+            userId: "user-1",
+            mainUserId: "user-1",
+        } as any)
+
+        const req = makeJsonRequest("http://localhost/api/campaigns", {
+            name: "April Run",
+            scheduledAt: new Date().toISOString(),
+            templateIds: ["template-1"],
+            customerListId: "list-1",
+        })
+
+        const res = await createCampaignPOST(req as any)
+        expect(res.status).toBe(400)
     })
 
     it("returns 400 when scheduledAt is invalid", async () => {
@@ -268,6 +338,29 @@ describe("Campaign black-box workflow validation", () => {
 
         expect(res.status).toBe(404)
         expect(body.error).toMatch(/template was not found/i)
+    })
+
+    it("returns 500 when campaign create flow throws unexpectedly", async () => {
+        mockCampaignFindUnique.mockResolvedValueOnce(null)
+        mockContactListFindUnique.mockResolvedValueOnce({
+            id: "list-1",
+            fields: [{ field: "email", type: "email" }],
+            _count: { customers: 2 },
+        })
+        vi.mocked(refreshTemplateDependencies).mockRejectedValueOnce(new Error("template service unavailable"))
+
+        const req = makeJsonRequest("http://localhost/api/campaigns", {
+            name: "April Run",
+            scheduledAt: new Date().toISOString(),
+            templateIds: ["template-1"],
+            customerListId: "list-1",
+        })
+
+        const res = await createCampaignPOST(req as any)
+        const body = await res.json()
+
+        expect(res.status).toBe(500)
+        expect(body.error).toMatch(/template service unavailable/i)
     })
 
     it("returns 404 when manually running a campaign that does not exist", async () => {

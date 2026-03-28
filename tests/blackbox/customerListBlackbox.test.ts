@@ -2,14 +2,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { requireAuth } from "@/lib/api-auth"
 import { userHasPermissionAPI } from "@/utils/permissions"
 import { getBusinessPrisma } from "@/lib/prisma-business"
-import { POST } from "@/app/api/customer-list/route"
+import { GET, POST } from "@/app/api/customer-list/route"
+import { NextResponse } from "next/server"
 
 const {
     mockContactListCreate,
+    mockContactListFindMany,
     mockCustomerCreateMany,
     mockContactListDelete,
 } = vi.hoisted(() => ({
     mockContactListCreate: vi.fn(),
+    mockContactListFindMany: vi.fn(),
     mockCustomerCreateMany: vi.fn(),
     mockContactListDelete: vi.fn(),
 }))
@@ -77,12 +80,58 @@ describe("POST /api/customer-list — black-box functional and error validation"
         vi.mocked(getBusinessPrisma).mockReturnValue({
             contactList: {
                 create: mockContactListCreate,
+                findMany: mockContactListFindMany,
                 delete: mockContactListDelete,
             },
             customer: {
                 createMany: mockCustomerCreateMany,
             },
         } as any)
+
+        mockContactListFindMany.mockResolvedValue([])
+    })
+
+    it("returns 200 with contactLists for authenticated GET requests", async () => {
+        mockContactListFindMany.mockResolvedValueOnce([
+            { id: "list-1", name: "Leads", _count: { customers: 2 } },
+        ])
+
+        const res = await GET(new Request("http://localhost/api/customer-list") as any)
+        const body = await res.json()
+
+        expect(res.status).toBe(200)
+        expect(Array.isArray(body.contactLists)).toBe(true)
+        expect(body.contactLists.length).toBe(1)
+    })
+
+    it("returns 401 for customer-list GET when auth fails", async () => {
+        vi.mocked(requireAuth).mockResolvedValueOnce({
+            ok: false,
+            response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+        } as any)
+
+        const res = await GET(new Request("http://localhost/api/customer-list") as any)
+        expect(res.status).toBe(401)
+    })
+
+    it("returns 404 when business prisma client is unavailable on GET", async () => {
+        vi.mocked(getBusinessPrisma).mockReturnValueOnce(null as any)
+
+        const res = await GET(new Request("http://localhost/api/customer-list") as any)
+        const body = await res.json()
+
+        expect(res.status).toBe(404)
+        expect(body.error).toMatch(/business database not found/i)
+    })
+
+    it("returns 500 when customer-list GET fails unexpectedly", async () => {
+        mockContactListFindMany.mockRejectedValueOnce(new Error("db timeout"))
+
+        const res = await GET(new Request("http://localhost/api/customer-list") as any)
+        const body = await res.json()
+
+        expect(res.status).toBe(500)
+        expect(body.error).toMatch(/failed to fetch customers/i)
     })
 
     it("returns 201 and record counts for a valid CSV upload", async () => {
@@ -126,6 +175,38 @@ describe("POST /api/customer-list — black-box functional and error validation"
 
         expect(res.status).toBe(400)
         expect(body.error).toMatch(/csv file is empty/i)
+    })
+
+    it("returns 400 when multipart upload is missing file", async () => {
+        const formData = new FormData()
+        formData.set("name", "Leads - April")
+
+        const req = new Request("http://localhost/api/customer-list", {
+            method: "POST",
+            body: formData,
+        })
+
+        const res = await POST(req as any)
+        const body = await res.json()
+
+        expect(res.status).toBe(400)
+        expect(body.error).toMatch(/csv file is required/i)
+    })
+
+    it("returns 400 when multipart upload is missing name", async () => {
+        const formData = new FormData()
+        formData.set("file", new File(["name,email\nAlice,alice@example.com"], "customers.csv", { type: "text/csv" }))
+
+        const req = new Request("http://localhost/api/customer-list", {
+            method: "POST",
+            body: formData,
+        })
+
+        const res = await POST(req as any)
+        const body = await res.json()
+
+        expect(res.status).toBe(400)
+        expect(body.error).toMatch(/name is required/i)
     })
 
     it("returns 403 when user lacks permission to create customer lists", async () => {
