@@ -1,0 +1,266 @@
+// for dissertation section 5.5.2 — XML to template transformation
+import { describe, it, expect, vi } from "vitest"
+import {
+    transformXmlToTemplate,
+    transformTemplateToXml,
+    extractVariablesFromSchema,
+} from "@/utils/template/xml-pdf-transformer"
+
+// isolate from text-migration so tests focus on the xml parsing logic only
+vi.mock("@/lib/template/plugins/textMigration", () => ({
+    migrateTemplateSchemas: (schemas: unknown) => schemas,
+}))
+
+describe("transformXmlToTemplate — dimension conversion", () => {
+    it("converts centimetre attributes to millimetres (×10)", async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Document width="21" height="29.7"></Document>`
+
+        const template = await transformXmlToTemplate(xml)
+
+        expect((template.basePdf as any).width).toBe(210)
+        expect((template.basePdf as any).height).toBe(297)
+    })
+
+    it("defaults to A4 (210×297 mm) when no dimension attributes are present", async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?><Document></Document>`
+
+        const template = await transformXmlToTemplate(xml)
+
+        expect((template.basePdf as any).width).toBe(210)
+        expect((template.basePdf as any).height).toBe(297)
+    })
+
+    it("handles non-standard page sizes", async () => {
+        // letter: 21.59 cm × 27.94 cm
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Document width="21.59" height="27.94"></Document>`
+
+        const template = await transformXmlToTemplate(xml)
+
+        expect((template.basePdf as any).width).toBeCloseTo(215.9, 1)
+        expect((template.basePdf as any).height).toBeCloseTo(279.4, 1)
+    })
+})
+
+describe("transformXmlToTemplate — schema reconstruction", () => {
+    it("restores position.x and position.y from XML attributes", async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Document width="21" height="29.7">
+    <Page>
+        <image x="10" y="20" width="100" height="50" />
+    </Page>
+</Document>`
+
+        const template = await transformXmlToTemplate(xml)
+
+        expect(template.schemas).toHaveLength(1)
+        const schema = template.schemas[0][0] as any
+        expect(schema.type).toBe("image")
+        expect(schema.position).toMatchObject({ x: 10, y: 20 })
+        expect(schema.width).toBe(100)
+        expect(schema.height).toBe(50)
+    })
+
+    it("creates an empty page for an explicit empty Page element", async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Document width="21" height="29.7">
+    <Page></Page>
+</Document>`
+
+        const template = await transformXmlToTemplate(xml)
+
+        expect(template.schemas).toHaveLength(1)
+        expect(template.schemas[0]).toEqual([])
+    })
+
+    it("coerces string numeric attribute values to numbers", async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Document width="21" height="29.7">
+    <Page>
+        <image x="5" y="10" width="80" height="40" />
+    </Page>
+</Document>`
+
+        const template = await transformXmlToTemplate(xml)
+        const schema = template.schemas[0][0] as any
+
+        expect(typeof schema.position.x).toBe("number")
+        expect(typeof schema.position.y).toBe("number")
+        expect(typeof schema.width).toBe("number")
+    })
+})
+
+describe("transformXmlToTemplate — ComponentBlock resolution (Algorithm 2)", () => {
+    it("injects componentSchemas when a resolver is provided", async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Document width="21" height="29.7">
+    <Page>
+        <ComponentBlocks componentName="HeaderBlock" />
+    </Page>
+</Document>`
+
+        const headerSchema = [
+            { type: "image", position: { x: 0, y: 0 }, width: 50, height: 20 },
+        ]
+        const resolver = vi.fn().mockResolvedValue(headerSchema)
+
+        const template = await transformXmlToTemplate(xml, {
+            resolveComponentSchemas: resolver,
+        })
+
+        expect(resolver).toHaveBeenCalledWith("HeaderBlock")
+        const block = template.schemas[0][0] as any
+        expect(block.type).toBe("ComponentBlocks")
+        expect(block.componentSchemas).toEqual(headerSchema)
+    })
+
+    it("resolves a deeply nested ComponentBlock chain", async () => {
+        // PageBlock → HeaderBlock → leaf image schema
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Document width="21" height="29.7">
+    <Page>
+        <ComponentBlocks componentName="PageBlock" />
+    </Page>
+</Document>`
+
+        const leafSchema = [{ type: "image", position: { x: 0, y: 0 }, width: 30, height: 15 }]
+
+        const resolver = vi.fn().mockImplementation(async (name: string) => {
+            if (name === "PageBlock") {
+                return [{ type: "ComponentBlocks", componentName: "HeaderBlock" }]
+            }
+            if (name === "HeaderBlock") return leafSchema
+            return null
+        })
+
+        const template = await transformXmlToTemplate(xml, {
+            resolveComponentSchemas: resolver,
+        })
+
+        const outerBlock = template.schemas[0][0] as any
+        expect(outerBlock.type).toBe("ComponentBlocks")
+        const innerBlock = outerBlock.componentSchemas[0] as any
+        expect(innerBlock.type).toBe("ComponentBlocks")
+        expect(innerBlock.componentSchemas).toEqual(leafSchema)
+    })
+
+    it("leaves ComponentBlocks unchanged when no resolver is provided", async () => {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Document width="21" height="29.7">
+    <Page>
+        <ComponentBlocks componentName="Footer" />
+    </Page>
+</Document>`
+
+        const template = await transformXmlToTemplate(xml)
+
+        const block = template.schemas[0][0] as any
+        expect(block.type).toBe("ComponentBlocks")
+        expect(block.componentSchemas).toBeUndefined()
+    })
+})
+
+describe("transformTemplateToXml → transformXmlToTemplate round-trip", () => {
+    it("preserves basePdf dimensions after a full round-trip", async () => {
+        const original = {
+            schemas: [[{ type: "image", position: { x: 5, y: 5 }, width: 60, height: 30 }]] as any,
+            basePdf: { width: 210, height: 297, padding: [10, 10, 10, 10] as any },
+        }
+
+        const { xml } = await transformTemplateToXml(original)
+        const restored = await transformXmlToTemplate(xml)
+
+        expect((restored.basePdf as any).width).toBe(210)
+        expect((restored.basePdf as any).height).toBe(297)
+    })
+
+    it("preserves schema position through a round-trip", async () => {
+        const original = {
+            schemas: [[{ type: "image", position: { x: 15, y: 25 }, width: 80, height: 40 }]] as any,
+            basePdf: { width: 210, height: 297, padding: [10, 10, 10, 10] as any },
+        }
+
+        const { xml } = await transformTemplateToXml(original)
+        const restored = await transformXmlToTemplate(xml)
+
+        const schema = restored.schemas[0][0] as any
+        expect(schema.position).toMatchObject({ x: 15, y: 25 })
+        expect(schema.width).toBe(80)
+        expect(schema.height).toBe(40)
+    })
+})
+
+describe("transformTemplateToXml", () => {
+    it("uses A4 defaults when basePdf is a string", async () => {
+        const template = {
+            schemas: [[{ type: "image", position: { x: 1, y: 2 }, width: 10, height: 5 }]],
+            basePdf: "binary-pdf-reference",
+        } as any
+
+        const { xml } = await transformTemplateToXml(template)
+
+        expect(xml).toContain('width="21"')
+        expect(xml).toContain('height="29.7"')
+    })
+
+    it("serializes nested values including attributes/content/position", async () => {
+        const template = {
+            schemas: [[
+                {
+                    type: "custom",
+                    position: { x: 12, y: 34 },
+                    content: "Hello",
+                    visible: true,
+                    attributes: { dataId: "x-1" },
+                    nested: { child: "yes" },
+                    tags: ["a", "b"],
+                },
+            ]],
+            basePdf: { width: 210, height: 297 },
+        } as any
+
+        const { xml } = await transformTemplateToXml(template)
+
+        expect(xml).toContain("<custom")
+        expect(xml).toContain('x="12"')
+        expect(xml).toContain('y="34"')
+        expect(xml).toContain('visible="true"')
+        expect(xml).toContain('dataId="x-1"')
+        expect(xml).toContain("<nested")
+        expect(xml).toContain("<tags>a</tags>")
+    })
+
+    it("uses fallback tag 'item' when schema type is missing", async () => {
+        const template = {
+            schemas: [[{ position: { x: 0, y: 0 }, value: 1 }]],
+            basePdf: { width: 210, height: 297 },
+        } as any
+
+        const { xml } = await transformTemplateToXml(template)
+
+        expect(xml).toContain("<item")
+    })
+})
+
+describe("extractVariablesFromSchema", () => {
+    it("collects variables from text schemas including nested component blocks", () => {
+        const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined)
+
+        const variables = extractVariablesFromSchema([
+            [
+                { type: "TextWithVariables", variables: "first_name" } as any,
+                {
+                    type: "ComponentBlocks",
+                    componentSchemas: [
+                        { type: "TextWithVariables", variables: ["last_name", 123] } as any,
+                    ],
+                } as any,
+            ],
+        ])
+
+        expect(variables).toEqual(["first_name", "last_name"])
+        expect(logSpy).toHaveBeenCalled()
+        logSpy.mockRestore()
+    })
+})

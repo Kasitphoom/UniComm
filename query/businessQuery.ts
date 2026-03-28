@@ -7,6 +7,13 @@ export const getBusinessData = async () => {
     const cookieStore = await cookies();
     const businessId = cookieStore.get(DEFAULT_BUSINESS_COOKIE)?.value;
 
+    if (process.env.E2E_BYPASS_AUTH === "true") {
+        return {
+            id: businessId ?? "e2e-business",
+            name: "E2E Test Business",
+        }
+    }
+
     if (!businessId) {
         throw new Error("Business ID cookie is missing");
     }

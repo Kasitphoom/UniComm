@@ -1,6 +1,6 @@
 {
   "name": "unicomm",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev --port 4100",
@@ -9,7 +9,12 @@
     "prisma-generate": "npx prisma generate --schema=prisma/main.schema.prisma && npx prisma generate ",
     "migrate:db": "tsx scripts/migrations/run.ts --db=both",
     "migrate:db:main": "tsx scripts/migrations/run.ts --db=main",
-    "migrate:db:business": "tsx scripts/migrations/run.ts --db=business"
+    "migrate:db:business": "tsx scripts/migrations/run.ts --db=business",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.8",
@@ -53,16 +58,26 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@playwright/test": "^1.54.2",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/swagger-ui-react": "^4.11.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "@vitest/coverage-v8": "^4.1.2",
     "copy-webpack-plugin": "^13.0.1",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.1",
+    "happy-dom": "^20.8.9",
+    "jsdom": "^27.0.1",
+    "msw": "^2.12.14",
     "prisma": "^6.17.1",
     "tailwindcss": "^4",
     "tsx": "^4.20.6",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.2"
   }
 }
