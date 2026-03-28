@@ -918,9 +918,7 @@ const runCampaignForBusiness = async (
                         campaign,
                         businessPrisma,
                         chunk,
-                        ({ generated, total }) => {
-                            void publishProgressThrottled({ generated, total }, false)
-                        },
+                        ({ generated, total }) => publishProgressThrottled({ generated, total }, false),
                     )
                     const hasGeneratedFile = Boolean(campaignFileResult?.file?.id)
                     const totalCustomers = Array.isArray(campaign.contactlist?.customers)
