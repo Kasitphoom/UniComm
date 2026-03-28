@@ -5,16 +5,20 @@ import { userHasPermissionAPI } from "@/utils/permissions"
 import { getBusinessPrisma } from "@/lib/prisma-business"
 import { refreshTemplateDependencies } from "@/utils/template/refreshTemplateDependencies"
 import { enqueueCampaignWorkerJob } from "@/lib/external-job-queue"
-import { POST as createCampaignPOST } from "@/app/api/campaigns/route"
-import { POST as runCampaignPOST } from "@/app/api/campaigns/[id]/run/route"
+import { GET as listCampaignsGET, POST as createCampaignPOST } from "@/app/api/campaigns/route"
+import { GET as runCampaignGET, POST as runCampaignPOST } from "@/app/api/campaigns/[id]/run/route"
 
 const {
     mockCampaignFindUnique,
+    mockCampaignFindMany,
+    mockCampaignCount,
     mockCampaignCreate,
     mockCampaignUpdate,
     mockContactListFindUnique,
 } = vi.hoisted(() => ({
     mockCampaignFindUnique: vi.fn(),
+    mockCampaignFindMany: vi.fn(),
+    mockCampaignCount: vi.fn(),
     mockCampaignCreate: vi.fn(),
     mockCampaignUpdate: vi.fn(),
     mockContactListFindUnique: vi.fn(),
@@ -77,6 +81,8 @@ describe("Campaign black-box workflow validation", () => {
         vi.mocked(getBusinessPrisma).mockReturnValue({
             campaign: {
                 findUnique: mockCampaignFindUnique,
+                findMany: mockCampaignFindMany,
+                count: mockCampaignCount,
                 create: mockCampaignCreate,
                 update: mockCampaignUpdate,
             },
@@ -86,6 +92,29 @@ describe("Campaign black-box workflow validation", () => {
         } as any)
 
         vi.mocked(enqueueCampaignWorkerJob).mockResolvedValue({ messageId: "trigger-123" } as any)
+        mockCampaignFindMany.mockResolvedValue([])
+        mockCampaignCount.mockResolvedValue(0)
+    })
+
+    it("returns paginated campaign list for filtered query parameters", async () => {
+        mockCampaignFindMany.mockResolvedValueOnce([
+            { id: "campaign-1", name: "April Run", templates: [], logs: [] },
+        ])
+        mockCampaignCount.mockResolvedValueOnce(1)
+
+        const req = new Request(
+            "http://localhost/api/campaigns?query=April&page=1&perPage=5&fileStatus=PENDING&scheduleStatus=RUNNING&range=LAST_7_DAYS",
+            { method: "GET" },
+        )
+
+        const res = await listCampaignsGET(req as any)
+        const body = await res.json()
+
+        expect(res.status).toBe(200)
+        expect(body.totalCount).toBe(1)
+        expect(body.currentPage).toBe(1)
+        expect(body.totalPages).toBe(1)
+        expect(Array.isArray(body.campaigns)).toBe(true)
     })
 
     it("returns 400 when selected template requires fields missing from customer list", async () => {
@@ -150,6 +179,97 @@ describe("Campaign black-box workflow validation", () => {
         expect(body.name).toBe("April Run")
     })
 
+    it("returns 400 when scheduledAt is invalid", async () => {
+        const req = makeJsonRequest("http://localhost/api/campaigns", {
+            name: "April Run",
+            scheduledAt: "not-a-date",
+            templateIds: ["template-1"],
+            customerListId: "list-1",
+        })
+
+        const res = await createCampaignPOST(req as any)
+        const body = await res.json()
+
+        expect(res.status).toBe(400)
+        expect(body.error).toMatch(/valid scheduledAt/i)
+    })
+
+    it("returns 400 when multiple templates are supplied", async () => {
+        const req = makeJsonRequest("http://localhost/api/campaigns", {
+            name: "April Run",
+            scheduledAt: new Date().toISOString(),
+            templateIds: ["template-1", "template-2"],
+            customerListId: "list-1",
+        })
+
+        const res = await createCampaignPOST(req as any)
+        const body = await res.json()
+
+        expect(res.status).toBe(400)
+        expect(body.error).toMatch(/only one template/i)
+    })
+
+    it("returns 409 when campaign name already exists", async () => {
+        mockCampaignFindUnique.mockResolvedValueOnce({
+            id: "campaign-existing",
+            name: "April Run",
+        })
+
+        const req = makeJsonRequest("http://localhost/api/campaigns", {
+            name: "April Run",
+            scheduledAt: new Date().toISOString(),
+            templateIds: ["template-1"],
+            customerListId: "list-1",
+        })
+
+        const res = await createCampaignPOST(req as any)
+        const body = await res.json()
+
+        expect(res.status).toBe(409)
+        expect(body.error).toMatch(/already exists/i)
+    })
+
+    it("returns 404 when selected customer list is not found", async () => {
+        mockCampaignFindUnique.mockResolvedValueOnce(null)
+        mockContactListFindUnique.mockResolvedValueOnce(null)
+
+        const req = makeJsonRequest("http://localhost/api/campaigns", {
+            name: "April Run",
+            scheduledAt: new Date().toISOString(),
+            templateIds: ["template-1"],
+            customerListId: "list-missing",
+        })
+
+        const res = await createCampaignPOST(req as any)
+        const body = await res.json()
+
+        expect(res.status).toBe(404)
+        expect(body.error).toMatch(/customer list not found/i)
+    })
+
+    it("returns 404 when selected template is missing", async () => {
+        mockCampaignFindUnique.mockResolvedValueOnce(null)
+        mockContactListFindUnique.mockResolvedValueOnce({
+            id: "list-1",
+            fields: [{ field: "email", type: "email" }],
+            _count: { customers: 2 },
+        })
+        vi.mocked(refreshTemplateDependencies).mockResolvedValueOnce(null)
+
+        const req = makeJsonRequest("http://localhost/api/campaigns", {
+            name: "April Run",
+            scheduledAt: new Date().toISOString(),
+            templateIds: ["template-missing"],
+            customerListId: "list-1",
+        })
+
+        const res = await createCampaignPOST(req as any)
+        const body = await res.json()
+
+        expect(res.status).toBe(404)
+        expect(body.error).toMatch(/template was not found/i)
+    })
+
     it("returns 404 when manually running a campaign that does not exist", async () => {
         mockCampaignFindUnique.mockResolvedValueOnce(null)
 
@@ -203,5 +323,75 @@ describe("Campaign black-box workflow validation", () => {
         })
 
         expect(res.status).toBe(403)
+    })
+
+    it("returns 500 when queue trigger fails after campaign status update", async () => {
+        mockCampaignFindUnique.mockResolvedValueOnce({
+            id: "campaign-1",
+            name: "April Run",
+            templates: [],
+            logs: [],
+            files: [],
+        })
+        mockCampaignUpdate.mockResolvedValueOnce({ id: "campaign-1" })
+        vi.mocked(enqueueCampaignWorkerJob).mockRejectedValueOnce(new Error("queue unavailable"))
+
+        const req = new NextRequest("http://localhost/api/campaigns/campaign-1/run", {
+            method: "POST",
+        })
+
+        const res = await runCampaignPOST(req as any, {
+            params: Promise.resolve({ id: "campaign-1" }),
+        })
+        const body = await res.json()
+
+        expect(res.status).toBe(500)
+        expect(body.error).toMatch(/queue unavailable/i)
+    })
+
+    it("run status endpoint reports RUNNING when pending campaign has manual trigger log", async () => {
+        mockCampaignFindUnique.mockResolvedValueOnce({
+            id: "campaign-1",
+            scheduleStatus: "PENDING",
+            logs: [{ message: "[MANUAL] Campaign run triggered" }],
+            templates: [],
+            files: [],
+        })
+
+        const req = new NextRequest("http://localhost/api/campaigns/campaign-1/run", {
+            method: "GET",
+        })
+
+        const res = await runCampaignGET(req as any, {
+            params: Promise.resolve({ id: "campaign-1" }),
+        })
+        const body = await res.json()
+
+        expect(res.status).toBe(200)
+        expect(body.isRunning).toBe(true)
+        expect(body.status).toBe("RUNNING")
+    })
+
+    it("run status endpoint reports campaign status when not queued/running", async () => {
+        mockCampaignFindUnique.mockResolvedValueOnce({
+            id: "campaign-1",
+            scheduleStatus: "DONE",
+            logs: [{ message: "completed" }],
+            templates: [],
+            files: [],
+        })
+
+        const req = new NextRequest("http://localhost/api/campaigns/campaign-1/run", {
+            method: "GET",
+        })
+
+        const res = await runCampaignGET(req as any, {
+            params: Promise.resolve({ id: "campaign-1" }),
+        })
+        const body = await res.json()
+
+        expect(res.status).toBe(200)
+        expect(body.isRunning).toBe(false)
+        expect(body.status).toBe("DONE")
     })
 })

@@ -32,7 +32,7 @@ jobs:
       - name: Run ESLint
         run: npx eslint .
 
-  test:
+  whitebox-test:
     needs: static-analysis
     runs-on: ubuntu-latest
     env:
@@ -55,23 +55,65 @@ jobs:
       - name: Generate Prisma clients
         run: npm run prisma-generate
 
-      - name: Run tests with coverage
-        run: npm run test:coverage
+      - name: Run white-box tests with coverage
+        run: npm run test:whitebox:coverage
 
-      - name: Upload coverage report
+      - name: Upload white-box coverage report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: coverage-report
-          path: coverage/
+          name: whitebox-coverage-report
+          path: coverage/whitebox/
           retention-days: 14
 
-      - name: Upload test results
+      - name: Upload white-box lcov report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results
-          path: coverage/lcov.info
+          name: whitebox-lcov
+          path: coverage/whitebox/lcov.info
+          retention-days: 14
+
+  blackbox-test:
+    needs: static-analysis
+    runs-on: ubuntu-latest
+    env:
+      MAIN_DATABASE_URL: mongodb://localhost:27017/main
+      BUSINESS_DATABASE_URL: mongodb://localhost:27017/admin
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma clients
+        run: npm run prisma-generate
+
+      - name: Run black-box API tests with coverage
+        run: npm run test:blackbox:coverage
+
+      - name: Upload black-box coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blackbox-coverage-report
+          path: coverage/blackbox/
+          retention-days: 14
+
+      - name: Upload black-box lcov report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: blackbox-lcov
+          path: coverage/blackbox/lcov.info
           retention-days: 14
 
   e2e-test:
@@ -124,7 +166,7 @@ jobs:
           retention-days: 14
 
   deploy-main:
-    needs: [static-analysis, test, e2e-test]
+    needs: [static-analysis, whitebox-test, blackbox-test, e2e-test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
@@ -132,7 +174,7 @@ jobs:
         run: curl -X POST https://api.vercel.com/v1/integrations/deploy/prj_khm35phZsO8Sb8K8Z1c2lpKji9Ja/2jtIBdiDGO
 
   deploy-staging:
-    needs: [static-analysis, test, e2e-test]
+    needs: [static-analysis, whitebox-test, blackbox-test, e2e-test]
     if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
     steps:

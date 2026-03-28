@@ -43,6 +43,14 @@ function makeCsvUploadRequest(csvContent: string, fileName = "customers.csv") {
     })
 }
 
+function makeJsonRequest(body: unknown) {
+    return new Request("http://localhost/api/customer-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    })
+}
+
 describe("POST /api/customer-list — black-box functional and error validation", () => {
     beforeEach(() => {
         vi.clearAllMocks()
@@ -127,5 +135,75 @@ describe("POST /api/customer-list — black-box functional and error validation"
         const res = await POST(req as any)
 
         expect(res.status).toBe(403)
+    })
+
+    it("returns 400 when manual JSON payload has invalid source", async () => {
+        const req = makeJsonRequest({
+            name: "Manual Contacts",
+            source: "SPREADSHEET",
+            fields: [{ name: "email", type: "email" }],
+        })
+
+        const res = await POST(req as any)
+        const body = await res.json()
+
+        expect(res.status).toBe(400)
+        expect(body.error).toMatch(/invalid source/i)
+    })
+
+    it("returns 400 when manual JSON payload has no fields", async () => {
+        const req = makeJsonRequest({
+            name: "Manual Contacts",
+            source: "MANUAL",
+            fields: [],
+        })
+
+        const res = await POST(req as any)
+        const body = await res.json()
+
+        expect(res.status).toBe(400)
+        expect(body.error).toMatch(/at least one field is required/i)
+    })
+
+    it("returns 201 for valid manual JSON payload", async () => {
+        mockContactListCreate.mockResolvedValueOnce({
+            id: "list-manual-1",
+            name: "Manual Contacts",
+            source: "MANUAL",
+        })
+
+        const req = makeJsonRequest({
+            name: "Manual Contacts",
+            source: "MANUAL",
+            remarks: "manual import",
+            upsertMode: false,
+            fields: [
+                { name: "email", type: "email" },
+                { name: "first_name", type: "string" },
+            ],
+        })
+
+        const res = await POST(req as any)
+        const body = await res.json()
+
+        expect(res.status).toBe(201)
+        expect(body.contactList.id).toBe("list-manual-1")
+        expect(body.contactList.source).toBe("MANUAL")
+    })
+
+    it("returns 409 when contact list name already exists", async () => {
+        mockContactListCreate.mockRejectedValueOnce({ code: "P2002" })
+
+        const req = makeJsonRequest({
+            name: "Leads - April",
+            source: "MANUAL",
+            fields: [{ name: "email", type: "email" }],
+        })
+
+        const res = await POST(req as any)
+        const body = await res.json()
+
+        expect(res.status).toBe(409)
+        expect(body.error).toMatch(/already exists/i)
     })
 })

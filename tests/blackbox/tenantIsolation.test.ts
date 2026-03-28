@@ -120,6 +120,23 @@ describe("POST /api/business/active — cross-tenant access prevention", () => {
         expect(res.status).toBe(400)
     })
 
+    it("rejects malformed hostile businessId payloads and performs no membership lookup", async () => {
+        asBusinessAUser()
+
+        const req = makePostRequest({
+            // hostile payload attempts object injection instead of a valid tenant id string
+            businessId: { $ne: "business-a" },
+        })
+
+        const res = await POST(req as any)
+        const body = await res.json()
+
+        // malformed tenant identifiers must never be accepted as valid switch requests
+        expect(res.status).toBeGreaterThanOrEqual(400)
+        expect(body.error).toBeTruthy()
+        expect(mockMembershipFindFirst).not.toHaveBeenCalled()
+    })
+
     it("allows a user to activate a business they legitimately belong to", async () => {
         asBusinessAUser()
         mockMembershipFindFirst.mockResolvedValue({ businessId: "business-a" })

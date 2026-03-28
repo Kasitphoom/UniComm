@@ -13,6 +13,10 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:whitebox": "vitest run tests/unit",
+    "test:whitebox:coverage": "vitest run --coverage --coverage.reportsDirectory=coverage/whitebox tests/unit",
+    "test:blackbox": "vitest run tests/blackbox",
+    "test:blackbox:coverage": "vitest run --coverage --coverage.reportsDirectory=coverage/blackbox tests/blackbox",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed"
   },
