@@ -9,6 +9,10 @@ export default withAuth(
     {
         callbacks: {
             authorized: ({ token, req }) => {
+                if (process.env.E2E_BYPASS_AUTH === "true") {
+                    return true
+                }
+
                 const { pathname } = req.nextUrl
                 // Allow the public root page
                 if (pathname === "/" || pathname === "/forgot-password") return true
