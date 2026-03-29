@@ -18,7 +18,8 @@
     "test:blackbox": "vitest run tests/blackbox",
     "test:blackbox:coverage": "vitest run --coverage --coverage.reportsDirectory=coverage/blackbox tests/blackbox",
     "test:e2e": "playwright test",
-    "test:e2e:headed": "playwright test --headed"
+    "test:e2e:headed": "playwright test --headed",
+    "seed:e2e": "tsx scripts/seed-e2e.ts"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.8",
