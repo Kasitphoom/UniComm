@@ -3,6 +3,10 @@
  * the campaign detail SSR page can render without hitting notFound().
  *
  * IDs are fixed so the Playwright test can reference them by value.
+ *
+ * Uses create() instead of upsert() to avoid Prisma's transaction requirement
+ * (which would need a MongoDB replica set). Safe because CI always starts a
+ * fresh container.
  */
 import { PrismaClient } from "../app/generated/business/prisma"
 
@@ -23,10 +27,8 @@ const BUSINESS_DB_URL = (() => {
 const prisma = new PrismaClient({ datasources: { db: { url: BUSINESS_DB_URL } } })
 
 async function main() {
-    await prisma.businessUser.upsert({
-        where: { id: USER_ID },
-        update: {},
-        create: {
+    await prisma.businessUser.create({
+        data: {
             id: USER_ID,
             email: "owner@business-a.com",
             displayName: "Owner",
@@ -34,10 +36,8 @@ async function main() {
         },
     })
 
-    await prisma.contactList.upsert({
-        where: { id: CONTACT_LIST_ID },
-        update: {},
-        create: {
+    await prisma.contactList.create({
+        data: {
             id: CONTACT_LIST_ID,
             name: "CSV Leads",
             fields: [
@@ -49,10 +49,8 @@ async function main() {
         },
     })
 
-    await prisma.templates.upsert({
-        where: { id: TEMPLATE_ID },
-        update: {},
-        create: {
+    await prisma.templates.create({
+        data: {
             id: TEMPLATE_ID,
             title: "Offer Template",
             filePath: "e2e/placeholder.pdf",
@@ -62,10 +60,8 @@ async function main() {
         },
     })
 
-    await prisma.campaign.upsert({
-        where: { id: CAMPAIGN_ID },
-        update: {},
-        create: {
+    await prisma.campaign.create({
+        data: {
             id: CAMPAIGN_ID,
             name: "E2E Existing Campaign Detail",
             contactListId: CONTACT_LIST_ID,
@@ -76,10 +72,8 @@ async function main() {
         },
     })
 
-    await prisma.campaignTemplate.upsert({
-        where: { id: CAMPAIGN_TEMPLATE_ID },
-        update: {},
-        create: {
+    await prisma.campaignTemplate.create({
+        data: {
             id: CAMPAIGN_TEMPLATE_ID,
             campaignId: CAMPAIGN_ID,
             templateId: TEMPLATE_ID,
