@@ -120,8 +120,8 @@ jobs:
     needs: static-analysis
     runs-on: ubuntu-latest
     env:
-      MAIN_DATABASE_URL: mongodb://localhost:27017/main
-      BUSINESS_DATABASE_URL: mongodb://localhost:27017/admin
+      MAIN_DATABASE_URL: mongodb://user:pass@localhost:27017/main?authSource=admin&retryWrites=true&w=majority&directConnection=true&tls=false
+      BUSINESS_DATABASE_URL: mongodb://user:pass@localhost:27017/?authSource=admin&retryWrites=true&w=majority&directConnection=true&tls=false
       E2E_BYPASS_AUTH: "true"
       NEXTAUTH_URL: http://localhost:4100
       NEXTAUTH_SECRET: e2e-secret
@@ -129,7 +129,10 @@ jobs:
 
     services:
       mongodb:
-        image: mongo:7
+        image: mongodb/mongodb-atlas-local
+        env:
+          MONGODB_INITDB_ROOT_USERNAME: user
+          MONGODB_INITDB_ROOT_PASSWORD: pass
         ports:
           - 27017:27017
 
