@@ -146,6 +146,9 @@ jobs:
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
+      - name: Clean Playwright output folders
+        run: rm -rf playwright-report test-results
+
       - name: Run E2E tests
         run: npm run test:e2e
 

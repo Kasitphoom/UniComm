@@ -345,7 +345,17 @@ test.describe("Campaign workflow E2E", () => {
         await expect(campaignRow).toBeVisible()
         await page.screenshot({ path: testInfo.outputPath("07-retrigger-row-visible.png"), fullPage: true })
 
+        const detailDocumentResponsePromise = page
+            .waitForResponse(
+                (response) =>
+                    response.request().resourceType() === "document" &&
+                    response.url().includes(`/campaigns/${seededCampaignId}`),
+                { timeout: 5000 },
+            )
+            .catch(() => null)
+
         await campaignRow.locator("button").first().click()
+        const detailDocumentResponse = await detailDocumentResponsePromise
         const navigatedToDetail = await page
             .waitForURL(`**/campaigns/${seededCampaignId}`, { timeout: 5000 })
             .then(() => true)
@@ -359,6 +369,21 @@ test.describe("Campaign workflow E2E", () => {
             : false
 
         if (!navigatedToDetail || detailUnavailable) {
+            const fallbackDiagnostics = {
+                expectedDetailPath: `/campaigns/${seededCampaignId}`,
+                currentUrl: page.url(),
+                navigatedToDetail,
+                detailUnavailable,
+                detailDocumentStatus: detailDocumentResponse?.status() ?? null,
+                detailDocumentUrl: detailDocumentResponse?.url() ?? null,
+                actionButtonCountInRow: await campaignRow.locator("button").count(),
+            }
+
+            await testInfo.attach("retrigger-detail-fallback-diagnostics", {
+                body: Buffer.from(JSON.stringify(fallbackDiagnostics, null, 2), "utf-8"),
+                contentType: "application/json",
+            })
+
             await page.screenshot({ path: testInfo.outputPath("08-detail-not-found-fallback.png"), fullPage: true })
 
             await page.goto("/campaigns")
