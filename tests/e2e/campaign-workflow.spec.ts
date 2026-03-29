@@ -1,4 +1,16 @@
 import { expect, test } from "@playwright/test"
+import { PrismaClient } from "../../app/generated/business/prisma"
+
+const buildBusinessDbUrlForTests = (businessId: string) => {
+    const baseUrl = process.env.BUSINESS_DATABASE_URL
+    if (!baseUrl) {
+        throw new Error("BUSINESS_DATABASE_URL is required for campaign detail E2E tests")
+    }
+
+    const url = new URL(baseUrl)
+    url.pathname = `/business_${businessId}`
+    return url.toString()
+}
 
 test.describe("Campaign workflow E2E", () => {
     test("CSV -> template -> mapping -> generate campaign happy path", async ({ page, context }, testInfo) => {
@@ -190,8 +202,59 @@ test.describe("Campaign workflow E2E", () => {
         expect(createCampaignPayload.templateIds).toEqual(["template-1"])
     })
 
-    test("re-trigger campaign and receive generated file result", async ({ page, context }) => {
+    test("re-trigger campaign from detail view and receive generated file result", async ({ page, context }, testInfo) => {
         let pollRunPayload: any = null
+        const seededCampaignId = "507f1f77bcf86cd799439011"
+        const seededContactListId = "507f1f77bcf86cd799439012"
+        const seededCampaignName = "E2E Existing Campaign Detail"
+
+        const prisma = new PrismaClient({
+            datasources: {
+                db: {
+                    url: buildBusinessDbUrlForTests("business-a"),
+                },
+            },
+        })
+
+        try {
+            await prisma.contactList.upsert({
+                where: { id: seededContactListId },
+                update: {
+                    name: "CSV Leads",
+                    fields: [
+                        { field: "email", type: "email" },
+                        { field: "first_name", type: "string" },
+                    ],
+                },
+                create: {
+                    id: seededContactListId,
+                    name: "CSV Leads",
+                    fields: [
+                        { field: "email", type: "email" },
+                        { field: "first_name", type: "string" },
+                    ],
+                },
+            })
+
+            await prisma.campaign.upsert({
+                where: { id: seededCampaignId },
+                update: {
+                    name: seededCampaignName,
+                    contactListId: seededContactListId,
+                    scheduledAt: new Date("2026-03-27T18:00:00.000Z"),
+                    totalRecords: 25,
+                },
+                create: {
+                    id: seededCampaignId,
+                    name: seededCampaignName,
+                    contactListId: seededContactListId,
+                    scheduledAt: new Date("2026-03-27T18:00:00.000Z"),
+                    totalRecords: 25,
+                },
+            })
+        } finally {
+            await prisma.$disconnect()
+        }
 
         await context.addCookies([
             {
@@ -236,8 +299,8 @@ test.describe("Campaign workflow E2E", () => {
                     body: JSON.stringify({
                         campaigns: [
                             {
-                                id: "507f1f77bcf86cd799439011",
-                                name: "Existing Campaign",
+                                id: seededCampaignId,
+                                name: seededCampaignName,
                                 scheduledAt: "2026-03-27T18:00:00.000Z",
                                 totalRecords: 25,
                                 scheduleStatus: "PENDING",
@@ -265,7 +328,7 @@ test.describe("Campaign workflow E2E", () => {
             await route.continue()
         })
 
-        await page.route("**/api/campaigns/507f1f77bcf86cd799439011/run", async (route) => {
+        await page.route(`**/api/campaigns/${seededCampaignId}/run`, async (route) => {
             const request = route.request()
 
             if (request.method() === "POST") {
@@ -274,7 +337,7 @@ test.describe("Campaign workflow E2E", () => {
                     contentType: "application/json",
                     body: JSON.stringify({
                         accepted: true,
-                        campaignId: "507f1f77bcf86cd799439011",
+                        campaignId: seededCampaignId,
                         status: "RUNNING",
                         message: "Campaign run accepted",
                         triggerId: "trigger-001",
@@ -286,8 +349,8 @@ test.describe("Campaign workflow E2E", () => {
             if (request.method() === "GET") {
                 pollRunPayload = {
                     campaign: {
-                        id: "507f1f77bcf86cd799439011",
-                        name: "Existing Campaign",
+                        id: seededCampaignId,
+                        name: seededCampaignName,
                         scheduledAt: "2026-03-27T18:00:00.000Z",
                         totalRecords: 25,
                         scheduleStatus: "TRIGGERED",
@@ -337,14 +400,28 @@ test.describe("Campaign workflow E2E", () => {
 
         await page.goto("/campaigns")
         await expect(page.getByRole("heading", { name: "Campaigns" })).toBeVisible()
+        await page.screenshot({ path: testInfo.outputPath("06-retrigger-campaign-list.png"), fullPage: true })
 
-        const campaignRow = page.locator("tr", { hasText: "Existing Campaign" })
+        const campaignRow = page.locator("tr", { hasText: seededCampaignName })
         await expect(campaignRow).toBeVisible()
+        await page.screenshot({ path: testInfo.outputPath("07-retrigger-row-visible.png"), fullPage: true })
 
-        await campaignRow.locator("button").nth(1).click()
+        await Promise.all([
+            page.waitForURL(`**/campaigns/${seededCampaignId}`),
+            campaignRow.locator("button").first().click(),
+        ])
+        await expect(page.getByRole("button", { name: "Download Latest" })).toBeVisible()
+        await page.screenshot({ path: testInfo.outputPath("08-campaign-detail-view.png"), fullPage: true })
 
-        await expect(campaignRow.getByText("Executed").first()).toBeVisible({ timeout: 10000 })
-        await expect(campaignRow.getByText("Ready").first()).toBeVisible({ timeout: 10000 })
+        await page.locator("header").getByRole("button").first().click()
+        await page.screenshot({ path: testInfo.outputPath("09-detail-retrigger-clicked.png"), fullPage: true })
+
+        await expect(page.getByText("existing-campaign.zip")).toBeVisible({ timeout: 10000 })
+        await page.screenshot({ path: testInfo.outputPath("10-detail-zip-visible.png"), fullPage: true })
+
+        await expect(page.getByText("Executed").first()).toBeVisible({ timeout: 10000 })
+        await expect(page.getByText("Ready").first()).toBeVisible({ timeout: 10000 })
+        await page.screenshot({ path: testInfo.outputPath("11-retrigger-ready.png"), fullPage: true })
 
         expect(pollRunPayload).toBeTruthy()
         expect(Array.isArray(pollRunPayload.campaign.files)).toBe(true)
