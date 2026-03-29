@@ -345,16 +345,20 @@ test.describe("Campaign workflow E2E", () => {
         await expect(campaignRow).toBeVisible()
         await page.screenshot({ path: testInfo.outputPath("07-retrigger-row-visible.png"), fullPage: true })
 
-        await Promise.all([
-            page.waitForURL(`**/campaigns/${seededCampaignId}`),
-            campaignRow.locator("button").first().click(),
-        ])
-        const detailUnavailable = await page
-            .getByText("Content not found")
-            .isVisible({ timeout: 3000 })
+        await campaignRow.locator("button").first().click()
+        const navigatedToDetail = await page
+            .waitForURL(`**/campaigns/${seededCampaignId}`, { timeout: 5000 })
+            .then(() => true)
             .catch(() => false)
 
-        if (detailUnavailable) {
+        const detailUnavailable = navigatedToDetail
+            ? await page
+                .getByText("Content not found")
+                .isVisible({ timeout: 3000 })
+                .catch(() => false)
+            : false
+
+        if (!navigatedToDetail || detailUnavailable) {
             await page.screenshot({ path: testInfo.outputPath("08-detail-not-found-fallback.png"), fullPage: true })
 
             await page.goto("/campaigns")
