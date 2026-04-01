@@ -359,7 +359,7 @@ To contribute to this project, follow these steps and guidelines:
 ---
 
 ## User Manual
-A user manual with step-by-step instructions and screenshots is available in the [User Manual](/MANUAL.md). It covers all major features and workflows of the UniComm platform.
+A user manual with step-by-step instructions and screenshots is available in the [User Manual](/docs/MANUAL.md). It covers all major features and workflows of the UniComm platform.
 
 ---
 
