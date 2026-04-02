@@ -6,6 +6,9 @@ const appVersion = process.env.NEXT_PUBLIC_APP_VERSION || process.env.npm_packag
 const nextConfig: NextConfig = {
   /* config options here */
   allowedDevOrigins: ["localhost:4100", "local.kasitphoom.com"],
+  outputFileTracingExcludes: {
+    "/*": ["./docs/**/*"],
+  },
   env: {
     NEXT_PUBLIC_APP_VERSION: appVersion,
   },
